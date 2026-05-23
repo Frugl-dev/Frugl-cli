@@ -10,3 +10,4 @@ out
 .idea
 *.log
 coverage
+.claude/worktrees
