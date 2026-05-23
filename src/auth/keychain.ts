@@ -1,22 +1,46 @@
-/**
- * Token storage in the OS-appropriate credential store.
- * macOS Keychain / Windows Credential Manager / libsecret on Linux.
- *
- * Per constitution Principle II, tokens MUST NOT live in a plaintext file
- * in the home directory.
- */
-const SERVICE = "poppi";
+import { Entry } from "@napi-rs/keyring";
+import { KeychainError } from "../lib/errors.js";
 
-export async function setToken(_account: string, _token: string): Promise<void> {
-  throw new Error("keychain.setToken: not implemented (use keytar or platform fallback)");
+export const SERVICE = "poppi";
+
+function entry(account: string): Entry {
+  try {
+    return new Entry(SERVICE, account);
+  } catch (err) {
+    throw new KeychainError(
+      `OS credential store is unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
-export async function getToken(_account: string): Promise<string | null> {
-  throw new Error("keychain.getToken: not implemented");
+export async function setToken(account: string, token: string): Promise<void> {
+  try {
+    entry(account).setPassword(token);
+  } catch (err) {
+    throw new KeychainError(
+      `Failed to write to OS credential store: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
-export async function deleteToken(_account: string): Promise<void> {
-  throw new Error("keychain.deleteToken: not implemented");
+export async function getToken(account: string): Promise<string | null> {
+  try {
+    return entry(account).getPassword() ?? null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not\s*found|no matching/i.test(message)) {
+      return null;
+    }
+    throw new KeychainError(`Failed to read from OS credential store: ${message}`);
+  }
 }
 
-export { SERVICE };
+export async function deleteToken(account: string): Promise<void> {
+  try {
+    entry(account).deletePassword();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not\s*found|no matching/i.test(message)) return;
+    throw new KeychainError(`Failed to delete from OS credential store: ${message}`);
+  }
+}
