@@ -1,25 +1,24 @@
 {
   "name": "poppi",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Upload anonymized AI-coding session logs to hosted Poppi.",
   "license": "MIT",
-  "type": "module",
   "bin": {
-    "poppi": "./dist/cli.js"
+    "poppi": "./bin/run.js"
   },
   "files": [
+    "bin",
     "dist",
     "README.md",
     "LICENSE"
   ],
-  "engines": {
-    "node": ">=20"
-  },
+  "type": "module",
   "scripts": {
-    "dev": "tsx src/cli.ts",
-    "build": "tsup src/cli.ts --format esm --target node20 --clean --dts",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "dev": "tsx bin/dev.js",
+    "build": "tsup src/index.ts --format esm --target node20 --clean --dts",
+    "prepack": "npm run build",
+    "lint": "oxlint --ignore-pattern '.claude/**'",
+    "lint:fix": "oxlint --fix --ignore-pattern '.claude/**'",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "typecheck": "tsc --noEmit",
@@ -27,15 +26,23 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "commander": "^12.1.0",
-    "keytar": "^7.9.0",
-    "prompts": "^2.4.2",
-    "undici": "^6.20.0"
+    "@inquirer/prompts": "^7.2.0",
+    "@napi-rs/keyring": "^1.1.6",
+    "@oclif/core": "^4.0.30",
+    "conf": "^13.0.0",
+    "env-paths": "^3.0.0",
+    "p-limit": "^6.1.0",
+    "p-retry": "^6.2.0",
+    "picocolors": "^1.1.1",
+    "semver": "^7.6.3",
+    "tinyglobby": "^0.2.10",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/prompts": "^2.4.9",
+    "@types/retry": "^0.12.5",
+    "@types/semver": "^7.5.8",
+    "oclif": "^4.15.0",
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
     "pre-commit": "^2.0.0",
@@ -50,5 +57,20 @@
     "typecheck",
     "test"
   ],
-  "packageManager": "pnpm@11.1.2+sha512.415a1cc25974731e75455c1468371be74c5aa5fb7621b50d4056d222451609f11412f23fd602e6169f1e060466641f798597e1be961a10688836a67b16569499"
+  "oclif": {
+    "bin": "poppi",
+    "commands": "./src/commands",
+    "dirname": "poppi"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.1.2+sha512.415a1cc25974731e75455c1468371be74c5aa5fb7621b50d4056d222451609f11412f23fd602e6169f1e060466641f798597e1be961a10688836a67b16569499",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "pre-commit"
+    ],
+    "verifyDepsBeforeRun": false
+  }
 }

@@ -1,78 +1,150 @@
 import { describe, it, expect } from "vitest";
-import { anonymize } from "./index";
+import { anonymize, POLICY_VERSION, PseudonymTable } from "./index.js";
 
-/**
- * Constitution Principle VI — Fail-Closed Anonymization:
- *   "For a canonical planted-secrets fixture, 100% of planted values across
- *    every redaction category are absent from the post-anonymization payload."
- *
- * This is the home of that suite. Categories listed below come straight from
- * specs/001-cloud-ingest-platform/spec.md FR-012. Each "planted" value below
- * MUST NOT appear in the post-anonymization JSON payload.
- *
- * The implementation lives in ./index.ts and is currently a stub. These
- * tests are the contract it has to satisfy.
- */
 const PLANTED = {
-  anthropicKey: "sk-ant-api03-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-  openaiKey: "sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-  awsAccessKey: "AKIAIOSFODNN7EXAMPLE",
-  githubToken: "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-  envLine: "DATABASE_URL=postgres://user:pass@host/db",
-  homePath: "/Users/alice/code/secret-project/main.ts",
-  otherEmail: "someone-else@example.com",
+  "anthropic-key": "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "openai-key": "sk-proj-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+  "aws-key": "AKIAIOSFODNN7EXAMPLE",
+  "gcp-key":
+    '"private_key": "-----BEGIN PRIVATE KEY-----\\nMIIBVgIBADANBgkqhkiG9w0BAQEFAASCAUAwggE8AgEAAkEAv1\\n-----END PRIVATE KEY-----\\n"',
+  "github-token": "ghp_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+  "slack-webhook": "https://hooks.slack.com/services/T0000/B1111/abcdefghijklmnop",
+  "env-line": "DATABASE_URL=postgres://user:pass@host/db",
+  "home-path": "/Users/alice/.claude/projects/acme-secret/main.ts",
+  "third-party-email": "someone-else@example.com",
+  "entropy-fallback": "Zm9vYmFyYmF6YnV6QUJDREVGRzEyMzQ1Njc4OWFiYw",
 } as const;
 
 const OWNER_EMAIL = "owner@example.com";
+const PROJ_RE = /proj_[a-f0-9]+/;
 
-function buildFixture() {
+function buildFixture(home: string) {
+  const homePathInHome = `${home}/.claude/projects/acme-secret/main.ts`;
   return {
     sessions: [
       {
         id: "s1",
-        text: `here is the key ${PLANTED.anthropicKey} and ${PLANTED.openaiKey}`,
+        text: `here is the anthropic key ${PLANTED["anthropic-key"]} and the openai ${PLANTED["openai-key"]}`,
       },
       {
         id: "s2",
-        text: `aws=${PLANTED.awsAccessKey} gh=${PLANTED.githubToken} ${PLANTED.envLine}`,
+        text: `aws=${PLANTED["aws-key"]} gh=${PLANTED["github-token"]} env: ${PLANTED["env-line"]}`,
       },
       {
         id: "s3",
-        text: `opened ${PLANTED.homePath} for ${PLANTED.otherEmail}; cc ${OWNER_EMAIL}`,
+        text: `slack hook ${PLANTED["slack-webhook"]} gcp: { ${PLANTED["gcp-key"]} }`,
+      },
+      {
+        id: "s4",
+        text: `opened ${homePathInHome} for ${PLANTED["third-party-email"]}; cc ${OWNER_EMAIL}; raw=${PLANTED["entropy-fallback"]}`,
       },
     ],
   };
 }
 
-describe.todo("anonymize — planted secrets are removed across every redaction category", () => {
+describe("anonymize", () => {
   it("removes every planted secret value from the serialized payload", () => {
-    const result = anonymize(buildFixture(), {
+    const home = "/Users/alice";
+    const result = anonymize(buildFixture(home), {
       uploadId: "u-test",
       ownerEmail: OWNER_EMAIL,
-      policyVersion: "v0",
+      homeDir: home,
     });
     const serialized = JSON.stringify(result.payload);
-    for (const planted of Object.values(PLANTED)) {
-      expect(serialized).not.toContain(planted);
-    }
+    expect(serialized).not.toContain(PLANTED["anthropic-key"]);
+    expect(serialized).not.toContain(PLANTED["openai-key"]);
+    expect(serialized).not.toContain(PLANTED["aws-key"]);
+    expect(serialized).not.toContain(PLANTED["github-token"]);
+    expect(serialized).not.toContain(PLANTED["slack-webhook"]);
+    expect(serialized).not.toContain("DATABASE_URL=postgres");
+    expect(serialized).not.toContain(home);
+    expect(serialized).not.toContain(PLANTED["third-party-email"]);
+    expect(serialized).not.toContain(PLANTED["entropy-fallback"]);
+    expect(serialized).not.toContain("MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAUAwggE8");
   });
 
   it("preserves the authenticated user's own email", () => {
-    const result = anonymize(buildFixture(), {
+    const home = "/Users/alice";
+    const result = anonymize(buildFixture(home), {
       uploadId: "u-test",
       ownerEmail: OWNER_EMAIL,
-      policyVersion: "v0",
+      homeDir: home,
     });
     expect(JSON.stringify(result.payload)).toContain(OWNER_EMAIL);
   });
 
   it("reports a redaction count for every category that fired", () => {
-    const result = anonymize(buildFixture(), {
+    const home = "/Users/alice";
+    const result = anonymize(buildFixture(home), {
       uploadId: "u-test",
       ownerEmail: OWNER_EMAIL,
-      policyVersion: "v0",
+      homeDir: home,
     });
-    const total = Object.values(result.redactions).reduce((a, b) => a + b, 0);
-    expect(total).toBeGreaterThan(0);
+    expect(result.redactionsByCategory["anthropic-key"]).toBeGreaterThanOrEqual(1);
+    expect(result.redactionsByCategory["openai-key"]).toBeGreaterThanOrEqual(1);
+    expect(result.redactionsByCategory["aws-key"]).toBe(1);
+    expect(result.redactionsByCategory["github-token"]).toBe(1);
+    expect(result.redactionsByCategory["slack-webhook"]).toBe(1);
+    expect(result.redactionsByCategory["env-line"]).toBeGreaterThanOrEqual(1);
+    expect(result.redactionsByCategory["home-path"]).toBeGreaterThanOrEqual(1);
+    expect(result.redactionsByCategory["project-name"]).toBeGreaterThanOrEqual(1);
+    expect(result.redactionsByCategory["third-party-email"]).toBe(1);
+    expect(result.redactionsByCategory["gcp-key"]).toBe(1);
+  });
+
+  it("records the policy version, byte size, and content hash", () => {
+    const result = anonymize(
+      { text: "hello" },
+      {
+        uploadId: "u",
+        ownerEmail: OWNER_EMAIL,
+      },
+    );
+    expect(result.policyVersion).toBe(POLICY_VERSION);
+    expect(result.byteSize).toBeGreaterThan(0);
+    expect(result.redactedHashHex).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("uses stable pseudonyms within a single invocation", () => {
+    const home = "/Users/alice";
+    const fixture = {
+      sessions: [
+        { text: `${home}/.claude/projects/acme/a.ts` },
+        { text: `${home}/.claude/projects/acme/b.ts` },
+      ],
+    };
+    const result = anonymize(fixture, {
+      uploadId: "stable-test",
+      ownerEmail: OWNER_EMAIL,
+      homeDir: home,
+    });
+    const payload = result.payload as { sessions: Array<{ text: string }> };
+    const a = payload.sessions[0]!.text;
+    const b = payload.sessions[1]!.text;
+    const projInA = a.match(PROJ_RE)?.[0];
+    const projInB = b.match(PROJ_RE)?.[0];
+    expect(projInA).toBeDefined();
+    expect(projInA).toBe(projInB);
+  });
+
+  it("yields different pseudonyms across different uploadIds", () => {
+    const home = "/Users/alice";
+    const text = `${home}/.claude/projects/sameproject/main.ts`;
+    const r1 = anonymize({ text }, { uploadId: "u-one", ownerEmail: OWNER_EMAIL, homeDir: home });
+    const r2 = anonymize({ text }, { uploadId: "u-two", ownerEmail: OWNER_EMAIL, homeDir: home });
+    const p1 = (r1.payload as { text: string }).text;
+    const p2 = (r2.payload as { text: string }).text;
+    const proj1 = p1.match(PROJ_RE)?.[0];
+    const proj2 = p2.match(PROJ_RE)?.[0];
+    expect(proj1).toBeDefined();
+    expect(proj2).toBeDefined();
+    expect(proj1).not.toBe(proj2);
+  });
+
+  it("PseudonymTable returns the same value for the same input", () => {
+    const table = new PseudonymTable("upload-x");
+    const a = table.pseudonymize("project-name", "acme");
+    const b = table.pseudonymize("project-name", "acme");
+    expect(a).toBe(b);
   });
 });
