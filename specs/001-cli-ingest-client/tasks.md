@@ -23,7 +23,7 @@
 - [ ] T003 [P] Create bin/dev.js as the oclif tsx-based dev entrypoint in bin/dev.js
 - [ ] T004 Delete src/commands/delete.ts (deferred to spec 002-delete per research.md R-17) and src/cli.ts (replaced by oclif scaffold)
 - [ ] T005 Create src/index.ts as oclif runtime glue: re-export all Command classes so oclif auto-discovery finds them in src/index.ts
-- [ ] T006 Update package.json oclif metadata block: oclif.commands = "src/index.ts", oclif.bin = "poppi", update scripts (dev, build, prepack) for oclif conventions in package.json
+- [ ] T006 Update package.json oclif metadata block: oclif.commands = "src/index.ts", oclif.bin = "poppi"; update scripts to oclif conventions: dev → "tsx bin/dev.js", build → "tsup src/index.ts --outDir dist", prepack → "npm run build"; confirm pnpm typecheck + pnpm test still pass after script migration in package.json
 
 ---
 
@@ -41,18 +41,18 @@
 - [ ] T012 [P] Create src/cloud/endpoints.ts: resolve target Endpoint from --endpoint flag > POPPI_ENDPOINT env > default https://api.poppi.app; validate URL scheme (https or localhost http only); record resolvedFrom field per R-13 in src/cloud/endpoints.ts
 - [ ] T013 Create src/cloud/schemas.ts: zod schemas for every cloud response type (OTP request, OTP verify, whoami, manifest create, presign, completion) matching contracts/cloud-api.md; derived TypeScript types exported alongside each schema per FR-036 in src/cloud/schemas.ts
 - [ ] T014 Create src/cloud/version-gate.ts: parse 426 response body for minVersion; use semver.lt(cliVersion, minVersion) to decide; format upgrade message (current, required, npm install command) per FR-033 in src/cloud/version-gate.ts
-- [ ] T015 Create src/cloud/client.ts: thin native fetch wrapper attaching CLI-version header (FR-032), per-request AbortController timeouts (8 s control-plane / 60 s body PUT per R-3), version-gate intercept on 426, auth bearer token injection in src/cloud/client.ts
+- [ ] T015 Create src/cloud/client.ts: thin native fetch wrapper attaching CLI-version header (FR-032), per-request AbortController timeouts (8 s control-plane / 60 s body PUT per R-3), version-gate intercept on 426, auth bearer token injection; catch ZodError from schema parsing (T013) and rethrow as a typed error mapped to EXIT.GENERIC_FAILURE so cross-repo contract drift surfaces as a stable, grep-able exit rather than an unhandled rejection per FR-036 in src/cloud/client.ts
 - [ ] T016 Update src/auth/keychain.ts to replace keytar with @napi-rs/keyring while preserving the existing getToken/setToken/deleteToken/SERVICE API surface; surface KeychainError(EXIT.KEYCHAIN_UNAVAILABLE) when secret service is unavailable per FR-004/005 in src/auth/keychain.ts
 - [ ] T017 [P] Create src/ledger/ledger.ts: conf-backed Ledger keyed by (endpointUrl, userId); zod schema for LedgerEntry and Ledger shapes (schemaVersion=1); atomic reads and writes via conf; schema-version mismatch → ledger-loss recovery path per FR-006c/f/g in src/ledger/ledger.ts
-- [ ] T018 [P] Create src/ledger/classify.ts: classifySession(ref, identity, ledger) → SessionClassification discriminated union (unchanged / new / updated) by looking up sessionId in ledger and comparing current redacted-content hash per FR-006d; ordering: mtime desc, path asc tiebreaker for --limit per R-1 in src/ledger/classify.ts
+- [ ] T018 [P] Create src/ledger/classify.ts skeleton: implement `new` case (sessionId absent from ledger) and stub `unchanged`/`updated` returning `new` as placeholder; define classifySession(ref, identity, ledger) → SessionClassification signature; add ordering helpers (mtime desc, path asc tiebreaker per R-1) per FR-006d in src/ledger/classify.ts — `unchanged`/`updated` hash-comparison logic is completed in T018b (Phase 3) after the anonymizer exists
 
-**Checkpoint**: Foundation ready — all user story phases can now begin.
+**Checkpoint**: Foundation ready — all user story phases can now begin. T018 (classify.ts) delivers a `new`-only skeleton; the `unchanged`/`updated` hash-comparison is completed in T018b (Phase 3) once the anonymizer exists.
 
 ---
 
 ## Phase 3: User Story 2 — Provable Anonymization (Trust Gate) (Priority: P1)
 
-**Goal**: Implement the complete anonymizer with all redaction rules, pseudonym generation, policy versioning, and the planted-secrets test suite. This phase must be complete before User Story 1's independent test can pass (FR-009: every byte anonymized before transmission).
+**Goal**: Implement the complete anonymizer with all redaction rules, pseudonym generation, policy versioning, and the planted-secrets test suite; also complete T018b (classify.ts `unchanged`/`updated` cases) which depends on the anonymizer. This phase must be complete before User Story 1's independent test can pass (FR-009: every byte anonymized before transmission).
 
 **Independent Test**: Run `pnpm test src/anonymize/` on the planted-secrets fixture. For a session containing one planted value per supported redaction category (Anthropic key, OpenAI key, AWS key, GCP key, GitHub token, Slack webhook, .env line, home path, third-party email, high-entropy string), every planted value must be absent from the post-anonymization output and the summary must record exactly one redaction per category (SC-001).
 
@@ -63,9 +63,10 @@
 - [ ] T023 [P] [US2] Create src/anonymize/rules/emails.ts: preserve the authenticated user's own email (ownerEmail from AuthSession); pseudonymize all other RFC-5321 email addresses with PseudonymTable stable per-upload pseudonyms per FR-011/012 in src/anonymize/rules/emails.ts
 - [ ] T024 [P] [US2] Create src/anonymize/rules/entropy.ts: compute per-character Shannon entropy for candidate strings ≥ 20 characters; flag + redact values with entropy ≥ 4.5 bits/char that match no other rule (fail-closed fallback per FR-013/014) in src/anonymize/rules/entropy.ts
 - [ ] T025 [US2] Implement src/anonymize/index.ts public anonymize(session, opts) API: apply rules in order (secrets → claude-paths → emails → entropy), collect per-category counts, produce AnonymizationResult with payload/redactionsByCategory/policyVersion/redactedHashHex/byteSize; fail-closed on any ambiguous value; abort entire batch on failure per FR-009/014/015 in src/anonymize/index.ts
+- [ ] T018b [US2] Complete src/ledger/classify.ts `unchanged`/`updated` cases (depends on T025): call anonymize() to compute currentRedactedHashHex; compare to ledger contentHash — matching → unchanged, differing → updated; discard AnonymizationResult for unchanged sessions immediately; this finishes the classifySession() implementation started in T018 per FR-006d / data-model.md §8 in src/ledger/classify.ts
 - [ ] T026 [US2] Complete src/anonymize/anonymize.test.ts: add PLANTED fixture table with one value per RedactionCategory; assert 100% absent from JSON.stringify(payload); assert per-category count = 1; assert owner email preserved; assert same pseudonym for repeated project name across sessions in same upload per SC-001 / FR-012 / FR-016 in src/anonymize/anonymize.test.ts
 
-**Checkpoint**: Anonymizer is complete and all planted-secrets tests pass. User Story 1 upload pipeline can now be implemented.
+**Checkpoint**: Anonymizer is complete, all planted-secrets tests pass, and classify.ts `unchanged`/`updated` cases are fully implemented (T018b). User Story 1 upload pipeline can now be implemented.
 
 ---
 
@@ -87,7 +88,7 @@
 - [ ] T036 [US1] Create src/upload/summary.ts: build UploadSummary from classified sessions (discovered count, unchanged count, new count, updated count, will-upload count, date range, estimated compressed size, redaction policy version, endpoint); format for @inquirer/prompts confirmation display per FR-020 / FR-020a / FR-020b in src/upload/summary.ts
 - [ ] T037 [US1] Create src/upload/progress.ts: stderr text progress lines ("[N/M] sessionId — uploading X KB") in text mode using picocolors; stdout NDJSON ProgressEvents with monotonic seq in json mode; emit upload-start, session-start, session-acked, session-failed, session-skipped, upload-complete event types per FR-038 / FR-039 / data-model.md §11 in src/upload/progress.ts
 - [ ] T038 [US1] Create src/upload/pipeline.ts: p-limit (default 4 concurrency) pool; per session: obtain presigned URL → gzip payload → PUT with retry wrapper → cloud ack; write per-session acknowledgment to ResumeState immediately on ack (FR-025b); update ledger entry after ack (FR-006e); surface errors with typed error classes per FR-022 / FR-023 / FR-025a in src/upload/pipeline.ts
-- [ ] T039 [US1] Create src/commands/upload.ts as oclif Command orchestrator: resolve endpoint → load auth → discover sessions → classify (ledger) → sort mtime-desc + --limit truncation → anonymize batch → display summary → @inquirer/prompts confirm (skip with --confirm/--yes) → run pipeline → call completion endpoint → print manifestId and dashboardUrl → exit 0; define all flags (--dry-run, --inspect [dir], --confirm, --yes, --endpoint, --json, --concurrency N, --limit N) per FR-006a / FR-020 / FR-021 / FR-024 / FR-025 in src/commands/upload.ts
+- [ ] T039 [US1] Create src/commands/upload.ts as oclif Command orchestrator: resolve endpoint → load auth → discover sessions → classify (ledger) → sort mtime-desc + --limit truncation → anonymize batch → display summary → @inquirer/prompts confirm (skip with --confirm/--yes) → run pipeline → call completion endpoint → print manifestId and dashboardUrl → exit 0; define all flags (--dry-run, --inspect [dir], --confirm, --yes, --endpoint, --json, --concurrency N, --limit N); pass Source.kind as `source_kind` in manifest-create payload (FR-008); manifest-create call MUST NOT be retried on timeout or response-loss — surface a clear error and exit on any manifest-create failure so a re-run can resume cleanly (a retry could create a second orphaned manifest per FR-029d) per FR-006a / FR-008 / FR-020 / FR-021 / FR-024 / FR-025 / FR-029d in src/commands/upload.ts
 
 **Checkpoint**: All four commands work against the local stack. `pnpm dev login && pnpm dev upload --confirm` exits 0 and the dashboard reflects the upload.
 
@@ -115,7 +116,7 @@
 **Independent Test**: Begin an upload of M sessions; forcibly kill the CLI after N sessions are acknowledged. Re-run `poppi upload`. CLI detects in-flight state, reuses existing manifestId, transmits only M−N remaining sessions. Completion call reports M total. Zero duplicate PUTs. Single manifestId across both runs (SC-005).
 
 - [ ] T044 [P] [US4] Create src/upload/resume.ts: ResumeState conf namespace poppi-resume-state; persist/load/clear ResumeState (manifest + beganAt); zod schema with schemaVersion=1; schema-version mismatch → start fresh (no failure); detect stale uploadId when cloud returns 404 on resumption attempt per FR-026 / FR-027a / data-model.md §10 in src/upload/resume.ts
-- [ ] T045 [US4] Integrate resume into src/upload/pipeline.ts: on pipeline startup, check for persisted ResumeState; if found, skip already-acked entries (FR-027c); for each pending entry verify source file still present and raw hash matches (FR-027b); skip missing/modified with stderr warning; continue remaining unacknowledged sessions; clear ResumeState on successful completion endpoint call (FR-028) in src/upload/pipeline.ts
+- [ ] T045 [US4] Integrate resume into src/upload/pipeline.ts: on pipeline startup, check for persisted ResumeState; if found, skip already-acked entries (FR-027c); for each pending entry verify source file still present and raw hash matches (FR-027b); skip missing/modified with stderr warning; continue remaining unacknowledged sessions; clear ResumeState on successful completion endpoint call (FR-028); add vitest test simulating N-of-M ack then re-run and asserting each sessionId's presigned PUT is issued exactly once across both runs (SC-005 zero-duplicate-PUTs invariant) in src/upload/pipeline.ts
 - [ ] T046 [US4] Update src/commands/upload.ts: on FR-027a (cloud returns stale uploadId), discard ResumeState, print notice naming lost manifestId, start fresh manifest; on FR-029c (retry exhausted), exit NETWORK_FAILURE, preserve ResumeState, print "re-run poppi upload to resume" message per FR-027a / FR-028 / FR-029c in src/commands/upload.ts
 
 **Checkpoint**: Resumable upload works. Interrupted upload completes cleanly on re-run with no duplicate PUTs.
@@ -126,11 +127,11 @@
 
 **Purpose**: Edge cases, --dry-run --inspect path, targeted unit tests for retry/version-gate, and end-to-end SC-004 validation.
 
-- [ ] T047 [P] Implement --dry-run --inspect dir handling in src/commands/upload.ts: write per-session redacted payload + redaction-summary JSON to inspection dir (default ./poppi-inspect/); refuse to overwrite existing dir without --force (exit INSPECT_DIR_EXISTS=60); transmit zero bytes when --dry-run is set per FR-018 / FR-019 in src/commands/upload.ts
+- [ ] T047 [P] Implement --dry-run --inspect dir handling in src/commands/upload.ts: write per-session redacted payload + redaction-summary JSON to inspection dir (default ./poppi-inspect/); serialize redaction summary from AnonymizationResult.redactionsByCategory validated against contracts/redaction-summary.schema.json (same zod approach as cloud responses in T013) so the on-disk summary is a stable public contract per FR-036; refuse to overwrite existing dir without --force (exit INSPECT_DIR_EXISTS=60); transmit zero bytes when --dry-run is set per FR-018 / FR-019 / FR-036 in src/commands/upload.ts
 - [ ] T048 [P] Add edge case error handling in src/commands/upload.ts: no sessions discovered → print search dir + source kind → exit NO_SESSIONS_FOUND(20); keychain unavailable → exit KEYCHAIN_UNAVAILABLE(11); explicit --endpoint unreachable → exit ENDPOINT_UNREACHABLE(41) with no fallback; expired/revoked token → exit AUTH_FAILURE(10) with re-login instructions per spec Edge Cases in src/commands/upload.ts
 - [ ] T049 [P] Write src/lib/retry.test.ts: assert transient errors (network reset, HTTP 500, HTTP 429, timeout) ARE retried up to 3 attempts; assert HTTP 401/403/426 and other 4xx are NOT retried and fail immediately per FR-029a/b in src/lib/retry.test.ts
 - [ ] T050 [P] Write src/cloud/version-gate.test.ts: assert semver.lt comparison correctly identifies below-minimum CLI; assert upgrade message includes current version, required version, and npm install command per FR-033 in src/cloud/version-gate.test.ts
-- [ ] T051 Run and verify the SC-004 end-to-end validation loop against local stack (login → whoami → dry-run inspect → upload --confirm → incremental re-run → limit 1 → logout → whoami = not-logged-in) matching quickstart.md section 8; confirm all exit codes per contracts/exit-codes.md
+- [ ] T051 Run and verify the SC-004 end-to-end validation loop against local stack (login → whoami → dry-run inspect → upload --confirm → incremental re-run → limit 1 → logout → whoami = not-logged-in) matching quickstart.md section 8; confirm all exit codes per contracts/exit-codes.md; assert zero outbound network calls during a --dry-run invocation (FR-034/035 no-telemetry invariant, verifiable by capturing fetch calls in the test environment); time the classification step against M=1000 session fixtures and assert ≤ 5 s (SC-003a); time the full upload --confirm loop against ≤ 200 sessions on the local stack and assert ≤ 60 s (SC-003)
 - [ ] T052 [P] Update README.md with install instructions (npm i -g poppi / npx poppi), link to quickstart.md, and remove any references to the deleted delete command in README.md
 
 ---
@@ -159,13 +160,15 @@
 - Tasks marked [P] can be worked on simultaneously (different files, no intra-task dependency)
 - Non-[P] tasks within a phase run sequentially (T038 pipeline before T039 upload command, etc.)
 - Complete each phase's checkpoint before advancing to the next phase
+- T018b (classify.ts `unchanged`/`updated` logic) lives in Phase 3 because it depends on T025 (anonymize/index.ts); T018 (skeleton) is in Phase 2
 
 ### Parallel Opportunities
 
 ```bash
 # Phase 2: all [P] tasks run simultaneously
 # T007 exit-codes.ts | T008 errors.ts | T009 output-mode.ts | T010 paths.ts | T011 retry.ts
-# T012 endpoints.ts  | T017 ledger.ts | T018 classify.ts   (after T013-T016 unlock schemas/client/keychain)
+# T012 endpoints.ts  | T017 ledger.ts | T018 classify.ts skeleton  (after T013-T016 unlock schemas/client/keychain)
+# T018b (classify unchanged/updated) runs in Phase 3 after T025 (anonymizer)
 
 # Phase 3: anonymizer rules run simultaneously after T019+T020
 # T021 secrets.ts | T022 claude-paths.ts | T023 emails.ts | T024 entropy.ts
