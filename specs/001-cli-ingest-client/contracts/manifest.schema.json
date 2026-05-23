@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poppi.app/schemas/v1/manifest.json",
+  "title": "Poppi Upload Manifest (v1)",
+  "description": "Per-batch upload manifest. CLI sends this on POST /uploads; cloud returns it (with manifestId) and the same shape appears in the CLI's final-summary JSON on stdout. FR-036 contract surface.",
+  "type": "object",
+  "required": [
+    "manifestId",
+    "cliVersion",
+    "redactionPolicyVersion",
+    "sourceKind",
+    "expectedSessionCount",
+    "sessions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifestId": {
+      "type": "string",
+      "description": "Cloud-assigned identifier; absent on the create request, present on the response and every subsequent reference."
+    },
+    "cliVersion": {
+      "type": "string",
+      "description": "semver of the CLI release that produced this manifest. Cloud uses this to enforce minimum-supported-version policies (FR-032/033).",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?(\\+[A-Za-z0-9.-]+)?$"
+    },
+    "redactionPolicyVersion": {
+      "type": "string",
+      "description": "v<MAJOR>.<MINOR> string identifying the anonymizer ruleset under which the payload was redacted. FR-017.",
+      "pattern": "^v[0-9]+\\.[0-9]+$"
+    },
+    "sourceKind": {
+      "type": "string",
+      "description": "Identifier of the source-adapter that produced these sessions. v1 emits only 'claude-code'. FR-008.",
+      "examples": ["claude-code"]
+    },
+    "expectedSessionCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of session entries the CLI intends to upload under this manifest. Set at manifest-create time; immutable thereafter. May exceed the count reported at complete-time if FR-027b skips fire."
+    },
+    "sessions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/ManifestEntry" }
+    }
+  },
+  "$defs": {
+    "ManifestEntry": {
+      "type": "object",
+      "required": ["sessionId", "identityDerivation", "contentHash", "byteSize"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "description": "Stable per-session identifier. For Claude Code sources this is the JSONL-native sessionId (FR-006b); otherwise derived per identityDerivation."
+        },
+        "identityDerivation": {
+          "enum": ["native", "path-hash"],
+          "description": "How sessionId was obtained. 'native' = read from the source file's own content; 'path-hash' = sha256 of canonicalized absolute path (fallback per research.md R-10)."
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Lowercase hex sha256 of the redacted payload bytes that will be PUT to the presigned URL."
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Post-gzip size in bytes of the payload that will be PUT."
+        }
+      }
+    }
+  }
+}
