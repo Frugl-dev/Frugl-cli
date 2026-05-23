@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poppi.app/schemas/v1/progress-event.json",
+  "title": "Poppi NDJSON Progress Event (v1)",
+  "description": "One JSON object per line on stdout when 'poppi upload --json' is in effect. FR-039, FR-036 contract surface. Consumers MUST tolerate unknown event types and unknown fields within a known type (forward-compatibility).",
+  "type": "object",
+  "required": ["event", "seq", "ts"],
+  "properties": {
+    "event": {
+      "enum": [
+        "upload-start",
+        "session-start",
+        "session-acked",
+        "session-failed",
+        "session-skipped",
+        "upload-complete"
+      ]
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing within one poppi upload invocation. Recipients may use gaps to detect dropped lines."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 client clock."
+    },
+    "manifestId": {
+      "type": "string",
+      "description": "Present on every event after 'upload-start' (which itself carries it)."
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "event": { "const": "upload-start" },
+        "manifestId": { "type": "string" },
+        "expectedSessionCount": { "type": "integer", "minimum": 1 },
+        "redactionPolicyVersion": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+$" },
+        "endpoint": { "type": "string", "format": "uri" }
+      },
+      "required": ["manifestId", "expectedSessionCount", "redactionPolicyVersion", "endpoint"]
+    },
+    {
+      "properties": {
+        "event": { "const": "session-start" },
+        "manifestId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "byteSize": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["manifestId", "sessionId", "byteSize"]
+    },
+    {
+      "properties": {
+        "event": { "const": "session-acked" },
+        "manifestId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["manifestId", "sessionId"]
+    },
+    {
+      "properties": {
+        "event": { "const": "session-failed" },
+        "manifestId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "reason": { "type": "string", "description": "Short machine-readable category, e.g. 'network', 'anonymization', 'presign-expired'." },
+        "message": { "type": "string", "description": "Human-readable detail. Not parsed by consumers." }
+      },
+      "required": ["manifestId", "sessionId", "reason"]
+    },
+    {
+      "properties": {
+        "event": { "const": "session-skipped" },
+        "manifestId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "reason": { "enum": ["missing", "modified"] }
+      },
+      "required": ["manifestId", "sessionId", "reason"]
+    },
+    {
+      "properties": {
+        "event": { "const": "upload-complete" },
+        "manifestId": { "type": "string" },
+        "actualSessionCount": { "type": "integer", "minimum": 0 },
+        "dashboardUrl": { "type": "string", "format": "uri" }
+      },
+      "required": ["manifestId", "actualSessionCount", "dashboardUrl"]
+    }
+  ]
+}
