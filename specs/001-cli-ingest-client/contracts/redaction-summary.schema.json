@@ -39,17 +39,17 @@
       "description": "One key per redaction category. Categories with zero hits MAY be omitted. Unknown categories MUST be ignored by consumers (forward-compatibility).",
       "additionalProperties": { "type": "integer", "minimum": 0 },
       "properties": {
-        "anthropic-key":      { "type": "integer", "minimum": 0 },
-        "openai-key":         { "type": "integer", "minimum": 0 },
-        "aws-key":            { "type": "integer", "minimum": 0 },
-        "gcp-key":            { "type": "integer", "minimum": 0 },
-        "github-token":       { "type": "integer", "minimum": 0 },
-        "slack-webhook":      { "type": "integer", "minimum": 0 },
-        "env-line":           { "type": "integer", "minimum": 0 },
-        "home-path":          { "type": "integer", "minimum": 0 },
-        "project-name":       { "type": "integer", "minimum": 0 },
-        "third-party-email":  { "type": "integer", "minimum": 0 },
-        "entropy-fallback":   { "type": "integer", "minimum": 0 }
+        "anthropic-key": { "type": "integer", "minimum": 0 },
+        "openai-key": { "type": "integer", "minimum": 0 },
+        "aws-key": { "type": "integer", "minimum": 0 },
+        "gcp-key": { "type": "integer", "minimum": 0 },
+        "github-token": { "type": "integer", "minimum": 0 },
+        "slack-webhook": { "type": "integer", "minimum": 0 },
+        "env-line": { "type": "integer", "minimum": 0 },
+        "home-path": { "type": "integer", "minimum": 0 },
+        "project-name": { "type": "integer", "minimum": 0 },
+        "third-party-email": { "type": "integer", "minimum": 0 },
+        "entropy-fallback": { "type": "integer", "minimum": 0 }
       }
     }
   }

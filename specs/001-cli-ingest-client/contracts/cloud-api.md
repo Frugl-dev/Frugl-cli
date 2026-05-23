@@ -10,23 +10,23 @@ For each endpoint: method + path, expected status codes, request shape, response
 
 ## Common request headers (every authenticated call)
 
-| Header | Value | FR |
-|---|---|---|
-| `Authorization` | `Bearer <token>` from keychain | FR-001/004 |
-| `X-Poppi-Client` | `poppi-cli/<semver>` (from `package.json`) | FR-032 |
-| `Content-Type` | `application/json` for JSON bodies | — |
+| Header           | Value                                      | FR         |
+| ---------------- | ------------------------------------------ | ---------- |
+| `Authorization`  | `Bearer <token>` from keychain             | FR-001/004 |
+| `X-Poppi-Client` | `poppi-cli/<semver>` (from `package.json`) | FR-032     |
+| `Content-Type`   | `application/json` for JSON bodies         | —          |
 
 ## Common response status semantics (every endpoint)
 
-| Status | CLI behavior | Exit code |
-|---|---|---|
-| `2xx` | Honor per-endpoint | OK or continue |
-| `401` / `403` | NEVER retried (FR-029b); surface "re-run `poppi login`" | `AUTH_FAILURE` (10) |
-| `426 Upgrade Required` | NEVER retried (FR-029b); parse body for `minSupportedCliVersion`, surface upgrade message | `VERSION_GATE_FAILURE` (50) |
-| `429` | Retried per FR-029a (bounded exponential backoff, 3 attempts total) | `NETWORK_FAILURE` (40) if exhausted |
-| `5xx` | Retried per FR-029a | `NETWORK_FAILURE` (40) if exhausted |
-| Other `4xx` | NEVER retried (FR-029b); surface response body | `NETWORK_FAILURE` (40) |
-| Network error (DNS, RST, timeout) | Retried per FR-029a | `NETWORK_FAILURE` (40) or `ENDPOINT_UNREACHABLE` (41) if explicit `--endpoint` was unreachable from the first attempt |
+| Status                            | CLI behavior                                                                              | Exit code                                                                                                             |
+| --------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `2xx`                             | Honor per-endpoint                                                                        | OK or continue                                                                                                        |
+| `401` / `403`                     | NEVER retried (FR-029b); surface "re-run `poppi login`"                                   | `AUTH_FAILURE` (10)                                                                                                   |
+| `426 Upgrade Required`            | NEVER retried (FR-029b); parse body for `minSupportedCliVersion`, surface upgrade message | `VERSION_GATE_FAILURE` (50)                                                                                           |
+| `429`                             | Retried per FR-029a (bounded exponential backoff, 3 attempts total)                       | `NETWORK_FAILURE` (40) if exhausted                                                                                   |
+| `5xx`                             | Retried per FR-029a                                                                       | `NETWORK_FAILURE` (40) if exhausted                                                                                   |
+| Other `4xx`                       | NEVER retried (FR-029b); surface response body                                            | `NETWORK_FAILURE` (40)                                                                                                |
+| Network error (DNS, RST, timeout) | Retried per FR-029a                                                                       | `NETWORK_FAILURE` (40) or `ENDPOINT_UNREACHABLE` (41) if explicit `--endpoint` was unreachable from the first attempt |
 
 ---
 
@@ -52,10 +52,10 @@ Request a one-time code be emailed to the user.
 
 **Documented failures**:
 
-| Status | Meaning | CLI exit code |
-|---|---|---|
-| `400` | Malformed email | `USAGE` (2) |
-| `429` | Too many OTP requests | `NETWORK_FAILURE` (40) after retry exhaustion |
+| Status | Meaning               | CLI exit code                                 |
+| ------ | --------------------- | --------------------------------------------- |
+| `400`  | Malformed email       | `USAGE` (2)                                   |
+| `429`  | Too many OTP requests | `NETWORK_FAILURE` (40) after retry exhaustion |
 
 ---
 
@@ -85,10 +85,10 @@ CLI behavior: persist `{userId, email, token}` to OS keychain under service `pop
 
 **Documented failures**:
 
-| Status | Meaning | CLI exit code |
-|---|---|---|
-| `400` | Code expired or malformed | `AUTH_FAILURE` (10) |
-| `401` | Code wrong | `AUTH_FAILURE` (10) |
+| Status | Meaning                   | CLI exit code       |
+| ------ | ------------------------- | ------------------- |
+| `400`  | Code expired or malformed | `AUTH_FAILURE` (10) |
+| `401`  | Code wrong                | `AUTH_FAILURE` (10) |
 
 ---
 
@@ -124,9 +124,9 @@ Report the currently authenticated identity (FR-003).
 
 **Documented failures**:
 
-| Status | Meaning | CLI exit code |
-|---|---|---|
-| `401` | No session or token invalid | `AUTH_FAILURE` (10), with the `whoami`-specific "not logged in" message |
+| Status | Meaning                     | CLI exit code                                                           |
+| ------ | --------------------------- | ----------------------------------------------------------------------- |
+| `401`  | No session or token invalid | `AUTH_FAILURE` (10), with the `whoami`-specific "not logged in" message |
 
 ---
 
@@ -163,11 +163,11 @@ Create a manifest. The CLI sends the per-session entries it intends to upload (`
 
 **Documented failures**:
 
-| Status | Meaning | CLI exit code |
-|---|---|---|
-| `400` | Schema mismatch (e.g. unknown `sourceKind`, malformed `sessionId`) | `GENERIC_FAILURE` (1), surface zod error message |
-| `409` | Conflict on manifest creation after a retried response was lost (FR-029d) | `GENERIC_FAILURE` (1) — never silently create a duplicate manifest |
-| `426` | CLI below minimum supported version | `VERSION_GATE_FAILURE` (50) |
+| Status | Meaning                                                                   | CLI exit code                                                      |
+| ------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `400`  | Schema mismatch (e.g. unknown `sourceKind`, malformed `sessionId`)        | `GENERIC_FAILURE` (1), surface zod error message                   |
+| `409`  | Conflict on manifest creation after a retried response was lost (FR-029d) | `GENERIC_FAILURE` (1) — never silently create a duplicate manifest |
+| `426`  | CLI below minimum supported version                                       | `VERSION_GATE_FAILURE` (50)                                        |
 
 ---
 
@@ -199,11 +199,11 @@ CLI behavior: PUT the gzipped, anonymized payload to `url` with `method` and `he
 
 **Documented failures**:
 
-| Status | Meaning | CLI exit code |
-|---|---|---|
-| `404` | Manifest unknown (stale resume state) | Trigger FR-027a recovery: clear resume, start fresh manifest |
-| `410` | Manifest already completed | Trigger FR-027a recovery (manifest is closed) |
-| `426` | Version gate | `VERSION_GATE_FAILURE` (50) |
+| Status | Meaning                               | CLI exit code                                                |
+| ------ | ------------------------------------- | ------------------------------------------------------------ |
+| `404`  | Manifest unknown (stale resume state) | Trigger FR-027a recovery: clear resume, start fresh manifest |
+| `410`  | Manifest already completed            | Trigger FR-027a recovery (manifest is closed)                |
+| `426`  | Version gate                          | `VERSION_GATE_FAILURE` (50)                                  |
 
 ---
 
@@ -217,10 +217,10 @@ Direct upload to the cloud-managed object store (FR-023). No `Authorization` hea
 
 **Documented failures**:
 
-| Status | Meaning | CLI behavior |
-|---|---|---|
-| `403` | URL expired or signature invalid | Re-presign once (FR-029d allows it; presign is idempotent), then retry. If still failing → `NETWORK_FAILURE` (40) |
-| `5xx` | Object store transient | Bounded retry per FR-029a |
+| Status | Meaning                          | CLI behavior                                                                                                      |
+| ------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `403`  | URL expired or signature invalid | Re-presign once (FR-029d allows it; presign is idempotent), then retry. If still failing → `NETWORK_FAILURE` (40) |
+| `5xx`  | Object store transient           | Bounded retry per FR-029a                                                                                         |
 
 ---
 
@@ -249,12 +249,12 @@ CLI behavior on success: clear local resume state (FR-028), update ledger entrie
 
 **Documented failures**:
 
-| Status | Meaning | CLI exit code |
-|---|---|---|
-| `400` | Acknowledged session set doesn't match expected | `GENERIC_FAILURE` (1) |
-| `404` | Manifest unknown | Trigger FR-027a recovery |
-| `409` | Manifest already completed with different counts | `GENERIC_FAILURE` (1); surface for manual reconciliation |
-| `426` | Version gate | `VERSION_GATE_FAILURE` (50) |
+| Status | Meaning                                          | CLI exit code                                            |
+| ------ | ------------------------------------------------ | -------------------------------------------------------- |
+| `400`  | Acknowledged session set doesn't match expected  | `GENERIC_FAILURE` (1)                                    |
+| `404`  | Manifest unknown                                 | Trigger FR-027a recovery                                 |
+| `409`  | Manifest already completed with different counts | `GENERIC_FAILURE` (1); surface for manual reconciliation |
+| `426`  | Version gate                                     | `VERSION_GATE_FAILURE` (50)                              |
 
 ---
 

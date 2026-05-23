@@ -64,8 +64,14 @@
         "event": { "const": "session-failed" },
         "manifestId": { "type": "string" },
         "sessionId": { "type": "string" },
-        "reason": { "type": "string", "description": "Short machine-readable category, e.g. 'network', 'anonymization', 'presign-expired'." },
-        "message": { "type": "string", "description": "Human-readable detail. Not parsed by consumers." }
+        "reason": {
+          "type": "string",
+          "description": "Short machine-readable category, e.g. 'network', 'anonymization', 'presign-expired'."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable detail. Not parsed by consumers."
+        }
       },
       "required": ["manifestId", "sessionId", "reason"]
     },

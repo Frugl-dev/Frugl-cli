@@ -144,31 +144,31 @@ All exit codes are documented in `contracts/exit-codes.md` and pinned in `src/li
 
 ## 9. Useful flag combinations
 
-| Goal | Command |
-|---|---|
-| See what would upload, write nothing to disk | `poppi upload --dry-run` |
-| See what would upload, write inspection dir | `poppi upload --dry-run --inspect ./out` |
-| Force overwrite an existing inspection dir | `poppi upload --dry-run --inspect ./out --force` |
-| Non-interactive upload (CI / scripts) | `poppi upload --confirm` (or `--yes`) |
-| Cap the batch at 1 session for testing | `poppi upload --limit 1 --confirm` |
-| Tune concurrency | `poppi upload --concurrency 2 --confirm` (default 4) |
-| Machine-readable progress for piping | `poppi upload --json --confirm | jq -c` |
-| Point at a non-default endpoint | `poppi upload --endpoint http://localhost:54321 --confirm` |
+| Goal                                         | Command                                                    |
+| -------------------------------------------- | ---------------------------------------------------------- | ------ |
+| See what would upload, write nothing to disk | `poppi upload --dry-run`                                   |
+| See what would upload, write inspection dir  | `poppi upload --dry-run --inspect ./out`                   |
+| Force overwrite an existing inspection dir   | `poppi upload --dry-run --inspect ./out --force`           |
+| Non-interactive upload (CI / scripts)        | `poppi upload --confirm` (or `--yes`)                      |
+| Cap the batch at 1 session for testing       | `poppi upload --limit 1 --confirm`                         |
+| Tune concurrency                             | `poppi upload --concurrency 2 --confirm` (default 4)       |
+| Machine-readable progress for piping         | `poppi upload --json --confirm                             | jq -c` |
+| Point at a non-default endpoint              | `poppi upload --endpoint http://localhost:54321 --confirm` |
 
 ---
 
 ## 10. Where things live
 
-| Concern | Path |
-|---|---|
-| Anonymizer (the trust gate) | `src/anonymize/` |
-| Source adapters (FR-007 extension point) | `src/sources/` |
-| Local upload ledger (FR-006c) | `src/ledger/` |
-| Upload pipeline + resume | `src/upload/` |
-| Cloud HTTP boundary + zod schemas | `src/cloud/` |
-| Exit-code table | `src/lib/exit-codes.ts` |
-| Keychain wrapper | `src/auth/keychain.ts` |
-| Persisted state (resume + ledger) | `conf`-managed under env-paths state dir (see `src/lib/paths.ts`) |
-| Public contracts (manifest, NDJSON, exit codes) | `specs/001-cli-ingest-client/contracts/` |
+| Concern                                         | Path                                                              |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| Anonymizer (the trust gate)                     | `src/anonymize/`                                                  |
+| Source adapters (FR-007 extension point)        | `src/sources/`                                                    |
+| Local upload ledger (FR-006c)                   | `src/ledger/`                                                     |
+| Upload pipeline + resume                        | `src/upload/`                                                     |
+| Cloud HTTP boundary + zod schemas               | `src/cloud/`                                                      |
+| Exit-code table                                 | `src/lib/exit-codes.ts`                                           |
+| Keychain wrapper                                | `src/auth/keychain.ts`                                            |
+| Persisted state (resume + ledger)               | `conf`-managed under env-paths state dir (see `src/lib/paths.ts`) |
+| Public contracts (manifest, NDJSON, exit codes) | `specs/001-cli-ingest-client/contracts/`                          |
 
 For more on any of these, the spec is `specs/001-cli-ingest-client/spec.md` and the plan is `specs/001-cli-ingest-client/plan.md`.
