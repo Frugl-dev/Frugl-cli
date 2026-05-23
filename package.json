@@ -1,0 +1,54 @@
+{
+  "name": "poppi",
+  "version": "0.0.0",
+  "description": "Upload anonymized AI-coding session logs to hosted Poppi.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "poppi": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsup src/cli.ts --format esm --target node20 --clean --dts",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "commander": "^12.1.0",
+    "keytar": "^7.9.0",
+    "prompts": "^2.4.2",
+    "undici": "^6.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/prompts": "^2.4.9",
+    "oxfmt": "^0.51.0",
+    "oxlint": "^1.66.0",
+    "pre-commit": "^2.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  },
+  "pre-commit": [
+    "format",
+    "lint",
+    "typecheck",
+    "test"
+  ],
+  "packageManager": "pnpm@11.1.2+sha512.415a1cc25974731e75455c1468371be74c5aa5fb7621b50d4056d222451609f11412f23fd602e6169f1e060466641f798597e1be961a10688836a67b16569499"
+}
