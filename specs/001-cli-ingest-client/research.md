@@ -23,9 +23,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *Pure lexicographic path ordering* — rejected: surfaces the alphabetically-first project on disk every time, which is almost never the session a tester actually wants to verify against.
-- *Reverse-discovery-order* — rejected: discovery order under tinyglobby is not contractually stable across versions; depending on it would couple the spec to a transitive implementation.
-- *Last-modified line within JSONL* — rejected: requires parsing every file just to order them, which violates the SC-003a "classification of 1000 files in ≤ 5 s" budget for the limited case.
+- _Pure lexicographic path ordering_ — rejected: surfaces the alphabetically-first project on disk every time, which is almost never the session a tester actually wants to verify against.
+- _Reverse-discovery-order_ — rejected: discovery order under tinyglobby is not contractually stable across versions; depending on it would couple the spec to a transitive implementation.
+- _Last-modified line within JSONL_ — rejected: requires parsing every file just to order them, which violates the SC-003a "classification of 1000 files in ≤ 5 s" budget for the limited case.
 
 ---
 
@@ -42,9 +42,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *No jitter* — rejected: spec already calls for jittered backoff and the AWS canonical write-up (and every library that has reckoned with thundering retries) confirms it matters at concurrency > 1.
-- *Higher cap (15–30 s)* — rejected: blows SC-003. The presign URLs are short-lived; retrying for half a minute against an expired URL is just slow failure.
-- *More attempts (5+)* — rejected: spec explicitly caps at "target: 3 attempts total." More attempts is silent over-retry, which Principle VI's Honest Failures discipline forbids.
+- _No jitter_ — rejected: spec already calls for jittered backoff and the AWS canonical write-up (and every library that has reckoned with thundering retries) confirms it matters at concurrency > 1.
+- _Higher cap (15–30 s)_ — rejected: blows SC-003. The presign URLs are short-lived; retrying for half a minute against an expired URL is just slow failure.
+- _More attempts (5+)_ — rejected: spec explicitly caps at "target: 3 attempts total." More attempts is silent over-retry, which Principle VI's Honest Failures discipline forbids.
 
 ---
 
@@ -61,9 +61,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *Keep explicit `undici` dep* — rejected: redundant with built-in `fetch`. Reasonable if we needed `Agent`-level pool tuning, but for ~4 concurrent PUTs the defaults are fine.
-- *`got` / `axios`* — rejected: heavyweight; brings an unnecessary surface to the audited binary.
-- *Node's `http`/`https` directly* — rejected: re-derives a well-trodden surface (multipart, response decompression, redirect handling).
+- _Keep explicit `undici` dep_ — rejected: redundant with built-in `fetch`. Reasonable if we needed `Agent`-level pool tuning, but for ~4 concurrent PUTs the defaults are fine.
+- _`got` / `axios`_ — rejected: heavyweight; brings an unnecessary surface to the audited binary.
+- _Node's `http`/`https` directly_ — rejected: re-derives a well-trodden surface (multipart, response decompression, redirect handling).
 
 ---
 
@@ -79,9 +79,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *Node 22+ `fs.glob` / `fs.globSync`* — rejected: requires Node ≥ 22; spec floor is Node 20.
-- *`fast-glob`* — rejected: heavier transitive tree, no perf win at the scale we care about (≤ 10⁴ files).
-- *Hand-rolled `readdir` walk* — rejected: re-derives a library without its tests.
+- _Node 22+ `fs.glob` / `fs.globSync`_ — rejected: requires Node ≥ 22; spec floor is Node 20.
+- _`fast-glob`_ — rejected: heavier transitive tree, no perf win at the scale we care about (≤ 10⁴ files).
+- _Hand-rolled `readdir` walk_ — rejected: re-derives a library without its tests.
 
 ---
 
@@ -111,9 +111,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *`chalk`* — rejected: 10× the install size for a feature we use ~5 places.
-- *`ora` spinner* — rejected: see above; bad fit for the dual stdout/stderr contract.
-- *No color at all* — rejected: SC-006 requires "human-readable error message naming the failure category"; color materially helps the user distinguish error categories at a glance.
+- _`chalk`_ — rejected: 10× the install size for a feature we use ~5 places.
+- _`ora` spinner_ — rejected: see above; bad fit for the dual stdout/stderr contract.
+- _No color at all_ — rejected: SC-006 requires "human-readable error message naming the failure category"; color materially helps the user distinguish error categories at a glance.
 
 ---
 
@@ -130,9 +130,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *Stay on `keytar`* — rejected: maintenance status is a known liability for a security-sensitive trust-gate CLI.
-- *Hand-roll three platform integrations* — rejected: every cross-platform footgun warning the spec attaches to `conf` applies double here.
-- *`keyring` (pure-JS, file-fallback)* — rejected: violates FR-005 (no plaintext fallback) by design.
+- _Stay on `keytar`_ — rejected: maintenance status is a known liability for a security-sensitive trust-gate CLI.
+- _Hand-roll three platform integrations_ — rejected: every cross-platform footgun warning the spec attaches to `conf` applies double here.
+- _`keyring` (pure-JS, file-fallback)_ — rejected: violates FR-005 (no plaintext fallback) by design.
 
 ---
 
@@ -149,8 +149,8 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *Embed `supabase-js`* — rejected: oversized, couples CLI to the SDK's idea of session refresh (which we don't want; we want explicit "re-run `poppi login`" per FR per the spec's expired-token edge case).
-- *Use Supabase's REST-only API directly* — rejected: same as above, slightly thinner; still ties CLI to one vendor surface. Going through the cloud's own Astro endpoints is the published contract per the cloud spec.
+- _Embed `supabase-js`_ — rejected: oversized, couples CLI to the SDK's idea of session refresh (which we don't want; we want explicit "re-run `poppi login`" per FR per the spec's expired-token edge case).
+- _Use Supabase's REST-only API directly_ — rejected: same as above, slightly thinner; still ties CLI to one vendor surface. Going through the cloud's own Astro endpoints is the published contract per the cloud spec.
 
 ---
 
@@ -169,9 +169,9 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- *Single combined `conf` file* — rejected: harder to surgically clear resume state on completion without disturbing the ledger; harder to version-bump schemas independently.
-- *Raw JSON file via `fs.writeFile`* — rejected: re-derives `conf`'s atomic-write and state-dir-per-OS logic, which is exactly the footgun the spec called out.
-- *SQLite (`better-sqlite3` etc.)* — rejected: native dep at install time, overkill for two flat key-value stores.
+- _Single combined `conf` file_ — rejected: harder to surgically clear resume state on completion without disturbing the ledger; harder to version-bump schemas independently.
+- _Raw JSON file via `fs.writeFile`_ — rejected: re-derives `conf`'s atomic-write and state-dir-per-OS logic, which is exactly the footgun the spec called out.
+- _SQLite (`better-sqlite3` etc.)_ — rejected: native dep at install time, overkill for two flat key-value stores.
 
 ---
 
@@ -193,8 +193,8 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 **Alternatives considered**:
 
-- *Full sha256 hex (64 chars)* — rejected: ugly in CLI output for no security gain.
-- *Random UUID, persisted in a sidecar file* — rejected: introduces "where do I store the sidecar" footgun and breaks the "same file on same machine yields same ID" property if the sidecar is lost.
+- _Full sha256 hex (64 chars)_ — rejected: ugly in CLI output for no security gain.
+- _Random UUID, persisted in a sidecar file_ — rejected: introduces "where do I store the sidecar" footgun and breaks the "same file on same machine yields same ID" property if the sidecar is lost.
 
 ---
 
@@ -213,8 +213,8 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 **Alternatives considered**:
 
-- *Global singleton* — rejected: hostile to vitest, and conceals the contract surface.
-- *Distinct command flags per output kind* — rejected: violates the spec's single `--json` flag convention (FR-039/040).
+- _Global singleton_ — rejected: hostile to vitest, and conceals the contract surface.
+- _Distinct command flags per output kind_ — rejected: violates the spec's single `--json` flag convention (FR-039/040).
 
 ---
 
@@ -230,8 +230,8 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 **Alternatives considered**:
 
-- *Hash of the ruleset module* — rejected: opaque, doesn't tell an auditor what changed, and changes on cosmetic edits.
-- *Full semver (with patch)* — rejected: invites patch-vs-minor debates with no operational difference.
+- _Hash of the ruleset module_ — rejected: opaque, doesn't tell an auditor what changed, and changes on cosmetic edits.
+- _Full semver (with patch)_ — rejected: invites patch-vs-minor debates with no operational difference.
 
 ---
 
@@ -247,8 +247,8 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 **Alternatives considered**:
 
-- *Env > flag (reversed)* — rejected: violates principle of least surprise.
-- *Auto-fallback to default on connection error* — rejected: see above; explicit failure is the only honest behavior.
+- _Env > flag (reversed)_ — rejected: violates principle of least surprise.
+- _Auto-fallback to default on connection error_ — rejected: see above; explicit failure is the only honest behavior.
 
 ---
 
@@ -269,13 +269,13 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 **Rationale**:
 
 - Resume cares about "did the source change since I anonymized it once?" → raw source bytes.
-- Ledger cares about "does the cloud already have *this* redacted payload?" → redacted bytes (a source change that the redactor entirely scrubs is, correctly, a no-op for the ledger).
+- Ledger cares about "does the cloud already have _this_ redacted payload?" → redacted bytes (a source change that the redactor entirely scrubs is, correctly, a no-op for the ledger).
 - Hashing the redacted form in the ledger means an appended-but-fully-redacted turn (e.g. a turn that's all secrets) is properly skipped on re-upload rather than re-sent as "updated."
 
 **Alternatives considered**:
 
-- *Hash raw source in both* — rejected: makes the appended-but-redacted edge case re-upload unnecessarily.
-- *Hash redacted in both* — rejected: resume can't compute the redacted hash without re-running anonymization, defeating the resume optimization.
+- _Hash raw source in both_ — rejected: makes the appended-but-redacted edge case re-upload unnecessarily.
+- _Hash redacted in both_ — rejected: resume can't compute the redacted hash without re-running anonymization, defeating the resume optimization.
 
 ---
 
@@ -295,30 +295,30 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 **Rationale**: Shipping the stub command means `poppi --help` advertises a feature that always errors. That's a worse user experience than not advertising it at all, and the constitution's "Honest failures" discipline frowns on it.
 
-**Alternatives considered**: *Keep stub for discoverability* — rejected.
+**Alternatives considered**: _Keep stub for discoverability_ — rejected.
 
 ---
 
 ## Summary of locked decisions
 
-| # | Decision | Drives |
-|---|---|---|
-| R-1 | `--limit N` order: mtime desc, path asc tiebreaker | FR-006a |
-| R-2 | Retry: 3 attempts, factor 2, base 500 ms, full jitter, cap 5 s | FR-029a |
-| R-3 | HTTP: Node built-in `fetch` + AbortController | FR-022/023/032 |
-| R-4 | Glob: `tinyglobby` | FR-006 |
-| R-5 | Hash/UUID/gzip: Node built-ins | FR-006b/c/g |
-| R-6 | Color/progress: `picocolors`, no spinners | FR-038 |
-| R-7 | Keychain: `@napi-rs/keyring` (replaces `keytar`) | FR-004/005 |
-| R-8 | No `supabase-js` in CLI bundle; talk to cloud's Astro endpoints | FR-001..003 |
-| R-9 | Two `conf` namespaces under state dir: resume + ledger | FR-006c, FR-026 |
-| R-10 | Path-hash fallback identifier shape | FR-006b |
-| R-11 | OutputMode threaded as explicit parameter | FR-038/039/040 |
-| R-12 | `POLICY_VERSION` = `v<MAJOR>.<MINOR>` | FR-017 |
-| R-13 | Endpoint precedence: flag > env > default; no auto-fallback | FR-030/031 |
-| R-14 | Local stack default URL: `http://localhost:54321` (docs only) | SC-004 |
-| R-15 | Hash domain: raw bytes for resume, redacted bytes for ledger | FR-006c, FR-027b |
-| R-16 | Per-upload pseudonym table, seeded by uploadId, in-memory | FR-016 |
-| R-17 | Delete the `delete` command stub | spec.md Assumptions |
+| #    | Decision                                                        | Drives              |
+| ---- | --------------------------------------------------------------- | ------------------- |
+| R-1  | `--limit N` order: mtime desc, path asc tiebreaker              | FR-006a             |
+| R-2  | Retry: 3 attempts, factor 2, base 500 ms, full jitter, cap 5 s  | FR-029a             |
+| R-3  | HTTP: Node built-in `fetch` + AbortController                   | FR-022/023/032      |
+| R-4  | Glob: `tinyglobby`                                              | FR-006              |
+| R-5  | Hash/UUID/gzip: Node built-ins                                  | FR-006b/c/g         |
+| R-6  | Color/progress: `picocolors`, no spinners                       | FR-038              |
+| R-7  | Keychain: `@napi-rs/keyring` (replaces `keytar`)                | FR-004/005          |
+| R-8  | No `supabase-js` in CLI bundle; talk to cloud's Astro endpoints | FR-001..003         |
+| R-9  | Two `conf` namespaces under state dir: resume + ledger          | FR-006c, FR-026     |
+| R-10 | Path-hash fallback identifier shape                             | FR-006b             |
+| R-11 | OutputMode threaded as explicit parameter                       | FR-038/039/040      |
+| R-12 | `POLICY_VERSION` = `v<MAJOR>.<MINOR>`                           | FR-017              |
+| R-13 | Endpoint precedence: flag > env > default; no auto-fallback     | FR-030/031          |
+| R-14 | Local stack default URL: `http://localhost:54321` (docs only)   | SC-004              |
+| R-15 | Hash domain: raw bytes for resume, redacted bytes for ledger    | FR-006c, FR-027b    |
+| R-16 | Per-upload pseudonym table, seeded by uploadId, in-memory       | FR-016              |
+| R-17 | Delete the `delete` command stub                                | spec.md Assumptions |
 
 No `NEEDS CLARIFICATION` markers remain in Technical Context.

@@ -30,7 +30,7 @@ A secondary downstream audience is a future MCP server (specified in the cloud p
 - User directive (post-scan): Add a `--limit=N` flag to `poppi upload` so testers can upload only the first N discovered sessions without sending the whole batch. → Decision: Add as a user-visible upload-scoping flag (FR-006a, FR-020a). Applies to the pre-upload summary, dry-run inspection, and the actual upload identically — i.e., everything downstream of discovery sees the limited set as the canonical batch.
 - User question (post-scan): When the user has already uploaded once and runs `poppi upload` again a week later, how does the CLI avoid re-uploading sessions that haven't changed, while still picking up new sessions AND in-place updates to existing sessions (Claude Code appends turns to a `.jsonl` over the life of a conversation)? → Decision: **Client-side local upload ledger** (Option A). The CLI persists, per `(endpoint, authenticated user)`, a small ledger of `{sessionId, contentHash, lastUploadedAt, manifestId}` for each session it has successfully uploaded. On each subsequent run, every discovered session is classified as `unchanged` (in ledger, hash matches → skipped), `updated` (in ledger, hash differs → re-uploaded under the same `sessionId`), or `new` (not in ledger → uploaded). `--limit N` applies AFTER classification, to the (new ∪ updated) subset. Session identity is derived from a stable per-source identifier (for Claude Code: the `sessionId` field already present in each JSONL line), not from a fresh random UUID per run — so the cloud sees a stable identity for the same on-disk session across uploads. Ledger loss (reinstall, new machine) is recoverable: the CLI treats all sessions as new and re-uploads; the cloud is expected to dedupe or version by `sessionId` on its side. The CLI does NOT ask the server "which sessions do you already have?" — that would either leak the local session list to the server (privacy regression) or require an extra round-trip. Local ledger is authority for the CLI; server is authority for the cloud.
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 — First successful upload from a fresh install (Priority: P1)
 
@@ -53,14 +53,14 @@ A developer installs the CLI globally (or invokes it via the npm runner), runs `
 
 A security-conscious developer wants to verify what the CLI will send before ever uploading for real. They run `poppi upload --dry-run --inspect`. The CLI processes every selected session through the anonymizer, writes the post-anonymization payload to a local inspection directory (default `./poppi-inspect/`), prints a per-session and per-category redaction summary, and transmits zero bytes to the network. The developer can diff the originals against the redacted output. For a canonical "planted secrets" fixture containing one secret per redaction category, 100% of planted values are absent from the inspection output.
 
-**Why this priority**: This is the trust contract. Open source alone is not enough; users must be able to *run* the verification themselves on their own data, on demand. If this loop is broken or unconvincing, the product loses credibility and the user has no reason to upload.
+**Why this priority**: This is the trust contract. Open source alone is not enough; users must be able to _run_ the verification themselves on their own data, on demand. If this loop is broken or unconvincing, the product loses credibility and the user has no reason to upload.
 
 **Independent Test**: A fixture session containing one secret per category (Anthropic API key, OpenAI API key, AWS access key, GCP service-account key, GitHub token, Slack webhook URL, a `.env`-style assignment line, an absolute home path, a third-party email address that is not the authenticated user's, and a high-entropy unknown string of ≥ 20 characters and ≥ 4.5 bits/char) produces an inspection output in which a textual search for each planted value returns zero hits, and the printed summary records exactly one redaction in each category.
 
 **Acceptance Scenarios**:
 
 1. **Given** a fixture session containing one planted secret per supported redaction category, **When** the user runs `poppi upload --dry-run --inspect`, **Then** the inspection directory contains the redacted payload, the printed summary shows the expected counts per category, and no network request is made to any upload endpoint.
-2. **Given** the authenticated user's own email address appears in a session, **When** anonymization runs, **Then** the user's own email is preserved as-is (so the user can recognize their own sessions) while any *other* email addresses are replaced with stable per-upload pseudonyms.
+2. **Given** the authenticated user's own email address appears in a session, **When** anonymization runs, **Then** the user's own email is preserved as-is (so the user can recognize their own sessions) while any _other_ email addresses are replaced with stable per-upload pseudonyms.
 3. **Given** a session containing repeated occurrences of the same project name or third-party email across multiple sessions in the batch, **When** anonymization runs, **Then** all occurrences within that single upload share one stable pseudonym (per-upload stable, not per-occurrence), so cross-session joins remain analytically useful while the real identifier is absent.
 4. **Given** the anonymizer encounters a string it cannot confidently classify as safe (e.g., a high-entropy unknown value that falls in the configured fallback band), **When** processing that session, **Then** the value is redacted by default (fail-closed) rather than transmitted in the clear.
 5. **Given** any successful upload or dry-run, **When** the manifest is generated, **Then** it includes an explicit `redaction_policy_version` string identifying the exact ruleset under which the redaction was performed.
@@ -71,7 +71,7 @@ A security-conscious developer wants to verify what the CLI will send before eve
 
 A developer uploaded everything once last week. Since then they've completed three new Claude Code sessions on disk and continued (appended turns to) two sessions that existed at the time of the previous upload. They run `poppi upload`. The CLI tells them: "Discovered 52 sessions: 47 unchanged (skipping), 3 new, 2 updated. Will upload 5 sessions." Only those 5 sessions are anonymized and transmitted. Existing-but-unchanged sessions are not re-anonymized, not re-uploaded, and not re-charged against the user's bandwidth.
 
-**Why this priority**: After the very first upload, every subsequent `poppi upload` invocation is an incremental upload. If this case is not handled efficiently, the second use of the CLI re-uploads gigabytes of data the cloud already has, which destroys both the perf story (SC-003) and the user's trust. This is the *common* path; first-upload is the *rare* path.
+**Why this priority**: After the very first upload, every subsequent `poppi upload` invocation is an incremental upload. If this case is not handled efficiently, the second use of the CLI re-uploads gigabytes of data the cloud already has, which destroys both the perf story (SC-003) and the user's trust. This is the _common_ path; first-upload is the _rare_ path.
 
 **Independent Test**: After a successful initial upload of M sessions, add K new session files to disk and append additional turns to L of the original M files. Run `poppi upload` again. The CLI's pre-upload summary reports `M − L` unchanged, `K` new, `L` updated; the actual bytes transmitted equal the redacted payload size of the (K + L) sessions only; the cloud reports a total of `M + K` distinct session identifiers (because the L updated sessions reuse their original `sessionId`).
 
@@ -121,7 +121,7 @@ A developer's upload is interrupted mid-batch (network drop, Ctrl-C, laptop slee
 - **User passes `--endpoint` pointing at an unreachable host**: The CLI surfaces a clear network error naming the endpoint and exits with a documented non-zero exit code; it does not attempt the default production endpoint as a fallback.
 - **User's own email appears alongside third-party emails in the same line of output**: Only the user's own email is preserved; all others are pseudonymized, with no leakage across categories.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -141,12 +141,12 @@ A developer's upload is interrupted mid-batch (network drop, Ctrl-C, laptop slee
 #### Incremental upload (stable identity, ledger, classification)
 
 - **FR-006b (stable session identity)**: For each discovered session, the CLI MUST derive a stable session identifier from the source file's content, NOT from a fresh random UUID per upload. For Claude Code JSONL sessions, the identifier MUST be the `sessionId` value already present in the session's JSONL records (Claude Code assigns this at session start and preserves it across appends). When a session file lacks a native stable identifier (future source types, or a malformed file), the CLI MUST derive one deterministically from stable file attributes (e.g., SHA-256 of the canonicalized absolute source path), recorded in the manifest as derivation-method = `"path-hash"` so the cloud can distinguish native IDs from derived ones. The same session file on the same machine MUST yield the same identifier across all `poppi upload` invocations and all CLI versions, so cross-upload identity is preserved.
-- **FR-006c (local upload ledger)**: The CLI MUST persist a local upload ledger, keyed by `(endpoint URL, authenticated user ID)`, mapping each successfully uploaded `sessionId` to `{contentHash, lastUploadedAt, manifestId}` where `contentHash` is the SHA-256 of the *redacted* payload that was actually uploaded. The ledger MUST live in the same OS-specific state directory as the resume state (per `conf` library conventions: XDG_STATE_HOME on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Ledger writes MUST be atomic so a process kill mid-write cannot corrupt the ledger.
+- **FR-006c (local upload ledger)**: The CLI MUST persist a local upload ledger, keyed by `(endpoint URL, authenticated user ID)`, mapping each successfully uploaded `sessionId` to `{contentHash, lastUploadedAt, manifestId}` where `contentHash` is the SHA-256 of the _redacted_ payload that was actually uploaded. The ledger MUST live in the same OS-specific state directory as the resume state (per `conf` library conventions: XDG_STATE_HOME on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Ledger writes MUST be atomic so a process kill mid-write cannot corrupt the ledger.
 - **FR-006d (classification)**: On each `poppi upload` invocation, after discovery, the CLI MUST classify every discovered session against the ledger as exactly one of:
-  - **`unchanged`** — `sessionId` is in the ledger AND the *current* redacted-content hash matches the ledger's `contentHash` → session MUST be skipped (not anonymized for upload, not transmitted, not included in the manifest).
+  - **`unchanged`** — `sessionId` is in the ledger AND the _current_ redacted-content hash matches the ledger's `contentHash` → session MUST be skipped (not anonymized for upload, not transmitted, not included in the manifest).
   - **`updated`** — `sessionId` is in the ledger AND the current redacted-content hash differs from the ledger's `contentHash` → session MUST be uploaded under the SAME `sessionId` it had previously.
   - **`new`** — `sessionId` is not in the ledger → session MUST be uploaded.
-  Classification ordering: discovery → classification → `--limit` truncation (FR-006a) → anonymization → upload.
+    Classification ordering: discovery → classification → `--limit` truncation (FR-006a) → anonymization → upload.
 - **FR-006e (ledger update on success)**: After the cloud acknowledges each uploaded session, the CLI MUST update the ledger entry for that `sessionId` with the new `contentHash`, `lastUploadedAt`, and `manifestId`. Ledger entries MUST NOT be written before the cloud has acknowledged the session, so a failed upload never leaves a misleading "already uploaded" record.
 - **FR-006f (ledger loss recovery)**: If the local ledger is missing, corrupted, in an unrecognized schema version, or otherwise unreadable, the CLI MUST surface a clear stderr notice ("Upload ledger is being rebuilt"), proceed with all discovered sessions classified as `new`, and rewrite the ledger as uploads succeed. The CLI MUST NOT exit with a failure code on ledger loss; recovery is treated as normal operation. The cloud is responsible for deduplicating or versioning repeated uploads of the same `sessionId` on its side (see Dependencies).
 - **FR-006g (privacy: ledger never leaves the machine)**: The CLI MUST NOT transmit ledger contents to any external party, including the cloud product. The CLI MUST NOT query the cloud for a list of already-uploaded session identifiers as a substitute for the local ledger.
@@ -238,7 +238,7 @@ A developer's upload is interrupted mid-batch (network drop, Ctrl-C, laptop slee
 - **Redaction summary**: A per-session, per-category count of redactions applied during anonymization. Emitted to stdout during `--dry-run --inspect` and (optionally) written alongside the inspection payload for review.
 - **Endpoint**: A target cloud instance, identified by URL. May be the production cloud or any compatible development instance. Selected per-invocation via flag or environment variable.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -253,7 +253,7 @@ A developer's upload is interrupted mid-batch (network drop, Ctrl-C, laptop slee
 
 ## Dependencies
 
-This CLI is one half of a two-repository product. The other half is the hosted Poppi cloud (sibling repo `poppi/`, spec `001-cloud-ingest-platform`). The cloud's HTTP contracts are consumed verbatim by this CLI; schema-incompatible changes on either side require a coordinated release across both repos. The negotiation surface between the two is the CLI's published *minimum supported cloud server version* and the cloud's published *minimum supported CLI version*.
+This CLI is one half of a two-repository product. The other half is the hosted Poppi cloud (sibling repo `poppi/`, spec `001-cloud-ingest-platform`). The cloud's HTTP contracts are consumed verbatim by this CLI; schema-incompatible changes on either side require a coordinated release across both repos. The negotiation surface between the two is the CLI's published _minimum supported cloud server version_ and the cloud's published _minimum supported CLI version_.
 
 Specifically, the CLI consumes the cloud's documented authentication endpoints (OTP request, OTP verify, sign-out, whoami) and upload endpoints (manifest creation, per-session presigning, completion, listing, retrieval).
 

@@ -76,9 +76,17 @@
         "command": { "const": "upload" },
         "ok": { "const": true },
         "manifestId": { "type": "string" },
-        "actualSessionCount": { "type": "integer", "minimum": 0, "description": "Sessions actually acked by the cloud. Equals expectedSessionCount minus FR-027b skips." },
+        "actualSessionCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sessions actually acked by the cloud. Equals expectedSessionCount minus FR-027b skips."
+        },
         "expectedSessionCount": { "type": "integer", "minimum": 1 },
-        "skippedSessionCount": { "type": "integer", "minimum": 0, "description": "Sessions in the manifest that were skipped on resume due to FR-027b (missing or modified source file)." },
+        "skippedSessionCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sessions in the manifest that were skipped on resume due to FR-027b (missing or modified source file)."
+        },
         "redactionPolicyVersion": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+$" },
         "sourceKind": { "type": "string" },
         "endpoint": { "type": "string", "format": "uri" },
@@ -90,8 +98,8 @@
           "properties": {
             "discovered": { "type": "integer", "minimum": 0 },
             "unchanged": { "type": "integer", "minimum": 0 },
-            "new":       { "type": "integer", "minimum": 0 },
-            "updated":   { "type": "integer", "minimum": 0 }
+            "new": { "type": "integer", "minimum": 0 },
+            "updated": { "type": "integer", "minimum": 0 }
           }
         },
         "limited": {
@@ -100,8 +108,16 @@
           "required": ["active"],
           "properties": {
             "active": { "type": "boolean" },
-            "limit": { "type": "integer", "minimum": 1, "description": "Only present when active=true." },
-            "candidateCount": { "type": "integer", "minimum": 0, "description": "Size of (new ∪ updated) before --limit truncation. Only present when active=true." }
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Only present when active=true."
+            },
+            "candidateCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Size of (new ∪ updated) before --limit truncation. Only present when active=true."
+            }
           }
         }
       }

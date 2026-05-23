@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "pnpm-lock.yaml",
+    ".claude/skills/**",
+    ".claude/worktrees/**",
+    ".specify/**"
+  ]
+}
