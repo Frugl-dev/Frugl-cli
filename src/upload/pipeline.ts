@@ -13,6 +13,7 @@ import { EXIT } from "../lib/exit-codes.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { ProgressReporter } from "./progress.js";
+import type { GitContext } from "./git-context.js";
 import {
   ResumeStore,
   type ManifestEntryState,
@@ -27,6 +28,9 @@ export interface SessionUploadJob {
   sourceFilePath: string;
   anonymizationResult: AnonymizationResult;
   rawContentHashAtFirstRun: string;
+  // Opt-in (005) git coordinate, attached as manifest metadata only — never part
+  // of the payload PUT or of redactedHashHex/contentHash (FR-011, SC-007).
+  gitContext?: GitContext;
 }
 
 export interface PipelineOptions {
@@ -41,6 +45,8 @@ export interface PipelineOptions {
   sourceKind: string;
   endpointUrl: string;
   userId: string;
+  // Opt-in (005) batch summary for the upload-start event; omitted when off.
+  gitContext?: { active: boolean; sessionsWithContext: number; repositories: string[] };
 }
 
 export interface PipelineResult {
@@ -77,6 +83,7 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
     expectedSessionCount: manifestState.expectedSessionCount,
     redactionPolicyVersion: opts.policyVersion,
     endpoint: opts.endpointUrl,
+    ...(opts.gitContext ? { gitContext: opts.gitContext } : {}),
   });
 
   const limit = pLimit(Math.max(1, opts.concurrency));
@@ -223,6 +230,18 @@ function aggregateRedactions(jobs: SessionUploadJob[]): Record<string, number> {
   return totals;
 }
 
+function toWireGitContext(ctx: GitContext): {
+  repository: { host: string; owner: string; name: string };
+  branch?: string;
+  commit_sha: string;
+} {
+  return {
+    repository: ctx.repository,
+    ...(ctx.branch !== undefined ? { branch: ctx.branch } : {}),
+    commit_sha: ctx.commitSha,
+  };
+}
+
 async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
   const created = await opts.client.call({
     method: "POST",
@@ -236,6 +255,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
         session_id: job.sessionId,
         format_version: job.formatVersion,
         expected_bytes: job.anonymizationResult.byteSize,
+        ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
       })),
     },
     schema: createManifestResponseSchema,

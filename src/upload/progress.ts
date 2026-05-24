@@ -10,6 +10,7 @@ export type ProgressEvent =
       expectedSessionCount: number;
       redactionPolicyVersion: string;
       endpoint: string;
+      gitContext?: { active: boolean; sessionsWithContext: number; repositories: string[] };
     }
   | {
       event: "session-start";
@@ -58,6 +59,7 @@ export interface ProgressReporter {
     expectedSessionCount: number;
     redactionPolicyVersion: string;
     endpoint: string;
+    gitContext?: { active: boolean; sessionsWithContext: number; repositories: string[] };
   }): void;
   sessionStart(input: {
     manifestId: string;

@@ -27,10 +27,23 @@ export const whoamiResponseSchema = z.object({
 });
 export type WhoamiResponse = z.infer<typeof whoamiResponseSchema>;
 
+// Opt-in (005) git coordinate, snake_case wire shape. Strictly additive.
+export const gitContextRequestSchema = z.object({
+  repository: z.object({
+    host: z.string().min(1),
+    owner: z.string().min(1),
+    name: z.string().min(1),
+  }),
+  branch: z.string().min(1).optional(),
+  commit_sha: z.string().regex(/^[0-9a-f]{40}$/),
+});
+export type GitContextRequest = z.infer<typeof gitContextRequestSchema>;
+
 export const manifestEntryRequestSchema = z.object({
   session_id: z.string().min(1).max(128),
   format_version: z.string().min(1),
   expected_bytes: z.number().int().min(0),
+  git_context: gitContextRequestSchema.optional(),
 });
 export type ManifestEntryRequest = z.infer<typeof manifestEntryRequestSchema>;
 
