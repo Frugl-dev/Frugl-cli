@@ -76,7 +76,7 @@ The cloud `/api/join` endpoint returns a small, fixed set of typed error codes w
 - `expired` (410) — the code is past its expiry window. CLI prints: "This invite code has expired. Ask the admin for a new one." Exits `JOIN_CODE_REJECTED`.
 - `revoked` (410) — the Admin revoked the code. CLI prints: "This invite code has been revoked. Ask the admin for a new one." Exits `JOIN_CODE_REJECTED`.
 - `exhausted` (410) — the code's usage cap has been reached. CLI prints: "This invite code has reached its usage limit. Ask the admin for a new one." Exits `JOIN_CODE_REJECTED`.
-- `wrong_org` (409) — the authenticated user is already a member of a *different* Organization (one-org-per-user v1). CLI prints: "You are already a member of `<details.current_org_name>`. Leave that organization on the dashboard before joining `<details.target_org_name>`." Exits `ALREADY_IN_OTHER_ORG`.
+- `wrong_org` (409) — the authenticated user is already a member of a _different_ Organization (one-org-per-user v1). CLI prints: "You are already a member of `<details.current_org_name>`. Leave that organization on the dashboard before joining `<details.target_org_name>`." Exits `ALREADY_IN_OTHER_ORG`.
 - `rate_limited` (429) — the per-origin redemption rate-limit was tripped. CLI prints: "Too many join attempts. Try again in `<Retry-After>` seconds." Exits `RATE_LIMITED`.
 
 **Why this priority**: Without typed error rendering, users see opaque HTTP status codes. The cloud spec (SC-009) makes redemption errors machine-readable; this spec makes the CLI honour that contract with one human-actionable message per failure mode.
@@ -150,7 +150,7 @@ It exits with a documented non-zero exit code (`ORG_REQUIRED`).
 1. **Given** an authenticated user with no Membership, **When** they run `poppi upload`, **Then** the CLI resolves org context via `GET /api/orgs/me`, receives `409 org_required`, prints the onboarding-gate message (naming both `poppi join <code>` and dashboard creation), transmits zero bytes, and exits `ORG_REQUIRED`.
 2. **Given** the org-context resolution happens before discovery/anonymization, **When** the gate fires, **Then** no session files are read for anonymization and no inspection directory is written — the gate short-circuits the pipeline at the earliest point.
 3. **Given** a user passes `--dry-run`, **When** they have no Membership, **Then** the same `ORG_REQUIRED` gate fires (a dry run still needs to know the destination Organization to produce an honest summary); the CLI does not silently produce a dry-run as if an Organization existed.
-4. **Given** the user's Membership is revoked by an Admin *mid-upload* (after org context resolved but before the batch completes), **When** a subsequent cloud call returns `401`/`403`, **Then** the CLI exits `AUTH_FAILURE`, preserves local resume state (per `001` FR-026/FR-029c), and instructs the user to check their access and re-run — it does not leave a half-written batch it cannot describe.
+4. **Given** the user's Membership is revoked by an Admin _mid-upload_ (after org context resolved but before the batch completes), **When** a subsequent cloud call returns `401`/`403`, **Then** the CLI exits `AUTH_FAILURE`, preserves local resume state (per `001` FR-026/FR-029c), and instructs the user to check their access and re-run — it does not leave a half-written batch it cannot describe.
 
 ---
 
@@ -188,11 +188,11 @@ Proceed? [y/N]
 - **`400 validation_failed` from `/api/join`**: The server rejected the code shape even though local validation passed (e.g., the documented format drifted). The CLI surfaces the server's message and exits `USAGE`; it does not retry.
 - **Network unreachable**: Bounded retry per `poppi upload`'s policy, then "couldn't reach the server" and `NETWORK_FAILURE` (or `ENDPOINT_UNREACHABLE` for an explicit unreachable `--endpoint`). The join is atomic server-side, so there is no partial client state to repair.
 - **User's clock is skewed**: Does not affect redemption — code expiry is checked against server time; there is no client-signed token.
-- **`GET /api/orgs/me` returns `409 org_required` during `whoami`**: Treated as the "no org yet" *reported state*, exit 0 — not an error (see US4 scenario 2). Only `poppi upload` treats `org_required` as a hard gate (`ORG_REQUIRED` exit) because upload cannot proceed without a destination.
+- **`GET /api/orgs/me` returns `409 org_required` during `whoami`**: Treated as the "no org yet" _reported state_, exit 0 — not an error (see US4 scenario 2). Only `poppi upload` treats `org_required` as a hard gate (`ORG_REQUIRED` exit) because upload cannot proceed without a destination.
 - **`GET /api/orgs/me` returns `426`**: The version-gate fires identically to every other cloud call — upgrade message, `VERSION_GATE_FAILURE`, no retry.
-- **`GET /api/orgs/me` transiently 5xx during `upload`**: Bounded retry per the shared policy; on exhaustion the CLI exits `NETWORK_FAILURE` *before* anonymizing or transmitting — it never proceeds to upload with an unknown destination.
+- **`GET /api/orgs/me` transiently 5xx during `upload`**: Bounded retry per the shared policy; on exhaustion the CLI exits `NETWORK_FAILURE` _before_ anonymizing or transmitting — it never proceeds to upload with an unknown destination.
 - **Already a member of the target org, redeeming its code again** (`409 already_member`): friendly "already a member" message, exit 0 (idempotent — US1 scenario 4).
-- **Already a member of a *different* org** (`409 wrong_org`): the one-org-per-user conflict; message names the current and target orgs from `details`, exits `ALREADY_IN_OTHER_ORG` (US3).
+- **Already a member of a _different_ org** (`409 wrong_org`): the one-org-per-user conflict; message names the current and target orgs from `details`, exits `ALREADY_IN_OTHER_ORG` (US3).
 
 ## Requirements _(mandatory)_
 
@@ -248,7 +248,7 @@ Proceed? [y/N]
 - **FR-028**: When org resolution returns `409 org_required`, `poppi upload` MUST abort with the onboarding-gate message (naming both `poppi join <code>` and dashboard creation), perform no discovery/anonymization, transmit zero bytes, write no inspection directory, and exit `ORG_REQUIRED`. This gate MUST fire for `--dry-run` invocations too (a dry run needs a real destination to be honest).
 - **FR-029**: The `poppi upload` pre-upload confirmation summary (`001` FR-020) MUST include a line naming the destination Organization (name + slug) and the caller's role. Under `--confirm` / `--yes`, the destination MUST still be emitted (stderr in text mode; `upload-start` event in `--json` mode) so non-interactive runs record where the batch went.
 - **FR-030**: Under `--json`, the `upload-start` NDJSON event (`001` FR-039) MUST carry an additive `organization` object (`id`, `slug`). The addition MUST be strictly additive — no existing field is renamed or removed — preserving the `001` event contract.
-- **FR-031**: If a cloud call returns `401`/`403` *after* org resolution but before batch completion (e.g., the Membership was revoked mid-upload), `poppi upload` MUST exit `AUTH_FAILURE`, preserve local resume state (`001` FR-026/FR-029c), and instruct the user to verify access and re-run. It MUST NOT silently downgrade to a partial success.
+- **FR-031**: If a cloud call returns `401`/`403` _after_ org resolution but before batch completion (e.g., the Membership was revoked mid-upload), `poppi upload` MUST exit `AUTH_FAILURE`, preserve local resume state (`001` FR-026/FR-029c), and instruct the user to verify access and re-run. It MUST NOT silently downgrade to a partial success.
 
 #### Exit codes (additions to the FR-037 contract)
 

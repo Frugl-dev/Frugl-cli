@@ -230,10 +230,10 @@
 ### Incremental Delivery
 
 1. Phases 1–3 → `poppi join` happy path (MVP).
-2. + Phases 4–5 → full `join` robustness (auth + typed errors). The `join` command is now complete and trustworthy (SC-002/003/004/005).
-3. + Phase 6 (US4) → `whoami` org awareness (SC-007).
-4. + Phase 7 (US5) → `upload` onboarding gate (SC-008).
-5. + Phase 8 (US6) → `upload` destination naming (SC-009).
+2. - Phases 4–5 → full `join` robustness (auth + typed errors). The `join` command is now complete and trustworthy (SC-002/003/004/005).
+3. - Phase 6 (US4) → `whoami` org awareness (SC-007).
+4. - Phase 7 (US5) → `upload` onboarding gate (SC-008).
+5. - Phase 8 (US6) → `upload` destination naming (SC-009).
 6. Phase 9 → no-leak/output-contract tests, docs, and the end-to-end SC loop.
 
 ### Parallel Team Strategy

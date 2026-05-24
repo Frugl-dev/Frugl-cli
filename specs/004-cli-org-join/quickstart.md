@@ -38,13 +38,13 @@ Org-creation and invite generation are web-only in v1 (the CLI does not create o
 1. Log in as a founder account and create an Organization (e.g. "Acme Corp", slug `acme`) — cloud spec 003 US1.
 2. As the org Owner/Admin, generate an invite code (cloud spec 003 US2). Copy it, e.g. `ACME-XKLM-7P3R`.
 
-You now have a code to redeem from a *second* account via the CLI.
+You now have a code to redeem from a _second_ account via the CLI.
 
 ---
 
 ## 3. The join happy path (US1)
 
-In a clean shell, logged in as a *different* account (run `poppi login` first):
+In a clean shell, logged in as a _different_ account (run `poppi login` first):
 
 ```bash
 poppi login                          # OTP via @inquirer/prompts; token → OS keychain (001)
@@ -97,14 +97,14 @@ echo $?                              # 10 (AUTH_FAILURE)
 
 **Typed redemption errors (US3)** — each renders one actionable message + one exit code. Exercise them with codes the local stack rejects (revoke / expire / exhaust a code on the dashboard, or type a non-existent one):
 
-| Scenario                                   | Message                                                                       | `echo $?` |
-| ------------------------------------------ | ----------------------------------------------------------------------------- | --------- |
-| Typo / never issued (`404 not_found`)      | "Invite code not recognised. Check for typos…"                                | 70        |
-| Expired (`410 expired`)                    | "This invite code has expired. Ask the admin for a new one."                  | 70        |
-| Revoked (`410 revoked`)                    | "This invite code has been revoked…"                                          | 70        |
-| Exhausted (`410 exhausted`)                | "This invite code has reached its usage limit…"                               | 70        |
-| Already in a different org (`409 wrong_org`) | "You are already a member of `<Beta Inc>`. Leave that organization…"        | 71        |
-| Rate-limited (`429`)                       | "Too many join attempts. Try again in N seconds."                             | 72        |
+| Scenario                                     | Message                                                              | `echo $?` |
+| -------------------------------------------- | -------------------------------------------------------------------- | --------- |
+| Typo / never issued (`404 not_found`)        | "Invite code not recognised. Check for typos…"                       | 70        |
+| Expired (`410 expired`)                      | "This invite code has expired. Ask the admin for a new one."         | 70        |
+| Revoked (`410 revoked`)                      | "This invite code has been revoked…"                                 | 70        |
+| Exhausted (`410 exhausted`)                  | "This invite code has reached its usage limit…"                      | 70        |
+| Already in a different org (`409 wrong_org`) | "You are already a member of `<Beta Inc>`. Leave that organization…" | 71        |
+| Rate-limited (`429`)                         | "Too many join attempts. Try again in N seconds."                    | 72        |
 
 The `wrong_org` message interpolates the current + target org names from the response `details` (FR-018). The `429` seconds come from the `Retry-After` header (FR-014); the CLI does **not** auto-retry.
 
@@ -241,16 +241,16 @@ All exit codes are documented in `contracts/exit-codes.md` (additions) and `spec
 
 ## 12. Where things live (delta from `001`)
 
-| Concern                                              | Path                                            |
-| ---------------------------------------------------- | ----------------------------------------------- |
-| `poppi join` command                                 | `src/commands/join.ts`                          |
+| Concern                                              | Path                                               |
+| ---------------------------------------------------- | -------------------------------------------------- |
+| `poppi join` command                                 | `src/commands/join.ts`                             |
 | Org-aware `whoami` / `upload`                        | `src/commands/whoami.ts`, `src/commands/upload.ts` |
-| `POST /api/join` transport wrapper                   | `src/cloud/join.ts`                             |
-| `GET /api/orgs/me` transport wrapper                 | `src/cloud/orgs.ts`                             |
-| New cloud zod schemas                                | `src/cloud/schemas.ts`                          |
-| Code normalization + local validation (pure)        | `src/join/normalize.ts`, `src/join/validate.ts` |
-| New exit codes + typed errors                        | `src/lib/exit-codes.ts`, `src/lib/errors.ts`    |
-| Destination line in the pre-upload summary           | `src/upload/summary.ts`                         |
-| Public contracts (join, orgs-me, exit codes, --json) | `specs/004-cli-org-join/contracts/`             |
+| `POST /api/join` transport wrapper                   | `src/cloud/join.ts`                                |
+| `GET /api/orgs/me` transport wrapper                 | `src/cloud/orgs.ts`                                |
+| New cloud zod schemas                                | `src/cloud/schemas.ts`                             |
+| Code normalization + local validation (pure)         | `src/join/normalize.ts`, `src/join/validate.ts`    |
+| New exit codes + typed errors                        | `src/lib/exit-codes.ts`, `src/lib/errors.ts`       |
+| Destination line in the pre-upload summary           | `src/upload/summary.ts`                            |
+| Public contracts (join, orgs-me, exit codes, --json) | `specs/004-cli-org-join/contracts/`                |
 
 For the broader CLI, the spec is `specs/004-cli-org-join/spec.md` and the plan is `specs/004-cli-org-join/plan.md`.

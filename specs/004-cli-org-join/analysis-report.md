@@ -14,16 +14,16 @@
 
 Every functional requirement maps to at least one task. Summary matrix:
 
-| FR group               | FRs            | Covering tasks                                   |
-| ---------------------- | -------------- | ------------------------------------------------ |
-| `join` command surface | FR-001..003    | T012 (positional/registration), T013 (help)      |
-| `join` input handling  | FR-004..006    | T007/T010 (normalize), T008/T011 (validate), T030 (no-leak SC-005) |
-| Shared auth            | FR-007..010    | T014/T015 (auth+keychain gate)                   |
-| `join` network         | FR-011..018    | T005/T018 (redeem+mapping), T009/T016 (contract tests), T017/T019 (render) |
-| `join` output          | FR-019..023    | T012 (success/idempotent), T019 (errors on stderr), T032 (`--json`), T013 (color/help); FR-023 anchored to T005 (no `redaction_policy_version` in body) + T009 |
-| `whoami` org awareness | FR-024..026    | T020 (test), T021 (report), T022 (`--json`)      |
-| `upload` org awareness | FR-027..031    | T023 (test), T024 (gate), T025 (mid-upload auth), T028/T029 (destination), T026/T027 (tests) |
-| Exit codes             | FR-032..033    | T002 (table), T003 (errors), T032/T034 (verification) |
+| FR group               | FRs         | Covering tasks                                                                                                                                                 |
+| ---------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `join` command surface | FR-001..003 | T012 (positional/registration), T013 (help)                                                                                                                    |
+| `join` input handling  | FR-004..006 | T007/T010 (normalize), T008/T011 (validate), T030 (no-leak SC-005)                                                                                             |
+| Shared auth            | FR-007..010 | T014/T015 (auth+keychain gate)                                                                                                                                 |
+| `join` network         | FR-011..018 | T005/T018 (redeem+mapping), T009/T016 (contract tests), T017/T019 (render)                                                                                     |
+| `join` output          | FR-019..023 | T012 (success/idempotent), T019 (errors on stderr), T032 (`--json`), T013 (color/help); FR-023 anchored to T005 (no `redaction_policy_version` in body) + T009 |
+| `whoami` org awareness | FR-024..026 | T020 (test), T021 (report), T022 (`--json`)                                                                                                                    |
+| `upload` org awareness | FR-027..031 | T023 (test), T024 (gate), T025 (mid-upload auth), T028/T029 (destination), T026/T027 (tests)                                                                   |
+| Exit codes             | FR-032..033 | T002 (table), T003 (errors), T032/T034 (verification)                                                                                                          |
 
 **User stories**: US1 -> Phase 3 (T007-T013); US2 -> Phase 4 (T014-T015); US3 -> Phase 5 (T016-T019); US4 -> Phase 6 (T020-T022); US5 -> Phase 7 (T023-T025); US6 -> Phase 8 (T026-T029). All six covered.
 

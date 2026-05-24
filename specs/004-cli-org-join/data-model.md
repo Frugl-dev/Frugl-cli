@@ -14,11 +14,11 @@ The `001` data-model entities (`AuthSession`, `Endpoint`, `ExitCode`, `CommandRe
 
 These are owned and defined by cloud spec `003-org-membership-permissions`. The CLI only ever **reads** them via `GET /api/orgs/me` / `POST /api/join` and prints server-returned fields verbatim. It never creates, mutates, or enumerates them locally.
 
-| Entity           | Owner        | CLI's relationship                                                                                                  |
-| ---------------- | ------------ | ------------------------------------------------------------------------------------------------------------------- |
-| **Organization** | cloud (003)  | Read-only. Identified to the user by `name` + `slug`. The CLI never creates one (web-only in v1) or sends `org_id`. |
-| **Membership**   | cloud (003)  | Read-only. Carries the caller's `role` (`owner \| admin \| member`). The CLI prints `role` verbatim, never reinterprets. |
-| **Invitation**   | cloud (003)  | Never seen as an entity. The CLI holds only the transient plaintext **code** (see `InviteCode` below); the server hashes + looks it up. |
+| Entity           | Owner       | CLI's relationship                                                                                                                      |
+| ---------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Organization** | cloud (003) | Read-only. Identified to the user by `name` + `slug`. The CLI never creates one (web-only in v1) or sends `org_id`.                     |
+| **Membership**   | cloud (003) | Read-only. Carries the caller's `role` (`owner \| admin \| member`). The CLI prints `role` verbatim, never reinterprets.                |
+| **Invitation**   | cloud (003) | Never seen as an entity. The CLI holds only the transient plaintext **code** (see `InviteCode` below); the server hashes + looks it up. |
 
 ---
 
@@ -28,10 +28,10 @@ These are owned and defined by cloud spec `003-org-membership-permissions`. The 
 
 The transient redemption material supplied as the `poppi join` positional argument. Lives only for the duration of the command; never persisted, never logged at default level (R-11 / FR-006).
 
-| Field        | Type     | Source                       | Notes                                                                       |
-| ------------ | -------- | ---------------------------- | --------------------------------------------------------------------------- |
-| `raw`        | `string` | the positional argument      | exactly as typed/pasted, before normalization                              |
-| `normalized` | `string` | `normalize(raw)` (R-10)      | uppercase, whitespace/separator/non-Crockford stripped; the value sent on the wire |
+| Field        | Type     | Source                  | Notes                                                                              |
+| ------------ | -------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| `raw`        | `string` | the positional argument | exactly as typed/pasted, before normalization                                      |
+| `normalized` | `string` | `normalize(raw)` (R-10) | uppercase, whitespace/separator/non-Crockford stripped; the value sent on the wire |
 
 **Validation** (`src/join/validate.ts`, FR-005): after normalization, `normalized` MUST match the base32-Crockford alphabet (`[0-9A-Z]` excluding `I`, `L`, `O`, `U`) and fall within the documented length bounds. A failure is rejected locally with **no network request** → `USAGE` (2).
 
@@ -47,11 +47,11 @@ The internal result of `redeemCode()` in `src/cloud/join.ts` after `zod`-parsing
 
 ```ts
 type JoinOutcome =
-  | { kind: "joined"; org: OrgSummary; membership: MembershipSummary }      // 200
-  | { kind: "already-member"; orgName: string }                             // 409 already_member → exit 0 (R-2)
-  | { kind: "wrong-org"; currentOrgName: string; targetOrgName: string }    // 409 wrong_org
+  | { kind: "joined"; org: OrgSummary; membership: MembershipSummary } // 200
+  | { kind: "already-member"; orgName: string } // 409 already_member → exit 0 (R-2)
+  | { kind: "wrong-org"; currentOrgName: string; targetOrgName: string } // 409 wrong_org
   | { kind: "code-rejected"; reason: "not_found" | "expired" | "revoked" | "exhausted" }
-  | { kind: "rate-limited"; retryAfterSeconds: number };                    // 429
+  | { kind: "rate-limited"; retryAfterSeconds: number }; // 429
 ```
 
 ```ts
@@ -82,7 +82,11 @@ The `{ org, role }` resolved from `GET /api/orgs/me` for the duration of a singl
 
 ```ts
 type OrgContext =
-  | { kind: "member"; org: OrgContextOrg; membership: { role: "owner" | "admin" | "member"; joinedAt: string } }
+  | {
+      kind: "member";
+      org: OrgContextOrg;
+      membership: { role: "owner" | "admin" | "member"; joinedAt: string };
+    }
   | { kind: "none" }; // GET /api/orgs/me → 409 org_required
 ```
 
@@ -122,7 +126,16 @@ type JoinResult =
   | {
       command: "join";
       ok: false;
-      error: "wrong_org" | "not_found" | "expired" | "revoked" | "exhausted" | "rate_limited" | "validation_failed" | "unauthorized" | "upgrade_required";
+      error:
+        | "wrong_org"
+        | "not_found"
+        | "expired"
+        | "revoked"
+        | "exhausted"
+        | "rate_limited"
+        | "validation_failed"
+        | "unauthorized"
+        | "upgrade_required";
       message: string;
       details?: Record<string, unknown>; // e.g. { current_org_name, target_org_name } for wrong_org; { retry_after_seconds } for rate_limited
     };
@@ -169,7 +182,10 @@ The `001` `upload-start` NDJSON event gains one **additive** field (FR-030 / R-1
   expectedSessionCount: number;
   redactionPolicyVersion: string;
   endpoint: string;
-  organization: { id: string; slug: string }; // NEW (FR-030), additive — only id + slug
+  organization: {
+    id: string;
+    slug: string;
+  } // NEW (FR-030), additive — only id + slug
 }
 ```
 
@@ -200,12 +216,12 @@ export const EXIT = {
 
 Mirrors the `001` pattern: one class per failure mode, each carrying its `EXIT` code so the top-level command handler maps thrown errors to exit codes uniformly.
 
-| Class                | Exit code                  | Thrown when                                            |
-| -------------------- | -------------------------- | ------------------------------------------------------ |
-| `OrgRequiredError`   | `ORG_REQUIRED` (12)        | `upload` resolves `OrgContext.kind === "none"` (FR-028) |
-| `JoinRejectedError`  | `JOIN_CODE_REJECTED` (70)  | `not_found` / `expired` / `revoked` / `exhausted` (FR-016) — carries the sub-`reason` for the `--json` `error` field |
-| `WrongOrgError`      | `ALREADY_IN_OTHER_ORG` (71) | `wrong_org` (FR-018) — carries `currentOrgName` / `targetOrgName` |
-| `RateLimitedError`   | `RATE_LIMITED` (72)        | `429 rate_limited` (FR-014) — carries `retryAfterSeconds` |
+| Class               | Exit code                   | Thrown when                                                                                                          |
+| ------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `OrgRequiredError`  | `ORG_REQUIRED` (12)         | `upload` resolves `OrgContext.kind === "none"` (FR-028)                                                              |
+| `JoinRejectedError` | `JOIN_CODE_REJECTED` (70)   | `not_found` / `expired` / `revoked` / `exhausted` (FR-016) — carries the sub-`reason` for the `--json` `error` field |
+| `WrongOrgError`     | `ALREADY_IN_OTHER_ORG` (71) | `wrong_org` (FR-018) — carries `currentOrgName` / `targetOrgName`                                                    |
+| `RateLimitedError`  | `RATE_LIMITED` (72)         | `429 rate_limited` (FR-014) — carries `retryAfterSeconds`                                                            |
 
 Reused unchanged from `001`: `AuthError` (10, for `401`), `VersionGateError` (50, for `426`), `NetworkError` (40, transient exhaustion), and the ZodError→`GENERIC_FAILURE` (1) contract-drift wrap.
 
@@ -213,13 +229,13 @@ Reused unchanged from `001`: `AuthError` (10, for `401`), `VersionGateError` (50
 
 ## Where validation lives (delta from `001`)
 
-| Surface                                            | Tool                                            | File                       |
-| -------------------------------------------------- | ----------------------------------------------- | -------------------------- |
-| `POST /api/join` success + typed-error bodies      | `zod` runtime validation                        | `src/cloud/schemas.ts`     |
-| `GET /api/orgs/me` success + `409 org_required`    | `zod` runtime validation                        | `src/cloud/schemas.ts`     |
-| Invite-code alphabet + length (pre-network)        | pure functions                                  | `src/join/validate.ts`     |
-| Invite-code normalization (pre-network)            | pure functions                                  | `src/join/normalize.ts`    |
-| `poppi join` positional-arg shape (required, single) | oclif args system + strict-args                | `src/commands/join.ts`     |
+| Surface                                              | Tool                            | File                    |
+| ---------------------------------------------------- | ------------------------------- | ----------------------- |
+| `POST /api/join` success + typed-error bodies        | `zod` runtime validation        | `src/cloud/schemas.ts`  |
+| `GET /api/orgs/me` success + `409 org_required`      | `zod` runtime validation        | `src/cloud/schemas.ts`  |
+| Invite-code alphabet + length (pre-network)          | pure functions                  | `src/join/validate.ts`  |
+| Invite-code normalization (pre-network)              | pure functions                  | `src/join/normalize.ts` |
+| `poppi join` positional-arg shape (required, single) | oclif args system + strict-args | `src/commands/join.ts`  |
 
 All schema mismatches surface as honest failures with a stable exit code (`GENERIC_FAILURE`); never silently coerced (Principle VI / FR-012).
 

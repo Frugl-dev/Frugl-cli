@@ -34,7 +34,7 @@
 
 **Content Quality**
 
-- The spec keeps WHAT/WHY framing. References to specific cloud HTTP endpoints (`POST /api/join`, `GET /api/orgs/me`), the success/error response shapes, and proposed exit-code numbers are **cross-repo contract surface**, not implementation leakage — they are the negotiated interface this CLI consumes from `poppi/specs/003-org-membership-permissions/`, exactly as `001-cli-ingest-client` documents the upload/auth contracts it consumes. Library mentions are tied to the *existing* `001` conventions, not new technical choices.
+- The spec keeps WHAT/WHY framing. References to specific cloud HTTP endpoints (`POST /api/join`, `GET /api/orgs/me`), the success/error response shapes, and proposed exit-code numbers are **cross-repo contract surface**, not implementation leakage — they are the negotiated interface this CLI consumes from `poppi/specs/003-org-membership-permissions/`, exactly as `001-cli-ingest-client` documents the upload/auth contracts it consumes. Library mentions are tied to the _existing_ `001` conventions, not new technical choices.
 - The "Cross-repo context" section is explicitly informational and introduces no new product requirements.
 
 **Requirement Completeness**

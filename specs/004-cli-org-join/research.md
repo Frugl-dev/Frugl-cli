@@ -71,24 +71,24 @@ There are **no open `NEEDS CLARIFICATION` markers** in Technical Context.
 
 **Decision**: `src/cloud/join.ts` translates each documented cloud `error` code into a typed error class (`src/lib/errors.ts`) carrying its exit code; `commands/join.ts` renders the user-facing message. The mapping (authoritative; mirrored in `contracts/join.md` and `contracts/exit-codes.md`):
 
-| HTTP | cloud `error`         | CLI message (FR-016/017/018)                                                                                   | Exit code                       |
-| ---- | --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| 200  | —                     | "✓ Joined `<name>` (`<slug>`) as `<role>`." + next-step line                                                   | `OK` (0)                        |
-| 400  | `validation_failed`   | surface the server's `message` (format drifted past local check)                                               | `USAGE` (2)                     |
-| 401  | `unauthorized`        | "Your session has expired. Run `poppi login` and try again."                                                   | `AUTH_FAILURE` (10)             |
-| 404  | `not_found`           | "Invite code not recognised. Check for typos or ask the admin to confirm the code."                            | `JOIN_CODE_REJECTED` (70)       |
-| 409  | `already_member`      | server `message` ("You are already a member of `<Org>`.") — **exit 0** (R-2)                                   | `OK` (0)                        |
-| 409  | `wrong_org`           | "You are already a member of `<details.current_org_name>`. Leave that organization … before joining `<details.target_org_name>`." | `ALREADY_IN_OTHER_ORG` (71)     |
-| 410  | `expired`             | "This invite code has expired. Ask the admin for a new one."                                                   | `JOIN_CODE_REJECTED` (70)       |
-| 410  | `revoked`             | "This invite code has been revoked. Ask the admin for a new one."                                              | `JOIN_CODE_REJECTED` (70)       |
-| 410  | `exhausted`           | "This invite code has reached its usage limit. Ask the admin for a new one."                                   | `JOIN_CODE_REJECTED` (70)       |
-| 426  | `upgrade_required`    | shared version-gate message (current / required / upgrade command, `001` FR-033)                               | `VERSION_GATE_FAILURE` (50)     |
-| 429  | `rate_limited`        | "Too many join attempts. Try again in `<Retry-After>` seconds."                                                | `RATE_LIMITED` (72)             |
-| 5xx  | `internal` / none     | bounded retry (R-6), then "couldn't reach the server, try again later."                                        | `NETWORK_FAILURE` (40)          |
+| HTTP | cloud `error`       | CLI message (FR-016/017/018)                                                                                                      | Exit code                   |
+| ---- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 200  | —                   | "✓ Joined `<name>` (`<slug>`) as `<role>`." + next-step line                                                                      | `OK` (0)                    |
+| 400  | `validation_failed` | surface the server's `message` (format drifted past local check)                                                                  | `USAGE` (2)                 |
+| 401  | `unauthorized`      | "Your session has expired. Run `poppi login` and try again."                                                                      | `AUTH_FAILURE` (10)         |
+| 404  | `not_found`         | "Invite code not recognised. Check for typos or ask the admin to confirm the code."                                               | `JOIN_CODE_REJECTED` (70)   |
+| 409  | `already_member`    | server `message` ("You are already a member of `<Org>`.") — **exit 0** (R-2)                                                      | `OK` (0)                    |
+| 409  | `wrong_org`         | "You are already a member of `<details.current_org_name>`. Leave that organization … before joining `<details.target_org_name>`." | `ALREADY_IN_OTHER_ORG` (71) |
+| 410  | `expired`           | "This invite code has expired. Ask the admin for a new one."                                                                      | `JOIN_CODE_REJECTED` (70)   |
+| 410  | `revoked`           | "This invite code has been revoked. Ask the admin for a new one."                                                                 | `JOIN_CODE_REJECTED` (70)   |
+| 410  | `exhausted`         | "This invite code has reached its usage limit. Ask the admin for a new one."                                                      | `JOIN_CODE_REJECTED` (70)   |
+| 426  | `upgrade_required`  | shared version-gate message (current / required / upgrade command, `001` FR-033)                                                  | `VERSION_GATE_FAILURE` (50) |
+| 429  | `rate_limited`      | "Too many join attempts. Try again in `<Retry-After>` seconds."                                                                   | `RATE_LIMITED` (72)         |
+| 5xx  | `internal` / none   | bounded retry (R-6), then "couldn't reach the server, try again later."                                                           | `NETWORK_FAILURE` (40)      |
 
 **Rationale**:
 
-- `not_found`/`expired`/`revoked`/`exhausted` all share `JOIN_CODE_REJECTED` (70) because they are the same failure class from the user's standpoint — "this code can't be redeemed" — and the specific sub-reason is conveyed in the message and, under `--json`, the `error` field (FR-032). One code per failure *class*, not per HTTP status, keeps scripts simple while preserving the human detail.
+- `not_found`/`expired`/`revoked`/`exhausted` all share `JOIN_CODE_REJECTED` (70) because they are the same failure class from the user's standpoint — "this code can't be redeemed" — and the specific sub-reason is conveyed in the message and, under `--json`, the `error` field (FR-032). One code per failure _class_, not per HTTP status, keeps scripts simple while preserving the human detail.
 - `wrong_org` gets its own code (71) because the remediation is fundamentally different (leave the other org first), and a script may want to branch on it specifically (e.g. surface a "contact your admin" path).
 - `rate_limited` gets its own code (72) so automation can back off and retry later rather than treating it as a permanent rejection.
 - `validation_failed` (400) maps to `USAGE` (2) — it means the server rejected the code shape even though local validation passed (format drift); it is a usage problem, not a network or rejection problem, and the CLI surfaces the server's message without retrying (spec edge case).
@@ -96,7 +96,7 @@ There are **no open `NEEDS CLARIFICATION` markers** in Technical Context.
 **Alternatives considered**:
 
 - _One `JOIN_FAILED` code for all redemption errors_ — rejected: `wrong_org` and `rate_limited` need distinct scripting behaviour (different remediation, retryability).
-- _A code per HTTP status_ — rejected: couples the public exit-code contract to HTTP status numbers that the cloud may consolidate; the failure *class* is the stable contract.
+- _A code per HTTP status_ — rejected: couples the public exit-code contract to HTTP status numbers that the cloud may consolidate; the failure _class_ is the stable contract.
 
 ---
 
@@ -106,7 +106,7 @@ There are **no open `NEEDS CLARIFICATION` markers** in Technical Context.
 
 **Rationale**:
 
-- US3 scenario 2 is explicit: both names must be interpolated from the response, not guessed. The CLI has no other source of truth for the *other* org's name — it deliberately never learned it.
+- US3 scenario 2 is explicit: both names must be interpolated from the response, not guessed. The CLI has no other source of truth for the _other_ org's name — it deliberately never learned it.
 - Preferring the `Retry-After` header over the body matches HTTP convention and the cloud `join.md` example (which sets both); the body field is the fallback for completeness.
 - This keeps the CLI honest: it reports what the server said, not a plausible-looking reconstruction.
 
@@ -148,7 +148,7 @@ resolve endpoint → load auth token
 
 **Rationale**:
 
-- Resolving the destination *first* is the whole point of US5: a brand-new user must hit a clear gate before any discover/anonymize work, not after a slow pass that only fails at the first cloud write (spec US5 "Why this priority"). Putting the call before discovery makes "zero bytes, zero anonymization, no inspection dir" (SC-008) structurally true, not merely best-effort.
+- Resolving the destination _first_ is the whole point of US5: a brand-new user must hit a clear gate before any discover/anonymize work, not after a slow pass that only fails at the first cloud write (spec US5 "Why this priority"). Putting the call before discovery makes "zero bytes, zero anonymization, no inspection dir" (SC-008) structurally true, not merely best-effort.
 - The summary builder (`001` FR-020) already runs after classification; threading the resolved `{ org, role }` into it (rather than re-fetching) means one `GET /api/orgs/me` per run and a consistent destination across the gate, the summary, and the event.
 - The `--dry-run` gate (FR-028) is honest: a dry run that pretended an org existed would produce a misleading summary; the spec forbids it (US5 scenario 3).
 
@@ -251,19 +251,19 @@ Crockford-specific normalization detail: the canonical Crockford decode treats `
 
 ## Summary of locked decisions
 
-| #    | Decision                                                                                  | Drives                |
-| ---- | ----------------------------------------------------------------------------------------- | --------------------- |
-| R-1  | Reuse `001` `src/cloud/client.ts` unchanged; two thin wrappers (`join.ts`, `orgs.ts`)     | FR-011/024/027        |
-| R-2  | `409 already_member` → exit **0** with "already a member" message                         | FR-017, SC-004        |
-| R-3  | `409 org_required` = reported state for `whoami` (exit 0), hard gate for `upload` (12)    | FR-025/028            |
-| R-4  | Typed `/api/join` error → exit-code mapping (70/71/72 + reused 2/10/50/40)                | FR-014/016/017/018    |
-| R-5  | Interpolated message fields come from the response body / `Retry-After`, never guessed    | FR-014/018, SC-003    |
-| R-6  | Bounded retry on transient only; `429` fails fast (no auto-retry)                         | FR-013/014            |
-| R-7  | Org context resolved BEFORE discovery/anonymization; gate fires for `--dry-run` too       | FR-027/028, SC-008    |
-| R-8  | `401`/`403` mid-upload → `AUTH_FAILURE`, resume state preserved                           | FR-031                |
-| R-9  | New exit codes: `ORG_REQUIRED`=12, `JOIN_CODE_REJECTED`=70, `ALREADY_IN_OTHER_ORG`=71, `RATE_LIMITED`=72 | FR-032/033 |
-| R-10 | Client normalizes (uppercase/strip) + validates (alphabet/length); server is authoritative | FR-004/005          |
-| R-11 | Plaintext code is secret; never at default log level; `--debug` only, with warning        | FR-006, SC-005        |
-| R-12 | `--json`: new `JoinResult`; additive `organization` on `whoami` + `upload-start`          | FR-021/026/030        |
+| #    | Decision                                                                                                 | Drives             |
+| ---- | -------------------------------------------------------------------------------------------------------- | ------------------ |
+| R-1  | Reuse `001` `src/cloud/client.ts` unchanged; two thin wrappers (`join.ts`, `orgs.ts`)                    | FR-011/024/027     |
+| R-2  | `409 already_member` → exit **0** with "already a member" message                                        | FR-017, SC-004     |
+| R-3  | `409 org_required` = reported state for `whoami` (exit 0), hard gate for `upload` (12)                   | FR-025/028         |
+| R-4  | Typed `/api/join` error → exit-code mapping (70/71/72 + reused 2/10/50/40)                               | FR-014/016/017/018 |
+| R-5  | Interpolated message fields come from the response body / `Retry-After`, never guessed                   | FR-014/018, SC-003 |
+| R-6  | Bounded retry on transient only; `429` fails fast (no auto-retry)                                        | FR-013/014         |
+| R-7  | Org context resolved BEFORE discovery/anonymization; gate fires for `--dry-run` too                      | FR-027/028, SC-008 |
+| R-8  | `401`/`403` mid-upload → `AUTH_FAILURE`, resume state preserved                                          | FR-031             |
+| R-9  | New exit codes: `ORG_REQUIRED`=12, `JOIN_CODE_REJECTED`=70, `ALREADY_IN_OTHER_ORG`=71, `RATE_LIMITED`=72 | FR-032/033         |
+| R-10 | Client normalizes (uppercase/strip) + validates (alphabet/length); server is authoritative               | FR-004/005         |
+| R-11 | Plaintext code is secret; never at default log level; `--debug` only, with warning                       | FR-006, SC-005     |
+| R-12 | `--json`: new `JoinResult`; additive `organization` on `whoami` + `upload-start`                         | FR-021/026/030     |
 
 No `NEEDS CLARIFICATION` markers remain in Technical Context.

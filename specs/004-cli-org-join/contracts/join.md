@@ -16,11 +16,11 @@ The endpoint is `POST /api/join` on the resolved endpoint host (default `https:/
 
 **Headers** (per `001` common headers):
 
-| Header           | Value                                      |
-| ---------------- | ------------------------------------------ |
-| `Authorization`  | `Bearer <token>` from the OS keychain      |
+| Header           | Value                                                 |
+| ---------------- | ----------------------------------------------------- |
+| `Authorization`  | `Bearer <token>` from the OS keychain                 |
 | `X-Poppi-Client` | `poppi-cli/<semver>` (enables the `426` version gate) |
-| `Content-Type`   | `application/json`                         |
+| `Content-Type`   | `application/json`                                    |
 
 **Body** (FR-011):
 
@@ -32,12 +32,12 @@ The endpoint is `POST /api/join` on the resolved endpoint host (default `https:/
 
 **Pre-network fast-fails** (no request issued):
 
-| Condition                                  | Behaviour                                                         | Exit code               |
-| ------------------------------------------ | ---------------------------------------------------------------- | ----------------------- |
-| No token in keychain                       | "You're not signed in. Run `poppi login` first…" (FR-008)        | `AUTH_FAILURE` (10)     |
-| Keychain unavailable                       | "Secure token storage required" (same class as `upload`, FR-009) | `KEYCHAIN_UNAVAILABLE` (11) |
-| Code fails local alphabet/length (FR-005)  | "Invite code contains unexpected characters." / "…wrong length…" | `USAGE` (2)             |
-| Missing / multiple positional args         | oclif required-/strict-args usage error                          | `USAGE` (2)             |
+| Condition                                 | Behaviour                                                        | Exit code                   |
+| ----------------------------------------- | ---------------------------------------------------------------- | --------------------------- |
+| No token in keychain                      | "You're not signed in. Run `poppi login` first…" (FR-008)        | `AUTH_FAILURE` (10)         |
+| Keychain unavailable                      | "Secure token storage required" (same class as `upload`, FR-009) | `KEYCHAIN_UNAVAILABLE` (11) |
+| Code fails local alphabet/length (FR-005) | "Invite code contains unexpected characters." / "…wrong length…" | `USAGE` (2)                 |
+| Missing / multiple positional args        | oclif required-/strict-args usage error                          | `USAGE` (2)                 |
 
 ---
 
@@ -65,19 +65,19 @@ Exit `OK` (0). Under `--json`, emit the `JoinResult` success object (see `comman
 
 The CLI recognises each documented typed error, renders the actionable message (FR-016/017/018), and exits with the mapped code. Error bodies follow the cloud's standard shape `{ "error": <code>, "message": <string>, "details"?: {…} }` (cloud `README.md`).
 
-| HTTP | `error`             | CLI user-facing message                                                                                                                   | Exit code                   | Retry? |
-| ---- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------ |
-| 400  | `validation_failed` | surface the server's `message` (local check passed but server format drifted)                                                             | `USAGE` (2)                 | no     |
-| 401  | `unauthorized`      | "Your session has expired. Run `poppi login` and try again."                                                                              | `AUTH_FAILURE` (10)         | no     |
-| 404  | `not_found`         | "Invite code not recognised. Check for typos or ask the admin to confirm the code."                                                       | `JOIN_CODE_REJECTED` (70)   | no     |
-| 409  | `already_member`    | server `message` — "You are already a member of `<Org>`." — **exit 0** (idempotent no-op, R-2 / FR-017)                                    | `OK` (0)                    | no     |
+| HTTP | `error`             | CLI user-facing message                                                                                                                          | Exit code                   | Retry? |
+| ---- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | ------ |
+| 400  | `validation_failed` | surface the server's `message` (local check passed but server format drifted)                                                                    | `USAGE` (2)                 | no     |
+| 401  | `unauthorized`      | "Your session has expired. Run `poppi login` and try again."                                                                                     | `AUTH_FAILURE` (10)         | no     |
+| 404  | `not_found`         | "Invite code not recognised. Check for typos or ask the admin to confirm the code."                                                              | `JOIN_CODE_REJECTED` (70)   | no     |
+| 409  | `already_member`    | server `message` — "You are already a member of `<Org>`." — **exit 0** (idempotent no-op, R-2 / FR-017)                                          | `OK` (0)                    | no     |
 | 409  | `wrong_org`         | "You are already a member of `<details.current_org_name>`. Leave that organization on the dashboard before joining `<details.target_org_name>`." | `ALREADY_IN_OTHER_ORG` (71) | no     |
-| 410  | `expired`           | "This invite code has expired. Ask the admin for a new one."                                                                              | `JOIN_CODE_REJECTED` (70)   | no     |
-| 410  | `revoked`           | "This invite code has been revoked. Ask the admin for a new one."                                                                         | `JOIN_CODE_REJECTED` (70)   | no     |
-| 410  | `exhausted`         | "This invite code has reached its usage limit. Ask the admin for a new one."                                                              | `JOIN_CODE_REJECTED` (70)   | no     |
-| 426  | `upgrade_required`  | shared version-gate message (current / required / upgrade command, `001` FR-033)                                                          | `VERSION_GATE_FAILURE` (50) | no     |
-| 429  | `rate_limited`      | "Too many join attempts. Try again in `<Retry-After>` seconds."                                                                           | `RATE_LIMITED` (72)         | no     |
-| 5xx  | `internal` / none   | bounded retry (`001` FR-029a), then "couldn't reach the server, try again later."                                                         | `NETWORK_FAILURE` (40)      | yes    |
+| 410  | `expired`           | "This invite code has expired. Ask the admin for a new one."                                                                                     | `JOIN_CODE_REJECTED` (70)   | no     |
+| 410  | `revoked`           | "This invite code has been revoked. Ask the admin for a new one."                                                                                | `JOIN_CODE_REJECTED` (70)   | no     |
+| 410  | `exhausted`         | "This invite code has reached its usage limit. Ask the admin for a new one."                                                                     | `JOIN_CODE_REJECTED` (70)   | no     |
+| 426  | `upgrade_required`  | shared version-gate message (current / required / upgrade command, `001` FR-033)                                                                 | `VERSION_GATE_FAILURE` (50) | no     |
+| 429  | `rate_limited`      | "Too many join attempts. Try again in `<Retry-After>` seconds."                                                                                  | `RATE_LIMITED` (72)         | no     |
+| 5xx  | `internal` / none   | bounded retry (`001` FR-029a), then "couldn't reach the server, try again later."                                                                | `NETWORK_FAILURE` (40)      | yes    |
 
 **Notes on the mapping**:
 
