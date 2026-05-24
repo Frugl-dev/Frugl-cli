@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { gzipSync } from "node:zlib";
 import pLimit from "p-limit";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import {
@@ -24,6 +23,7 @@ import {
 export interface SessionUploadJob {
   sessionId: string;
   identityDerivation: "native" | "path-hash";
+  formatVersion: string;
   sourceFilePath: string;
   anonymizationResult: AnonymizationResult;
   rawContentHashAtFirstRun: string;
@@ -182,10 +182,9 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
   try {
     complete = await opts.client.call({
       method: "POST",
-      path: `/uploads/${encodeURIComponent(manifestState.manifestId)}/complete`,
+      path: `/api/uploads/${encodeURIComponent(manifestState.manifestId)}/complete`,
       body: {
-        actualSessionCount: acked.length,
-        ackedSessionIds: acked,
+        redaction_summary: aggregateRedactions(opts.jobs),
       },
       schema: completeUploadResponseSchema,
     });
@@ -198,41 +197,52 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
 
   opts.resumeStore.clear();
   opts.reporter.uploadComplete({
-    manifestId: complete.manifestId,
+    manifestId: complete.manifest_id,
     actualSessionCount: acked.length,
-    dashboardUrl: complete.dashboardUrl,
+    dashboardUrl: complete.dashboard_url,
   });
 
   return {
-    manifestId: complete.manifestId,
-    dashboardUrl: complete.dashboardUrl,
+    manifestId: complete.manifest_id,
+    dashboardUrl: complete.dashboard_url,
     acked,
     skipped,
     failures,
   };
 }
 
+// The cloud's /complete contract takes a flat { category: count } map of all
+// redactions applied across the batch (every value a non-negative integer).
+function aggregateRedactions(jobs: SessionUploadJob[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const job of jobs) {
+    for (const [category, count] of Object.entries(job.anonymizationResult.redactionsByCategory)) {
+      totals[category] = (totals[category] ?? 0) + count;
+    }
+  }
+  return totals;
+}
+
 async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
   const created = await opts.client.call({
     method: "POST",
-    path: "/uploads",
+    path: "/api/uploads/manifest",
     body: {
-      cliVersion: opts.cliVersion,
-      redactionPolicyVersion: opts.policyVersion,
-      sourceKind: opts.sourceKind,
-      expectedSessionCount: opts.jobs.length,
+      cli_version: opts.cliVersion,
+      redaction_policy_version: opts.policyVersion,
+      source_kind: opts.sourceKind,
+      expected_session_count: opts.jobs.length,
       sessions: opts.jobs.map((job) => ({
-        sessionId: job.sessionId,
-        identityDerivation: job.identityDerivation,
-        contentHash: job.anonymizationResult.redactedHashHex,
-        byteSize: job.anonymizationResult.byteSize,
+        session_id: job.sessionId,
+        format_version: job.formatVersion,
+        expected_bytes: job.anonymizationResult.byteSize,
       })),
     },
     schema: createManifestResponseSchema,
     timeoutMs: 12_000,
   });
   return {
-    manifestId: created.manifestId,
+    manifestId: created.upload_id,
     cliVersion: opts.cliVersion,
     redactionPolicyVersion: opts.policyVersion,
     sourceKind: opts.sourceKind,
@@ -283,16 +293,22 @@ async function uploadOneSession(
   manifestId: string,
   job: SessionUploadJob,
 ): Promise<void> {
-  const serialized = JSON.stringify(job.anonymizationResult.payload);
-  const gzipped = gzipSync(Buffer.from(serialized, "utf8"));
+  // The cloud stores each session as NDJSON (`.jsonl`) and parses it line by
+  // line. The anonymized payload is the array of redacted records, so emit one
+  // JSON document per line rather than a single gzipped blob.
+  const payload = job.anonymizationResult.payload;
+  const ndjson = Array.isArray(payload)
+    ? payload.map((record) => JSON.stringify(record)).join("\n")
+    : JSON.stringify(payload);
+  const body = Buffer.from(ndjson, "utf8");
 
   await withRetry(async () => {
     let presigned;
     try {
       presigned = await client.call({
         method: "POST",
-        path: `/uploads/${encodeURIComponent(manifestId)}/sessions/${encodeURIComponent(job.sessionId)}/presign`,
-        body: { byteSize: gzipped.byteLength },
+        path: `/api/uploads/${encodeURIComponent(manifestId)}/presign`,
+        body: { session_id: job.sessionId },
         schema: presignResponseSchema,
       });
     } catch (err) {
@@ -301,7 +317,7 @@ async function uploadOneSession(
       }
       throw err;
     }
-    const response = await client.putBody(presigned.url, gzipped, { ...presigned.headers });
+    const response = await client.putBody(presigned.presigned_url, body, { ...presigned.headers });
     if (!response.ok) {
       const status = response.status;
       const err: CloudHttpError = new CloudHttpError(

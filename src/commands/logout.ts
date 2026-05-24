@@ -36,7 +36,7 @@ export default class Logout extends Command {
         try {
           await client.call({
             method: "POST",
-            path: "/auth/logout",
+            path: "/api/auth/signout",
             body: {},
             schema: z.object({}).passthrough().or(logoutResponseSchema),
           });

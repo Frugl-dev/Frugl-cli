@@ -69,6 +69,7 @@ export class CloudClient {
     const url = `${this.endpointUrl}${opts.path}`;
     const headers: Record<string, string> = {
       "X-Poppi-Client": `poppi-cli/${this.cliVersion}`,
+      "X-Poppi-CLI-Version": this.cliVersion,
     };
     if (opts.body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -152,9 +153,18 @@ export class CloudClient {
         `HTTP ${response.status} from ${opts.method} ${opts.path}`,
       );
     }
+    // Some endpoints (OTP request, signout) succeed with 204 / an empty body.
+    // There is nothing to validate; return undefined for those callers.
+    if (response.status === 204) {
+      return undefined as z.infer<T>;
+    }
+    const raw = await response.text();
+    if (raw === "") {
+      return undefined as z.infer<T>;
+    }
     let parsed: unknown;
     try {
-      parsed = await response.json();
+      parsed = JSON.parse(raw);
     } catch (err) {
       throw new PoppiError(
         `Failed to parse JSON from ${opts.method} ${opts.path}: ${err instanceof Error ? err.message : String(err)}`,

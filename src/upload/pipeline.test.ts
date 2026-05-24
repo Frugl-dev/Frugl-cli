@@ -32,7 +32,6 @@ function fakeAnonResult(text: string): AnonymizationResult {
   };
 }
 
-const PRESIGN_PATH_RE = /\/uploads\/[^/]+\/sessions\/([^/]+)\/presign$/;
 const PUT_URL_RE = /\/put\/(.+)$/;
 
 interface FakeCallRequest {
@@ -63,25 +62,24 @@ function makeFakeClient(opts: { manifestId?: string; failOnPresignFor?: Set<stri
     manifestId,
     setToken() {},
     async call(req: FakeCallRequest) {
-      if (req.method === "POST" && req.path === "/uploads") {
-        return { manifestId };
+      if (req.method === "POST" && req.path === "/api/uploads/manifest") {
+        return { upload_id: manifestId };
       }
       if (req.path.endsWith("/complete")) {
-        return { manifestId, dashboardUrl: `https://test/dashboards/${manifestId}` };
+        return { manifest_id: manifestId, dashboard_url: `/dashboard?upload=${manifestId}` };
       }
-      const presignMatch = PRESIGN_PATH_RE.exec(req.path);
-      if (presignMatch) {
-        const sessionId = decodeURIComponent(presignMatch[1]!);
+      if (req.path.endsWith("/presign")) {
+        const sessionId = (req.body as { session_id: string }).session_id;
         presignCalls.push(sessionId);
         if (opts.failOnPresignFor?.has(sessionId)) {
           const err = Object.assign(new Error("forced presign failure"), { status: 500 });
           throw err;
         }
         return {
-          url: `https://put/${sessionId}`,
+          presigned_url: `https://put/${sessionId}`,
           method: "PUT",
-          headers: { "Content-Type": "application/octet-stream" },
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          headers: { "Content-Type": "application/x-ndjson" },
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
         };
       }
       throw new Error(`Unhandled fake-client call: ${req.method} ${req.path}`);
@@ -128,6 +126,7 @@ describe("upload pipeline", () => {
       jobs.push({
         sessionId,
         identityDerivation: "native",
+        formatVersion: "claude-jsonl-2026-04",
         sourceFilePath: filePath,
         anonymizationResult: fakeAnonResult(text),
         rawContentHashAtFirstRun: rawHash,
