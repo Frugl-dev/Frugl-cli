@@ -19,7 +19,7 @@ import { ResumeStore } from "../upload/resume.js";
 import { buildUploadSummary, formatSummaryForHuman } from "../upload/summary.js";
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
-import { claudeCodeSource } from "../sources/claude-code/index.js";
+import { claudeCodeSource, CLAUDE_FORMAT_VERSION } from "../sources/claude-code/index.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   InspectDirError,
@@ -276,6 +276,7 @@ async function buildJobs(items: SessionClassification[]): Promise<SessionUploadJ
     jobs.push({
       sessionId: item.identity.sessionId,
       identityDerivation: item.identity.derivation,
+      formatVersion: CLAUDE_FORMAT_VERSION,
       sourceFilePath: item.ref.absolutePath,
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,

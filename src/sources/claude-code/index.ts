@@ -11,4 +11,4 @@ export const claudeCodeSource: Source = {
   deriveIdentity: (ref, parsed) => deriveClaudeIdentity(ref, parsed.records[0] ?? null),
 };
 
-export { CLAUDE_SOURCE_KIND } from "./discover.js";
+export { CLAUDE_SOURCE_KIND, CLAUDE_FORMAT_VERSION } from "./discover.js";

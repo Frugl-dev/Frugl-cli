@@ -6,6 +6,11 @@ import type { SessionRef } from "../types.js";
 
 export const CLAUDE_SOURCE_KIND = "claude-code";
 
+// Wire-format identifier for the anonymized NDJSON the CLI uploads. The cloud
+// stores this per session and selects its parser from it (see the cloud's
+// uploads/manifest contract). Bump when the on-the-wire record shape changes.
+export const CLAUDE_FORMAT_VERSION = "claude-jsonl-2026-04";
+
 export async function discoverClaudeSessions(opts?: { homeDir?: string }): Promise<SessionRef[]> {
   const home = opts?.homeDir ?? homedir();
   const root = path.join(home, ".claude", "projects");
