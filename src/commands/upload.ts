@@ -84,7 +84,9 @@ export default class Upload extends Command {
         endpointExplicit: endpoint.resolvedFrom !== "default",
       });
 
-      const refs = await claudeCodeSource.discover();
+      const refs = await claudeCodeSource.discover(
+        process.env["POPPI_HOME_DIR"] ? { homeDir: process.env["POPPI_HOME_DIR"] } : undefined,
+      );
       if (refs.length === 0) {
         throw new NoSessionsError(
           `No sessions found under ~/.claude/projects/ (source: ${claudeCodeSource.kind}). Make sure Claude Code has been used on this machine.`,
