@@ -18,15 +18,16 @@ A single **optional** property, `gitContext`, on the manifest's per-session `Man
   "identityDerivation": "native",
   "contentHash": "…64-hex sha256 of the REDACTED PAYLOAD…",
   "byteSize": 14821,
-  "gitContext": {                       // ← OPTIONAL, ADDITIVE (FR-010)
+  "gitContext": {
+    // ← OPTIONAL, ADDITIVE (FR-010)
     "repository": {
       "host": "github.com",
       "owner": "acme",
-      "name": "widgets"
+      "name": "widgets",
     },
-    "branch": "005-cli-pr-metadata",    // omitted on detached HEAD (FR-006)
-    "commitSha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
-  }
+    "branch": "005-cli-pr-metadata", // omitted on detached HEAD (FR-006)
+    "commitSha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  },
 }
 ```
 
@@ -45,13 +46,13 @@ On the **wire** (the manifest-create request body, `POST /api/uploads/manifest`)
 
 ## 3. Field semantics
 
-| Field                 | Required within `gitContext` | Meaning                                                                                                  |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `repository.host`     | yes                          | Remote host only (`github.com`). Credential-stripped; never contains userinfo, scheme, or path (FR-005). |
-| `repository.owner`    | yes                          | Owner/org segment of the `origin` path.                                                                  |
-| `repository.name`     | yes                          | Repo name, trailing `.git` stripped.                                                                     |
-| `branch`              | no                           | Work-time branch (prefers source-recorded; FR-006). **Omitted** on detached HEAD.                        |
-| `commitSha`           | yes                          | Full 40-hex `HEAD` SHA at upload time (FR-007).                                                           |
+| Field              | Required within `gitContext` | Meaning                                                                                                  |
+| ------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `repository.host`  | yes                          | Remote host only (`github.com`). Credential-stripped; never contains userinfo, scheme, or path (FR-005). |
+| `repository.owner` | yes                          | Owner/org segment of the `origin` path.                                                                  |
+| `repository.name`  | yes                          | Repo name, trailing `.git` stripped.                                                                     |
+| `branch`           | no                           | Work-time branch (prefers source-recorded; FR-006). **Omitted** on detached HEAD.                        |
+| `commitSha`        | yes                          | Full 40-hex `HEAD` SHA at upload time (FR-007).                                                          |
 
 **Presence rule (FR-008)**: `gitContext` is present on an entry **iff** `--link-prs` was active for the run **and** resolution succeeded for that session. It is either fully valid (`repository` + `commitSha`, optional `branch`) or absent — never partial.
 

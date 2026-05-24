@@ -19,19 +19,20 @@ The `001` `upload-start` event gains one OPTIONAL object, `gitContext`, summaris
   "expectedSessionCount": 5,
   "redactionPolicyVersion": "v0.1",
   "endpoint": "https://api.poppi.app",
-  "gitContext": {                       // ← OPTIONAL, ADDITIVE (FR-016)
+  "gitContext": {
+    // ← OPTIONAL, ADDITIVE (FR-016)
     "active": true,
-    "sessionsWithContext": 4,           // count of this batch's sessions that resolved a GitContext
-    "repositories": ["acme/widgets", "acme/api"]   // distinct owner/name; credential-/path-free (FR-015)
-  }
+    "sessionsWithContext": 4, // count of this batch's sessions that resolved a GitContext
+    "repositories": ["acme/widgets", "acme/api"], // distinct owner/name; credential-/path-free (FR-015)
+  },
 }
 ```
 
-| Field                          | Type       | Notes                                                                          |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------ |
-| `gitContext.active`            | `boolean`  | Mirrors the effective `--link-prs` opt-in. Present only when the event carries the object at all. |
-| `gitContext.sessionsWithContext` | `integer ≥ 0` | How many of `expectedSessionCount` carry a resolved `gitContext`.            |
-| `gitContext.repositories`      | `string[]` | Distinct `owner/name` strings. NEVER a credential or absolute path (FR-015).   |
+| Field                            | Type          | Notes                                                                                             |
+| -------------------------------- | ------------- | ------------------------------------------------------------------------------------------------- |
+| `gitContext.active`              | `boolean`     | Mirrors the effective `--link-prs` opt-in. Present only when the event carries the object at all. |
+| `gitContext.sessionsWithContext` | `integer ≥ 0` | How many of `expectedSessionCount` carry a resolved `gitContext`.                                 |
+| `gitContext.repositories`        | `string[]`    | Distinct `owner/name` strings. NEVER a credential or absolute path (FR-015).                      |
 
 When `--link-prs` is off, the `gitContext` object is omitted entirely (NOT emitted with `active: false`), keeping the default-off `--json` stream byte-identical to `001` (FR-002, SC-001).
 
@@ -54,19 +55,20 @@ The `001` `UploadFinalSummary` (`command-output.schema.json` → `$defs.UploadFi
   "dashboardUrl": "https://app.poppi.app/u/…",
   "classification": { "discovered": 12, "unchanged": 7, "new": 4, "updated": 1 },
   "limited": { "active": false },
-  "gitContext": {                       // ← OPTIONAL, ADDITIVE (FR-016)
+  "gitContext": {
+    // ← OPTIONAL, ADDITIVE (FR-016)
     "active": true,
     "sessionsWithContext": 4,
-    "repositories": ["acme/widgets", "acme/api"]
-  }
+    "repositories": ["acme/widgets", "acme/api"],
+  },
 }
 ```
 
-| Field                          | Type       | Notes                                                                          |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------ |
-| `gitContext.active`            | `boolean`  | The effective opt-in for the run.                                              |
-| `gitContext.sessionsWithContext` | `integer ≥ 0` | Sessions in the final manifest carrying a resolved `gitContext`.            |
-| `gitContext.repositories`      | `string[]` | Distinct `owner/name`; credential-/path-free (FR-015).                          |
+| Field                            | Type          | Notes                                                            |
+| -------------------------------- | ------------- | ---------------------------------------------------------------- |
+| `gitContext.active`              | `boolean`     | The effective opt-in for the run.                                |
+| `gitContext.sessionsWithContext` | `integer ≥ 0` | Sessions in the final manifest carrying a resolved `gitContext`. |
+| `gitContext.repositories`        | `string[]`    | Distinct `owner/name`; credential-/path-free (FR-015).           |
 
 As with the event, the object is omitted entirely when `--link-prs` is off, preserving the byte-for-byte default path (FR-002).
 

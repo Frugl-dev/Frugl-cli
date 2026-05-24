@@ -58,8 +58,8 @@ Expected, for a session worked in this repo on branch `005-cli-pr-metadata`:
   "<sessionId>": {
     "repository": { "host": "github.com", "owner": "<you>", "name": "poppi-cli" },
     "branch": "005-cli-pr-metadata",
-    "commitSha": "…40-hex HEAD…"
-  }
+    "commitSha": "…40-hex HEAD…",
+  },
 }
 ```
 
@@ -164,16 +164,16 @@ The summary's "PR linking: on (from config)" / "on (from flag)" line shows which
 
 ## 8. Where things live
 
-| Concern                                              | Path                                                       |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| Git-context resolver (the auditable core)            | `src/upload/git-context.ts`                                |
-| Credential-strip + degradation tests                 | `src/upload/git-context.test.ts`                           |
-| Opt-in flag + orchestration                          | `src/commands/upload.ts`                                   |
-| Source surfacing `cwd` / `gitBranch`                  | `src/sources/claude-code/parse.ts`, `src/sources/types.ts` |
-| Pre-upload summary (audit before send)                | `src/upload/summary.ts`                                    |
-| Manifest metadata attach (outside payload)            | `src/upload/pipeline.ts`, `src/cloud/schemas.ts`           |
-| `--json` additive fields                              | `src/upload/progress.ts`                                   |
-| Persisted opt-in config                               | `src/lib/config.ts`                                        |
-| Public contract                                       | `specs/005-cli-pr-metadata/contracts/`                     |
+| Concern                                    | Path                                                       |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| Git-context resolver (the auditable core)  | `src/upload/git-context.ts`                                |
+| Credential-strip + degradation tests       | `src/upload/git-context.test.ts`                           |
+| Opt-in flag + orchestration                | `src/commands/upload.ts`                                   |
+| Source surfacing `cwd` / `gitBranch`       | `src/sources/claude-code/parse.ts`, `src/sources/types.ts` |
+| Pre-upload summary (audit before send)     | `src/upload/summary.ts`                                    |
+| Manifest metadata attach (outside payload) | `src/upload/pipeline.ts`, `src/cloud/schemas.ts`           |
+| `--json` additive fields                   | `src/upload/progress.ts`                                   |
+| Persisted opt-in config                    | `src/lib/config.ts`                                        |
+| Public contract                            | `specs/005-cli-pr-metadata/contracts/`                     |
 
 The spec is `specs/005-cli-pr-metadata/spec.md` and the plan is `specs/005-cli-pr-metadata/plan.md`.

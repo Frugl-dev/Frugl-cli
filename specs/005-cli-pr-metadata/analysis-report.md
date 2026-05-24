@@ -18,41 +18,41 @@ One **MINOR** inconsistency was found and **fixed** during analysis (wire vs. co
 
 ### 2.1 Requirement -> task (every FR is implemented)
 
-| FR | Tasks | FR | Tasks |
-| --- | --- | --- | --- |
-| FR-001 | T007, T014 | FR-009 | T006, T022, T024 |
-| FR-002 | T008, T009, T010 | FR-010 | T003, T013, T016 |
-| FR-003 | T004, T005, T007, T014 | FR-011 | T002, T016, T026 |
-| FR-004 | T002, T006, T015 | FR-012 | T013, T027, contracts/ |
-| FR-005 | T006, T012 | FR-013 | T017 |
-| FR-006 | T002, T006, T011 | FR-014 | T018, T019, T020 |
-| FR-007 | T006, T011 | FR-015 | T010, T012, T017, T019 |
-| FR-008 | T006, T021, T022, T023 | FR-016 | T025, T027 |
+| FR     | Tasks                  | FR     | Tasks                  |
+| ------ | ---------------------- | ------ | ---------------------- |
+| FR-001 | T007, T014             | FR-009 | T006, T022, T024       |
+| FR-002 | T008, T009, T010       | FR-010 | T003, T013, T016       |
+| FR-003 | T004, T005, T007, T014 | FR-011 | T002, T016, T026       |
+| FR-004 | T002, T006, T015       | FR-012 | T013, T027, contracts/ |
+| FR-005 | T006, T012             | FR-013 | T017                   |
+| FR-006 | T002, T006, T011       | FR-014 | T018, T019, T020       |
+| FR-007 | T006, T011             | FR-015 | T010, T012, T017, T019 |
+| FR-008 | T006, T021, T022, T023 | FR-016 | T025, T027             |
 
 All 16 FRs covered.
 
 ### 2.2 Success criterion -> test task
 
-| SC | Test task(s) |
-| --- | --- |
-| SC-001 (default-off provable) | T008 (filesystem + network spy, resolver never entered) |
-| SC-002 (opt-in completeness) | T011 (resolution matrix) |
-| SC-003 (credential fail-closed) | T012, T018 |
-| SC-004 (auditable, 0 bytes) | T018, T020 |
-| SC-005 (graceful degradation) | T021, T022 |
-| SC-006 (additive, backward-compat) | T013, T027 |
-| SC-007 (no ledger churn) | T026 |
+| SC                                 | Test task(s)                                            |
+| ---------------------------------- | ------------------------------------------------------- |
+| SC-001 (default-off provable)      | T008 (filesystem + network spy, resolver never entered) |
+| SC-002 (opt-in completeness)       | T011 (resolution matrix)                                |
+| SC-003 (credential fail-closed)    | T012, T018                                              |
+| SC-004 (auditable, 0 bytes)        | T018, T020                                              |
+| SC-005 (graceful degradation)      | T021, T022                                              |
+| SC-006 (additive, backward-compat) | T013, T027                                              |
+| SC-007 (no ledger churn)           | T026                                                    |
 
 All 7 SCs have a dedicated, test-first task.
 
 ### 2.3 User story -> phase + independent test
 
-| US | Priority | Phase | Independent test present |
-| --- | --- | --- | --- |
-| US2 (default-off) | P1 | Phase 3 (verified first as the safety gate) | yes |
-| US1 (opt-in / MVP) | P1 | Phase 4 | yes |
-| US3 (audit before send) | P1 | Phase 5 | yes |
-| US4 (graceful degradation) | P2 | Phase 6 | yes |
+| US                         | Priority | Phase                                       | Independent test present |
+| -------------------------- | -------- | ------------------------------------------- | ------------------------ |
+| US2 (default-off)          | P1       | Phase 3 (verified first as the safety gate) | yes                      |
+| US1 (opt-in / MVP)         | P1       | Phase 4                                     | yes                      |
+| US3 (audit before send)    | P1       | Phase 5                                     | yes                      |
+| US4 (graceful degradation) | P2       | Phase 6                                     | yes                      |
 
 All 4 stories covered. The deliberate ordering (US2 default-off proven before US1 opt-in is wired) is documented in the tasks header and the dependency section, and is justified: a default-path privacy regression is the highest-severity failure for this feature.
 

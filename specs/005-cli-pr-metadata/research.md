@@ -23,7 +23,7 @@ Each entry follows the **Decision / Rationale / Alternatives considered** format
 **Alternatives considered**:
 
 - _Use `process.cwd()` at upload time_ — rejected: that is the directory the user ran `poppi upload` from, almost never the session's repo; it would mislabel every session in a batch with one repo.
-- _Re-derive the repo from the JSONL file's path under `~/.claude/projects/`_ — rejected: that path is a slug of the *project directory name*, lossy and not a real filesystem path; the recorded `cwd` is authoritative.
+- _Re-derive the repo from the JSONL file's path under `~/.claude/projects/`_ — rejected: that path is a slug of the _project directory name_, lossy and not a real filesystem path; the recorded `cwd` is authoritative.
 - _Require the branch from the live repo only_ — rejected: violates FR-006's preference for the work-time branch and would mislabel sessions whose repo has since switched branches.
 
 ---
@@ -43,7 +43,7 @@ Each entry follows the **Decision / Rationale / Alternatives considered** format
 
 - _`git remote get-url origin` + `git rev-parse HEAD` + `git symbolic-ref`_ — rejected: pulls in git's full config/alias/hook machinery, can't promise "no hooks" by construction, and needs `git` installed. The convenience is not worth weakening the central read-only guarantee of a trust-gate CLI.
 - _A third-party "read git repo" library (e.g. isomorphic-git)_ — rejected: a heavy new dependency in a public-OSS audited binary for a job that is a few file reads; contrary to `001`'s zero-extra-dep posture (`001` R-3/R-4/R-5).
-- _Worktree/submodule edge cases via `.git` being a file (gitdir pointer)_ — handled: when `.git` is a *file* (`gitdir: <path>`), follow the pointer once to the real git dir; if that fails to resolve cleanly, fail-closed to "no context" (FR-008).
+- _Worktree/submodule edge cases via `.git` being a file (gitdir pointer)_ — handled: when `.git` is a _file_ (`gitdir: <path>`), follow the pointer once to the real git dir; if that fails to resolve cleanly, fail-closed to "no context" (FR-008).
 
 ---
 
@@ -83,7 +83,7 @@ If the URL does not parse into a clean `host` + non-empty `owner` + non-empty `n
 **Alternatives considered**:
 
 - _Record the full remote URL and "redact" the credential in place_ — rejected: a regex-redact-in-place leaves the original string in memory near the output and risks a missed pattern; constructing fresh fields is strictly safer and is what fail-closed demands.
-- _Hash the repo identity for privacy_ — rejected: defeats the entire feature; the cloud must match a *real* GitHub repo (spec `checklists/requirements.md`). Safety comes from credential-stripping + opt-in + auditability, not from hashing.
+- _Hash the repo identity for privacy_ — rejected: defeats the entire feature; the cloud must match a _real_ GitHub repo (spec `checklists/requirements.md`). Safety comes from credential-stripping + opt-in + auditability, not from hashing.
 - _Support a configurable remote-selection policy now_ — rejected: out of scope per spec ("Non-`origin` remote selection policy beyond 'prefer origin'" is follow-up). v1 is "prefer origin", documented and deterministic.
 
 ---
@@ -133,7 +133,7 @@ If the URL does not parse into a clean `host` + non-empty `owner` + non-empty `n
 
 - A boolean flag matches the spec's surface exactly and mirrors `001`'s flag conventions (`--dry-run`, `--confirm`, `--json`).
 - "Explicit flag wins over persisted config" is the spec's FR-003 requirement and the principle-of-least-surprise default for CLI precedence (mirrors `001` R-13's flag > env precedence).
-- Gating the *entire* resolution path behind the effective opt-in (rather than resolving-then-discarding) is what makes SC-001 provable: a filesystem spy sees zero `.git` reads in the default path. Resolving and discarding would technically leak repository reads even when off.
+- Gating the _entire_ resolution path behind the effective opt-in (rather than resolving-then-discarding) is what makes SC-001 provable: a filesystem spy sees zero `.git` reads in the default path. Resolving and discarding would technically leak repository reads even when off.
 
 **Alternatives considered**:
 
@@ -156,7 +156,7 @@ No new exit code is introduced (spec Assumption "No new exit codes").
 
 - Real backlogs are messy (scratch dirs, deleted repos, detached HEAD, no remote); aborting or warning per session would make the flag unusable over a month of history (US4 rationale).
 - Matches the cloud's own contract: a session with no PR metadata is excluded from the merge-rate denominator, not treated as an error (cloud `005` Edge Cases / FR-028).
-- Honest-failures (Principle VI) is satisfied by surfacing the two *global* degradations the user genuinely needs to know about, while not spamming a notice per messy session (which would be noise, not signal).
+- Honest-failures (Principle VI) is satisfied by surfacing the two _global_ degradations the user genuinely needs to know about, while not spamming a notice per messy session (which would be noise, not signal).
 
 **Alternatives considered**:
 
@@ -176,7 +176,7 @@ No new exit code is introduced (spec Assumption "No new exit codes").
 **Rationale**:
 
 - This is the `001` User Story 2 trust contract, extended to the one field the CLI does not redact. If the user cannot see the repo/branch/commit before they leave the machine, opt-in is not meaningful consent (spec US3 rationale).
-- Presenting git context *distinctly* from the redacted payload makes the "redacted vs. intentionally sent in clear" distinction unambiguous (FR-014 / US3 scenario 3).
+- Presenting git context _distinctly_ from the redacted payload makes the "redacted vs. intentionally sent in clear" distinction unambiguous (FR-014 / US3 scenario 3).
 - SC-004 asserts 100% of would-be-transmitted git-context values appear in the inspection output and a network spy sees zero upload-endpoint hits; SC-003 asserts a planted token appears nowhere in that output.
 
 **Alternatives considered**:
@@ -210,17 +210,17 @@ All additions are strictly additive: existing required fields and shapes are unc
 
 ## Summary of locked decisions
 
-| #    | Decision                                                                                  | Drives                |
-| ---- | ----------------------------------------------------------------------------------------- | --------------------- |
-| R-1  | Working dir from JSONL `cwd`; branch from recorded `gitBranch`                             | FR-004, FR-006        |
-| R-2  | Read `.git/` files directly; never spawn `git` (no hooks, no git dependency)              | FR-004, FR-007, FR-009|
-| R-3  | Ascend from `cwd` to enclosing repo root; memoise per `cwd`                               | FR-004, perf          |
-| R-4  | Prefer `origin`; parse to host+owner/name; strip credentials; unparseable → omit          | FR-005, FR-015, SC-003|
-| R-5  | Prefer recorded branch, else HEAD; detached → commit-only; full SHA via loose/packed refs | FR-006, FR-007        |
-| R-6  | Attach as manifest metadata, outside payload/anonymizer/redactedHashHex                   | FR-010, FR-011, SC-007|
-| R-7  | `--link-prs` flag default-off; flag > persisted `linkPrs` config > false; off = no reads  | FR-001, FR-002, FR-003|
-| R-8  | Per-session best-effort non-fatal; two global notices; no new exit code                   | FR-008, FR-009        |
-| R-9  | Summary names repos+counts; inspect writes context distinctly; path-/credential-free      | FR-013, FR-014, FR-015|
-| R-10 | Additive `gitContext` on `upload-start` + final summary `--json`                          | FR-016                |
+| #    | Decision                                                                                  | Drives                 |
+| ---- | ----------------------------------------------------------------------------------------- | ---------------------- |
+| R-1  | Working dir from JSONL `cwd`; branch from recorded `gitBranch`                            | FR-004, FR-006         |
+| R-2  | Read `.git/` files directly; never spawn `git` (no hooks, no git dependency)              | FR-004, FR-007, FR-009 |
+| R-3  | Ascend from `cwd` to enclosing repo root; memoise per `cwd`                               | FR-004, perf           |
+| R-4  | Prefer `origin`; parse to host+owner/name; strip credentials; unparseable → omit          | FR-005, FR-015, SC-003 |
+| R-5  | Prefer recorded branch, else HEAD; detached → commit-only; full SHA via loose/packed refs | FR-006, FR-007         |
+| R-6  | Attach as manifest metadata, outside payload/anonymizer/redactedHashHex                   | FR-010, FR-011, SC-007 |
+| R-7  | `--link-prs` flag default-off; flag > persisted `linkPrs` config > false; off = no reads  | FR-001, FR-002, FR-003 |
+| R-8  | Per-session best-effort non-fatal; two global notices; no new exit code                   | FR-008, FR-009         |
+| R-9  | Summary names repos+counts; inspect writes context distinctly; path-/credential-free      | FR-013, FR-014, FR-015 |
+| R-10 | Additive `gitContext` on `upload-start` + final summary `--json`                          | FR-016                 |
 
 No `NEEDS CLARIFICATION` markers remain in the plan's Technical Context.

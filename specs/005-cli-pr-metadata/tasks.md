@@ -4,7 +4,7 @@
 
 **Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/ ✅
 
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story. Because this feature's central guarantee is *default-off changes nothing*, the foundational phase delivers the opt-in gate and the resolver before any story wires them, and **User Story 2 (default-off)** is verified first — it must pass before User Story 1's opt-in path is trusted. Tests are written before the implementation they cover, matching `001/tasks.md`.
+**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story. Because this feature's central guarantee is _default-off changes nothing_, the foundational phase delivers the opt-in gate and the resolver before any story wires them, and **User Story 2 (default-off)** is verified first — it must pass before User Story 1's opt-in path is trusted. Tests are written before the implementation they cover, matching `001/tasks.md`.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -38,7 +38,7 @@
   - branch: prefer `recordedBranch`, else `.git/HEAD` ref; detached HEAD → omit branch (FR-006/R-5)
   - commit: resolve full 40-hex HEAD via loose ref then `.git/packed-refs`, or raw SHA in HEAD (FR-007/R-5)
   - NEVER throw: every failure path returns `unresolved`/`git-unavailable` (FR-008/009/R-8)
-  in src/upload/git-context.ts
+    in src/upload/git-context.ts
 - [ ] T007 [P] Add a per-invocation opt-in resolver helper (`EffectiveLinkPrs`) — explicit `--link-prs` flag wins, else persisted `linkPrs` config, else `false`; record `source: 'flag'|'config'|'default'` per data-model.md §3 / FR-001 / FR-003 / R-7 (co-locate in src/commands/upload.ts or a small src/upload/link-prs.ts helper) in src/commands/upload.ts
 
 **Checkpoint**: Resolver + opt-in gate + config exist and are unit-testable; nothing is wired into the default upload path yet, so `001` behaviour is still byte-for-byte unchanged.
@@ -183,31 +183,31 @@
 
 ## Requirement & success-criterion coverage map
 
-| FR / SC | Covered by |
-| --- | --- |
-| FR-001 (opt-in flag default-off) | T007, T014 |
-| FR-002 (off ⇒ zero reads/fields) | T008, T009, T010 |
-| FR-003 (persisted opt-in, flag wins) | T004, T005, T007, T014 |
-| FR-004 (resolve from recorded cwd, read-only) | T002, T006, T015 |
-| FR-005 (host+owner/name, credential strip, fail-closed) | T006, T012 |
-| FR-006 (branch: prefer recorded; detached → omit) | T002, T006, T011 |
-| FR-007 (full HEAD commit SHA) | T006, T011 |
-| FR-008 (best-effort, non-fatal per session) | T006, T021, T022, T023 |
-| FR-009 (git unavailable → one notice, proceed) | T006, T022, T024 |
-| FR-010 (additive `gitContext` on ManifestEntry) | T003, T013, T016 |
-| FR-011 (metadata, not payload; no hash churn) | T002, T016, T026 |
-| FR-012 (stable public contract) | T013, T027, contracts/ |
-| FR-013 (pre-upload summary names repos/counts) | T017 |
-| FR-014 (`--dry-run --inspect` shows it, sends nothing) | T018, T019, T020 |
-| FR-015 (no credential/path in any output) | T010, T012, T017, T019 |
-| FR-016 (additive `--json` event + summary) | T025, T027 |
-| SC-001 (default-off provable) | T008 |
-| SC-002 (opt-in completeness ≥95%) | T011 |
-| SC-003 (credential safety, fail-closed) | T012, T018 |
-| SC-004 (auditable before send, 0 bytes) | T018, T020 |
-| SC-005 (graceful degradation) | T021, T022 |
-| SC-006 (additive, backward-compatible) | T013, T027 |
-| SC-007 (no ledger churn) | T026 |
+| FR / SC                                                 | Covered by             |
+| ------------------------------------------------------- | ---------------------- |
+| FR-001 (opt-in flag default-off)                        | T007, T014             |
+| FR-002 (off ⇒ zero reads/fields)                        | T008, T009, T010       |
+| FR-003 (persisted opt-in, flag wins)                    | T004, T005, T007, T014 |
+| FR-004 (resolve from recorded cwd, read-only)           | T002, T006, T015       |
+| FR-005 (host+owner/name, credential strip, fail-closed) | T006, T012             |
+| FR-006 (branch: prefer recorded; detached → omit)       | T002, T006, T011       |
+| FR-007 (full HEAD commit SHA)                           | T006, T011             |
+| FR-008 (best-effort, non-fatal per session)             | T006, T021, T022, T023 |
+| FR-009 (git unavailable → one notice, proceed)          | T006, T022, T024       |
+| FR-010 (additive `gitContext` on ManifestEntry)         | T003, T013, T016       |
+| FR-011 (metadata, not payload; no hash churn)           | T002, T016, T026       |
+| FR-012 (stable public contract)                         | T013, T027, contracts/ |
+| FR-013 (pre-upload summary names repos/counts)          | T017                   |
+| FR-014 (`--dry-run --inspect` shows it, sends nothing)  | T018, T019, T020       |
+| FR-015 (no credential/path in any output)               | T010, T012, T017, T019 |
+| FR-016 (additive `--json` event + summary)              | T025, T027             |
+| SC-001 (default-off provable)                           | T008                   |
+| SC-002 (opt-in completeness ≥95%)                       | T011                   |
+| SC-003 (credential safety, fail-closed)                 | T012, T018             |
+| SC-004 (auditable before send, 0 bytes)                 | T018, T020             |
+| SC-005 (graceful degradation)                           | T021, T022             |
+| SC-006 (additive, backward-compatible)                  | T013, T027             |
+| SC-007 (no ledger churn)                                | T026                   |
 
 ---
 

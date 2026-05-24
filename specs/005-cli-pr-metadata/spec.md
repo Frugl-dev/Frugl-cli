@@ -71,7 +71,7 @@ A privacy-conscious developer runs `poppi upload` as usual, without any new flag
 
 Before trusting the feature, a security-conscious developer runs `poppi upload --link-prs --dry-run --inspect`. The CLI computes the git context for every selected session and writes it into the inspection output alongside the redacted payload, transmitting nothing. The developer can read, per session, exactly which repository, branch, and commit will be reported, and confirm no embedded credentials, no absolute paths, and no unexpected repositories are present.
 
-**Why this priority**: This is the same trust contract as `001` User Story 2, extended to the new metadata. Because git context is the one thing the CLI sends that is *not* run through the redactor, the ability to inspect it before sending is what keeps the feature honest. If a user cannot see the repo/branch/commit values before they leave the machine, opt-in is not meaningful consent.
+**Why this priority**: This is the same trust contract as `001` User Story 2, extended to the new metadata. Because git context is the one thing the CLI sends that is _not_ run through the redactor, the ability to inspect it before sending is what keeps the feature honest. If a user cannot see the repo/branch/commit values before they leave the machine, opt-in is not meaningful consent.
 
 **Independent Test**: For a batch of sessions across two repositories, `poppi upload --link-prs --dry-run --inspect` writes an inspection artifact in which every git-context value that would be transmitted appears in human-readable form, transmits zero bytes to the network, and a textual search of the inspection output for a planted credential token in a repo remote URL returns zero hits.
 
@@ -105,7 +105,7 @@ A developer runs `poppi upload --link-prs` over a month of sessions, some worked
 
 - **Working directory recorded in the session ≠ a git repo root** (it's a subdirectory): the CLI MUST resolve upward to the enclosing repository root, the same way git itself does; the recorded repository identity is the enclosing repo.
 - **Multiple remotes configured** (`origin`, `upstream`, a fork): the CLI MUST prefer `origin`; the selection rule is documented so the reported repository is deterministic.
-- **Non-GitHub remote** (GitLab, Bitbucket, self-hosted): the git-context shape is forge-agnostic (host + `owner/name` + branch + commit), so the CLI records it regardless of host. Whether the cloud can *match* a PR/MR for a non-GitHub host is the cloud's concern (GitHub-first per cloud 005); the CLI does not filter by host.
+- **Non-GitHub remote** (GitLab, Bitbucket, self-hosted): the git-context shape is forge-agnostic (host + `owner/name` + branch + commit), so the CLI records it regardless of host. Whether the cloud can _match_ a PR/MR for a non-GitHub host is the cloud's concern (GitHub-first per cloud 005); the CLI does not filter by host.
 - **Detached HEAD** (no branch): the CLI records the commit SHA and omits the branch; a commit alone may still let the cloud match a PR.
 - **Shallow clone / grafted history**: the commit SHA is still valid for matching; no special handling needed.
 - **Branch name contains a ticket id or codename**: this is sent verbatim when opted in — the user consented by enabling `--link-prs`. The behaviour is documented so it is not a surprise.

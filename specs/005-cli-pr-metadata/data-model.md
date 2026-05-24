@@ -28,13 +28,13 @@ interface GitContext {
 }
 ```
 
-| Field                | Type     | Source                                   | Notes                                                                                       |
-| -------------------- | -------- | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `repository.host`    | `string` | `origin` URL, credential-stripped (R-4)  | host only; never carries userinfo. FR-005.                                                  |
-| `repository.owner`   | `string` | `origin` URL path segment (R-4)          | non-empty; fail-closed omit of the whole `GitContext` if not parseable (FR-005).            |
-| `repository.name`    | `string` | `origin` URL path segment (R-4)          | non-empty; trailing `.git` stripped.                                                        |
-| `branch`             | `string?`| recorded `gitBranch`, else `.git/HEAD`   | omitted on detached HEAD (FR-006). Sent verbatim when present (may embed ticket id/codename, by consent). |
-| `commitSha`          | `string` | `.git/HEAD` → loose/packed ref (R-5)     | full 40-hex (FR-007). Required whenever a `GitContext` exists.                               |
+| Field              | Type      | Source                                  | Notes                                                                                                     |
+| ------------------ | --------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `repository.host`  | `string`  | `origin` URL, credential-stripped (R-4) | host only; never carries userinfo. FR-005.                                                                |
+| `repository.owner` | `string`  | `origin` URL path segment (R-4)         | non-empty; fail-closed omit of the whole `GitContext` if not parseable (FR-005).                          |
+| `repository.name`  | `string`  | `origin` URL path segment (R-4)         | non-empty; trailing `.git` stripped.                                                                      |
+| `branch`           | `string?` | recorded `gitBranch`, else `.git/HEAD`  | omitted on detached HEAD (FR-006). Sent verbatim when present (may embed ticket id/codename, by consent). |
+| `commitSha`        | `string`  | `.git/HEAD` → loose/packed ref (R-5)    | full 40-hex (FR-007). Required whenever a `GitContext` exists.                                            |
 
 **Validation** (enforced in `git-context.ts`, and re-validated as the public contract via the schema in `contracts/`):
 
@@ -57,15 +57,24 @@ The internal return shape of the resolver, so the orchestrator can distinguish "
 ```ts
 type GitContextResolution =
   | { kind: "resolved"; gitContext: GitContext }
-  | { kind: "unresolved"; reason: "no-cwd" | "missing-dir" | "not-a-repo" | "no-remote" | "unparseable-remote" | "no-commit" }
+  | {
+      kind: "unresolved";
+      reason:
+        | "no-cwd"
+        | "missing-dir"
+        | "not-a-repo"
+        | "no-remote"
+        | "unparseable-remote"
+        | "no-commit";
+    }
   | { kind: "git-unavailable" }; // wholesale inability to read .git anywhere (FR-009 signal)
 ```
 
-| Variant            | Meaning                                                                              | Effect                                              |
-| ------------------ | ------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `resolved`         | A valid `GitContext` was produced.                                                   | Attached to the session's manifest entry.           |
-| `unresolved`       | Best-effort miss (FR-008): no cwd, dir gone, not a repo, no remote, unparseable, etc.| Session carries no context; batch proceeds.         |
-| `git-unavailable`  | The host cannot inspect git at all (FR-009 / US4 scenario 5).                         | Drives the single global "skipped" notice.          |
+| Variant           | Meaning                                                                               | Effect                                      |
+| ----------------- | ------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `resolved`        | A valid `GitContext` was produced.                                                    | Attached to the session's manifest entry.   |
+| `unresolved`      | Best-effort miss (FR-008): no cwd, dir gone, not a repo, no remote, unparseable, etc. | Session carries no context; batch proceeds. |
+| `git-unavailable` | The host cannot inspect git at all (FR-009 / US4 scenario 5).                         | Drives the single global "skipped" notice.  |
 
 **Rationale for the `reason` enum**: it is internal-only (never transmitted; FR-015), used for tests asserting the graceful-degradation matrix (SC-005) and to keep the orchestrator's notice logic explicit rather than guessing from a bare `undefined`.
 
@@ -105,10 +114,10 @@ interface ParsedSession<TRecord = unknown> {
 }
 ```
 
-| Field            | Type      | Source (claude-code)                 | Notes                                                              |
-| ---------------- | --------- | ------------------------------------ | ------------------------------------------------------------------ |
-| `cwd`            | `string?` | first JSONL record with `cwd`        | absolute path; consumed transiently by the resolver, never sent.   |
-| `recordedBranch` | `string?` | first JSONL record with `gitBranch`  | preferred branch per FR-006; may be empty/absent → fall back to HEAD.|
+| Field            | Type      | Source (claude-code)                | Notes                                                                 |
+| ---------------- | --------- | ----------------------------------- | --------------------------------------------------------------------- |
+| `cwd`            | `string?` | first JSONL record with `cwd`       | absolute path; consumed transiently by the resolver, never sent.      |
+| `recordedBranch` | `string?` | first JSONL record with `gitBranch` | preferred branch per FR-006; may be empty/absent → fall back to HEAD. |
 
 **Additive invariant**: these are optional; existing `ParsedSession` consumers (the anonymizer, classifier) are unaffected. The anonymizer does **not** read `cwd`/`recordedBranch` (they are not in `records`), so they never enter the redacted payload or `redactedHashHex` (FR-011).
 
@@ -198,12 +207,12 @@ ManifestEntry.gitContext?  (public contract, additive — FR-010, SC-006)
 
 ## Where validation lives
 
-| Surface                                              | Tool                                  | File                              |
-| ---------------------------------------------------- | ------------------------------------- | --------------------------------- |
-| `GitContext` shape + fail-closed credential-strip    | plain TS + unit assertions            | `src/upload/git-context.ts`       |
-| Manifest-create `git_context` wire field             | `zod` (additive optional)             | `src/cloud/schemas.ts`            |
-| Public manifest contract (`gitContext` optional)     | JSON-schema + backward-compat test    | `specs/005-cli-pr-metadata/contracts/` |
-| Persisted `linkPrs` config on read                   | `zod`; mismatch → defaults            | `src/lib/config.ts`               |
-| `--link-prs` flag parsing + opt-in precedence        | oclif flag + `EffectiveLinkPrs` rule  | `src/commands/upload.ts`          |
+| Surface                                           | Tool                                 | File                                   |
+| ------------------------------------------------- | ------------------------------------ | -------------------------------------- |
+| `GitContext` shape + fail-closed credential-strip | plain TS + unit assertions           | `src/upload/git-context.ts`            |
+| Manifest-create `git_context` wire field          | `zod` (additive optional)            | `src/cloud/schemas.ts`                 |
+| Public manifest contract (`gitContext` optional)  | JSON-schema + backward-compat test   | `specs/005-cli-pr-metadata/contracts/` |
+| Persisted `linkPrs` config on read                | `zod`; mismatch → defaults           | `src/lib/config.ts`                    |
+| `--link-prs` flag parsing + opt-in precedence     | oclif flag + `EffectiveLinkPrs` rule | `src/commands/upload.ts`               |
 
 The fail-closed credential-strip and the no-ledger-churn invariant are the two release-blocking behaviours; both are pinned by tests (SC-003, SC-007).
