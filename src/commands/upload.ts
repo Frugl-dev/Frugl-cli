@@ -16,9 +16,15 @@ import {
 } from "../ledger/classify.js";
 import { Ledger } from "../ledger/ledger.js";
 import { ResumeStore } from "../upload/resume.js";
-import { buildUploadSummary, formatSummaryForHuman } from "../upload/summary.js";
+import {
+  buildUploadSummary,
+  formatSummaryForHuman,
+  type PrLinkingSummary,
+} from "../upload/summary.js";
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
+import { resolveGitContext, type GitContext } from "../upload/git-context.js";
+import { resolveEffectiveLinkPrs, type EffectiveLinkPrs } from "../upload/link-prs.js";
 import { claudeCodeSource, CLAUDE_FORMAT_VERSION } from "../sources/claude-code/index.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
@@ -30,6 +36,7 @@ import {
 } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
+import { getLinkPrs } from "../lib/config.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 
 export default class Upload extends Command {
@@ -52,6 +59,11 @@ export default class Upload extends Command {
     limit: Flags.integer({
       description: "Maximum number of (new ∪ updated) sessions to upload.",
     }),
+    "link-prs": Flags.boolean({
+      // No default: undefined = not passed (fall back to persisted config); true = passed.
+      description:
+        "Opt in to attaching credential-stripped git context (repo, branch, commit) so sessions can be linked to PRs. Default off.",
+    }),
     json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
   };
 
@@ -59,6 +71,9 @@ export default class Upload extends Command {
     const { flags } = await this.parse(Upload);
     const mode = resolveOutputMode({ json: flags.json });
     const reporter = createProgressReporter(mode);
+    // Resolved opt-in: explicit flag wins, else persisted config, else off (R-7).
+    // When inactive, the git-context resolver is never entered (FR-002/SC-001).
+    const linkPrs = resolveEffectiveLinkPrs(flags["link-prs"], getLinkPrs());
 
     if (flags.inspect && !flags["dry-run"]) {
       this.bail(new UsageError("--inspect requires --dry-run."));
@@ -117,12 +132,28 @@ export default class Upload extends Command {
       ]);
       const willUpload = flags.limit !== undefined ? candidates.slice(0, flags.limit) : candidates;
 
+      // Opt-in git-context resolution over the willUpload batch ONLY (after
+      // --limit). Hard-gated: when inactive, the resolver is never entered, no
+      // cwd/.git is read, and no git field is attached or emitted (FR-002/SC-001).
+      const gitBySession = new Map<string, GitContext>();
+      let prLinking: PrLinkingSummary | undefined;
+      if (linkPrs.active) {
+        const repositories = await this.resolveBatchGitContext(willUpload, gitBySession, linkPrs);
+        prLinking = {
+          active: true,
+          source: linkPrs.source,
+          sessionsWithContext: gitBySession.size,
+          repositories,
+        };
+      }
+
       const summary = buildUploadSummary({
         buckets,
         willUpload,
         policyVersion: POLICY_VERSION,
         endpoint,
         sourceKind: claudeCodeSource.kind,
+        ...(prLinking ? { prLinking } : {}),
         ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
       });
 
@@ -132,7 +163,7 @@ export default class Upload extends Command {
 
       if (flags["dry-run"]) {
         if (flags.inspect) {
-          await writeInspectionDir(flags.inspect, !!flags.force, willUpload, summary);
+          await writeInspectionDir(flags.inspect, !!flags.force, willUpload, summary, gitBySession);
         }
         const result = {
           command: "upload" as const,
@@ -151,6 +182,15 @@ export default class Upload extends Command {
             updated: summary.updated,
           },
           limited: summary.limited ?? { active: false },
+          ...(prLinking
+            ? {
+                gitContext: {
+                  active: true,
+                  sessionsWithContext: prLinking.sessionsWithContext,
+                  repositories: prLinking.repositories,
+                },
+              }
+            : {}),
           dryRun: true,
         };
         process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -195,7 +235,14 @@ export default class Upload extends Command {
         }
       }
 
-      const jobs = await buildJobs(willUpload);
+      const jobs = await buildJobs(willUpload, gitBySession);
+      const gitContextEvent = prLinking
+        ? {
+            active: true,
+            sessionsWithContext: prLinking.sessionsWithContext,
+            repositories: prLinking.repositories,
+          }
+        : undefined;
       let pipelineResult;
       try {
         pipelineResult = await runUploadPipeline({
@@ -210,6 +257,7 @@ export default class Upload extends Command {
           sourceKind: claudeCodeSource.kind,
           endpointUrl: endpoint.url,
           userId: session.userId,
+          ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
         });
       } catch (err) {
         if (err instanceof StaleResumeError) {
@@ -227,6 +275,7 @@ export default class Upload extends Command {
             sourceKind: claudeCodeSource.kind,
             endpointUrl: endpoint.url,
             userId: session.userId,
+            ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
           });
         } else {
           throw err;
@@ -251,6 +300,15 @@ export default class Upload extends Command {
           updated: summary.updated,
         },
         limited: summary.limited ?? { active: false },
+        ...(prLinking
+          ? {
+              gitContext: {
+                active: true,
+                sessionsWithContext: prLinking.sessionsWithContext,
+                repositories: prLinking.repositories,
+              },
+            }
+          : {}),
       };
       process.stdout.write(`${JSON.stringify(finalSummary)}\n`);
     } catch (err) {
@@ -268,13 +326,68 @@ export default class Upload extends Command {
     }
     process.exit(EXIT.GENERIC_FAILURE);
   }
+
+  // Resolve git context for each (new ∪ updated) session, memoised per distinct
+  // (cwd, recordedBranch). Populates `gitBySession` with resolved contexts and
+  // returns the distinct repo list. Emits at most one global notice each for the
+  // two best-effort degradations (FR-008/FR-009/R-8); never fatal, no new exit code.
+  private async resolveBatchGitContext(
+    willUpload: SessionClassification[],
+    gitBySession: Map<string, GitContext>,
+    linkPrs: EffectiveLinkPrs,
+  ): Promise<string[]> {
+    const memo = new Map<string, Awaited<ReturnType<typeof resolveGitContext>>>();
+    const repositories = new Set<string>();
+    let attempted = 0;
+    let gitUnavailable = 0;
+
+    for (const item of willUpload) {
+      if (item.kind === "unchanged") continue;
+      attempted += 1;
+      const cwd = item.parsed.cwd;
+      const recordedBranch = item.parsed.recordedBranch;
+      const key = `${cwd ?? ""} ${recordedBranch ?? ""}`;
+      let resolution = memo.get(key);
+      if (!resolution) {
+        resolution = await resolveGitContext({
+          ...(cwd !== undefined ? { cwd } : {}),
+          ...(recordedBranch !== undefined ? { recordedBranch } : {}),
+        });
+        memo.set(key, resolution);
+      }
+      if (resolution.kind === "resolved") {
+        gitBySession.set(item.identity.sessionId, resolution.gitContext);
+        const { owner, name } = resolution.gitContext.repository;
+        repositories.add(`${owner}/${name}`);
+      } else if (resolution.kind === "git-unavailable") {
+        gitUnavailable += 1;
+      }
+    }
+
+    void linkPrs; // opt-in already confirmed active by the caller
+    if (attempted > 0 && gitUnavailable === attempted) {
+      process.stderr.write(
+        "poppi: PR linking was on, but git could not be inspected; proceeding as if --link-prs were off.\n",
+      );
+    } else if (gitBySession.size === 0) {
+      process.stderr.write(
+        "poppi: PR linking was on, but no sessions had resolvable git context.\n",
+      );
+    }
+
+    return [...repositories].sort();
+  }
 }
 
-async function buildJobs(items: SessionClassification[]): Promise<SessionUploadJob[]> {
+async function buildJobs(
+  items: SessionClassification[],
+  gitBySession: Map<string, GitContext>,
+): Promise<SessionUploadJob[]> {
   const jobs: SessionUploadJob[] = [];
   for (const item of items) {
     if (item.kind === "unchanged") continue;
     const raw = await rawFileHash(item.ref.absolutePath);
+    const gitContext = gitBySession.get(item.identity.sessionId);
     jobs.push({
       sessionId: item.identity.sessionId,
       identityDerivation: item.identity.derivation,
@@ -282,6 +395,7 @@ async function buildJobs(items: SessionClassification[]): Promise<SessionUploadJ
       sourceFilePath: item.ref.absolutePath,
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
+      ...(gitContext ? { gitContext } : {}),
     });
   }
   return jobs;
@@ -292,6 +406,7 @@ async function writeInspectionDir(
   force: boolean,
   items: SessionClassification[],
   summary: ReturnType<typeof buildUploadSummary>,
+  gitBySession: Map<string, GitContext>,
 ): Promise<void> {
   const target = path.resolve(dir);
   if (existsSync(target) && !force) {
@@ -331,6 +446,30 @@ async function writeInspectionDir(
     path.join(target, "redaction-summary.json"),
     JSON.stringify(summaryFile, null, 2),
   );
+
+  // Opt-in git context is written DISTINCTLY from the redacted payloads, clearly
+  // labelled as intentionally-in-clear, so a reviewer can audit exactly what would
+  // be transmitted before any byte leaves the machine (FR-014). The GitContext is
+  // credential-/path-free by construction (FR-015).
+  if (gitBySession.size > 0) {
+    const gitSessions = items
+      .filter((item) => item.kind !== "unchanged" && gitBySession.has(item.identity.sessionId))
+      .map((item) => ({
+        sessionId: item.identity.sessionId,
+        gitContext: gitBySession.get(item.identity.sessionId),
+      }));
+    await writeFile(
+      path.join(target, "git-context.json"),
+      JSON.stringify(
+        {
+          note: "Opt-in (--link-prs) git context — intentionally sent in clear, NOT redacted. Credential-free and path-free by construction.",
+          sessions: gitSessions,
+        },
+        null,
+        2,
+      ),
+    );
+  }
 }
 
 function filterPositive<T extends Record<string, number>>(obj: T): Record<string, number> {

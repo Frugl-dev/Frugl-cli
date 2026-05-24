@@ -1,6 +1,13 @@
 import type { ClassifiedSet, SessionClassification } from "../ledger/classify.js";
 import type { Endpoint } from "../cloud/endpoints.js";
 
+export interface PrLinkingSummary {
+  active: boolean;
+  source: "flag" | "config" | "default";
+  sessionsWithContext: number;
+  repositories: string[]; // distinct "owner/name", credential-/path-free (FR-015)
+}
+
 export interface UploadSummary {
   discovered: number;
   unchanged: number;
@@ -11,6 +18,7 @@ export interface UploadSummary {
   policyVersion: string;
   endpoint: Endpoint;
   sourceKind: string;
+  prLinking?: PrLinkingSummary;
   dateRange?: { from: string; to: string };
   limited?: { active: boolean; limit?: number; candidateCount?: number };
 }
@@ -21,6 +29,7 @@ export interface BuildSummaryInput {
   policyVersion: string;
   endpoint: Endpoint;
   sourceKind: string;
+  prLinking?: PrLinkingSummary;
   limit?: number;
 }
 
@@ -49,6 +58,7 @@ export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
     policyVersion: input.policyVersion,
     endpoint: input.endpoint,
     sourceKind: input.sourceKind,
+    ...(input.prLinking ? { prLinking: input.prLinking } : {}),
     ...(dateRange ? { dateRange } : {}),
     limited,
   };
@@ -84,6 +94,19 @@ export function formatSummaryForHuman(s: UploadSummary): string {
   }
   lines.push(`Estimated bytes:    ${s.estimatedBytesCompressed}`);
   lines.push(`Redaction policy:   ${s.policyVersion}`);
+  if (s.prLinking) {
+    if (s.prLinking.active) {
+      lines.push(`PR linking:         on (from ${s.prLinking.source})`);
+      lines.push(
+        `  Git context:      ${s.prLinking.sessionsWithContext} of ${s.willUpload} sessions`,
+      );
+      if (s.prLinking.repositories.length > 0) {
+        lines.push(`  Repos:            ${s.prLinking.repositories.join(", ")}`);
+      }
+    } else {
+      lines.push(`PR linking:         off`);
+    }
+  }
   if (s.dateRange) {
     lines.push(`Date range:         ${s.dateRange.from}  →  ${s.dateRange.to}`);
   }

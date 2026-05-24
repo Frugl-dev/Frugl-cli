@@ -15,6 +15,11 @@ export interface ParsedSession<TRecord = unknown> {
   ref: SessionRef;
   identity: SessionIdentity;
   records: TRecord[];
+  // Additive (005): the session's recorded working dir + work-time branch, used
+  // only by the opt-in git-context resolver. Never enter `records`, so they never
+  // reach the anonymizer/payload/contentHash.
+  cwd?: string;
+  recordedBranch?: string;
 }
 
 export interface DiscoverOptions {
