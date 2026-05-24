@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poppi.app/schemas/v1/command-output-org.json",
+  "title": "Poppi Command Output — org membership additions (004-cli-org-join)",
+  "description": "Structured --json output shapes ADDED or EXTENDED by 004-cli-org-join. These layer onto specs/001-cli-ingest-client/contracts/command-output.schema.json (FR-040). FR-036 contract surface. New: JoinResultOk / JoinResultError (poppi join --json, FR-021). Extended: WhoamiResultOk gains an additive `organization` field (FR-026); the upload-start NDJSON event gains an additive `organization` object (FR-030). All extensions are STRICTLY ADDITIVE — no existing 001 field is renamed or removed.",
+  "oneOf": [
+    { "$ref": "#/$defs/JoinResultOk" },
+    { "$ref": "#/$defs/JoinResultError" },
+    { "$ref": "#/$defs/WhoamiResultOkWithOrg" }
+  ],
+  "$defs": {
+    "Role": {
+      "enum": ["owner", "admin", "member"],
+      "description": "The caller's Membership role, returned by the cloud and printed verbatim. The CLI never enumerates or reinterprets roles (spec Key Entities)."
+    },
+    "JoinResultOk": {
+      "type": "object",
+      "description": "Single stdout JSON object for `poppi join --json` on success. Also emitted for 409 already_member (which is an idempotent no-op success, ok:true, exit 0 — research.md R-2 / FR-017). The plaintext invite code is NEVER present (SC-005 / FR-006).",
+      "required": ["command", "ok", "organization", "membership"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "const": "join" },
+        "ok": { "const": true },
+        "organization": {
+          "type": "object",
+          "required": ["id", "name", "slug"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "slug": { "type": "string" }
+          }
+        },
+        "membership": {
+          "type": "object",
+          "required": ["id", "role", "joinedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "role": { "$ref": "#/$defs/Role" },
+            "joinedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    },
+    "JoinResultError": {
+      "type": "object",
+      "description": "Single stdout JSON object for `poppi join --json` on a non-success, non-idempotent outcome. The `error` mirrors the cloud's typed error code; the exit code is the machine-actionable signal (see contracts/exit-codes.md). The plaintext invite code is NEVER present (SC-005 / FR-006).",
+      "required": ["command", "ok", "error", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "const": "join" },
+        "ok": { "const": false },
+        "error": {
+          "enum": [
+            "validation_failed",
+            "unauthorized",
+            "not_found",
+            "wrong_org",
+            "expired",
+            "revoked",
+            "exhausted",
+            "upgrade_required",
+            "rate_limited"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable detail. Not parsed by consumers; the `error` code and the exit code are the machine-actionable signals."
+        },
+        "details": {
+          "type": "object",
+          "description": "Optional per-error fields passed through from the cloud response body. For wrong_org: current_org_name, current_org_slug, target_org_name. For rate_limited: retry_after_seconds.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "WhoamiResultOkWithOrg": {
+      "type": "object",
+      "description": "The 001 WhoamiResultOk object, EXTENDED with an additive `organization` field (FR-026). All 001 fields are unchanged and still required; `organization` is the only addition. It is the org object on a Membership, or null when the caller has no Membership (both cases are ok:true, exit 0 — FR-025).",
+      "required": ["command", "ok", "email", "userId", "endpoint", "loggedInAt", "organization"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "const": "whoami" },
+        "ok": { "const": true },
+        "email": { "type": "string", "format": "email" },
+        "userId": { "type": "string" },
+        "endpoint": { "type": "string", "format": "uri" },
+        "loggedInAt": { "type": "string", "format": "date-time" },
+        "organization": {
+          "description": "The caller's Organization, or null when the caller has no Membership.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["id", "name", "slug", "member_count", "role"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "slug": { "type": "string" },
+                "member_count": { "type": "integer", "minimum": 1 },
+                "role": { "$ref": "#/$defs/Role" }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "UploadStartOrgExtension": {
+      "type": "object",
+      "description": "NOT a top-level command-output object. Documents the ADDITIVE `organization` field added to the 001 `upload-start` NDJSON progress event (FR-030). The full event schema is specs/001-cli-ingest-client/contracts/progress-event.schema.json; this $def records only the addition. The field is always present on upload-start, because the ORG_REQUIRED gate (research.md R-7) guarantees a resolved member context before any upload begins — a no-org run never reaches upload-start.",
+      "required": ["organization"],
+      "properties": {
+        "organization": {
+          "type": "object",
+          "required": ["id", "slug"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "slug": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

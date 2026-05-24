@@ -1,7 +1,8 @@
-# Specification Quality Checklist: `poppi join` — CLI org invite-code redemption
+# Specification Quality Checklist: poppi-cli org membership — `poppi join` + org-aware `whoami` / `upload`
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-23
+**Updated**: 2026-05-24 (expanded scope: org-aware `whoami` + `upload`; reconciled to cloud 003 contracts)
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -29,26 +30,26 @@
 - [x] Feature meets measurable outcomes defined in Success Criteria
 - [x] No implementation details leak into specification
 
-## Validation notes (2026-05-23 review)
+## Validation notes (2026-05-24 review)
 
 **Content Quality**
 
-- Spec keeps WHAT/WHY framing. Implementation-detail mentions (oclif, zod, p-retry, `@napi-rs/keyring`, picocolors) are tied to **existing** conventions from `001-cli-ingest-client` rather than new technical choices — these are honest project constraints, not WHAT-vs-HOW leakage, but the plan phase is where their wiring is decided.
-- The "Cross-repo context" section is informational and is explicit about its role; it does not introduce new product requirements.
+- The spec keeps WHAT/WHY framing. References to specific cloud HTTP endpoints (`POST /api/join`, `GET /api/orgs/me`), the success/error response shapes, and proposed exit-code numbers are **cross-repo contract surface**, not implementation leakage — they are the negotiated interface this CLI consumes from `poppi/specs/003-org-membership-permissions/`, exactly as `001-cli-ingest-client` documents the upload/auth contracts it consumes. Library mentions are tied to the *existing* `001` conventions, not new technical choices.
+- The "Cross-repo context" section is explicitly informational and introduces no new product requirements.
 
 **Requirement Completeness**
 
-- 0 [NEEDS CLARIFICATION] markers. The few decisions that could have warranted clarification (e.g., `poppi join` vs. `poppi org join` namespacing, JSON output mode, interactive prompt) are stated as v1 decisions in Assumptions and Out of Scope, with explicit follow-up paths.
-- Each of the 20 functional requirements names an actor, an action, and an outcome — testable.
-- Success criteria are quantitative or quantifiable as automated assertions.
+- 0 [NEEDS CLARIFICATION] markers. The scope forks that could have warranted clarification (CLI-side org creation; `poppi org` namespace; multi-org selection) are settled as v1 decisions in Assumptions / Out of Scope with explicit follow-up paths.
+- Each of FR-001..FR-033 names an actor, an action, and a verifiable outcome.
+- Contract reconciliation against cloud 003 applied: success shape is the nested `{org, membership}` form; `already_member` is `409` mapped to an exit-0 idempotent success (FR-017); `wrong_org` interpolates `details.current_org_name` / `details.target_org_name` (FR-018); invite entropy stated as ≥48 bits (matching cloud FR-012).
 
 **Feature Readiness**
 
-- Each P1 user story carries an Independent Test stanza.
-- SC-001 leads with the user-visible time-to-value (≤30s from clipboard to joined) as the human-terms outcome — consistent with Constitution Principle I.
-- Auth + error-handling guarantees (FR-008–FR-011, FR-013–FR-016) map directly to the cloud's typed error contract.
+- Each P1 user story (US1–US5) carries an Independent Test stanza; the P2 story (US6) does too.
+- SC-001 leads with the user-visible time-to-value (≤30s clipboard-to-joined), per Constitution Principle I.
+- The org-awareness additions are guarded so they cannot regress `001`: `whoami` keeps exit 0 on the no-org state (FR-025); `upload`'s `--json` `upload-start` org field is strictly additive (FR-030); the new exit codes claim reserved-gap numbers and reassign nothing (FR-032).
 
 ## Notes
 
-- This is a thin client-side spec depending on the cloud-side `/api/join` contract defined in `poppi/specs/003-org-membership-permissions/`. Any change to the cloud's error code set or success-response shape MUST trigger an update to FR-012–FR-015 here.
+- This spec depends on the cloud-side `POST /api/join` and `GET /api/orgs/me` contracts in `poppi/specs/003-org-membership-permissions/`. Any change to those endpoints' error-code set or response shapes MUST trigger an update to FR-011..FR-018 and FR-024..FR-031 here (coordinated cross-repo bump).
 - All items currently pass.
