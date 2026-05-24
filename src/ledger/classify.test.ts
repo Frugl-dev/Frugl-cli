@@ -172,6 +172,32 @@ describe("classify", () => {
     expect(buckets.unchanged).toHaveLength(M - L);
   });
 
+  it("classifyAll: 1000 sessions classification completes ≤ 5 s (SC-003a)", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://sc003a.perf.test", userId: "u-perf" },
+      { cwd: tempHome },
+    );
+    const map = new Map<string, unknown[]>();
+    const refs: SessionRef[] = [];
+    for (let i = 0; i < 1000; i++) {
+      const p = `/perf/sess-${i}.jsonl`;
+      map.set(p, [
+        { sessionId: `s-${i}`, type: "user", message: `Hello from test session ${i}` },
+        { sessionId: `s-${i}`, type: "assistant", message: `Assistant response ${i}` },
+      ]);
+      refs.push(makeRef(p, i, 300));
+    }
+    const source = buildSource(map);
+    const start = performance.now();
+    await classifyAll(refs, {
+      ledger,
+      source,
+      anonymize: { uploadId: "u-perf", ownerEmail: "perf@example.com" },
+    });
+    const elapsedMs = performance.now() - start;
+    expect(elapsedMs).toBeLessThan(5_000);
+  }, 10_000);
+
   it("sortByMtimeDesc orders by mtime desc, path asc tiebreaker", () => {
     const items: SessionClassification[] = [
       {
