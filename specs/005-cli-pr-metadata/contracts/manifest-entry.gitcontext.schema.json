@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poppi.app/schemas/v1/manifest-entry.gitcontext.json",
+  "title": "Poppi Manifest Entry gitContext extension (v1, additive)",
+  "description": "STRICTLY ADDITIVE extension to the 001 Upload Manifest (https://poppi.app/schemas/v1/manifest.json) ManifestEntry. Adds one OPTIONAL property, 'gitContext', carrying the opt-in, credential-stripped, forge-agnostic git coordinate the cloud uses to link a session to a pull request (poppi/005 FR-024). Present only when 'poppi upload --link-prs' was active AND the session's git context resolved. No existing 001 field is renamed, removed, or made required; additionalProperties stays false by ADDING this property to ManifestEntry, not by relaxing the constraint (poppi-cli 005 FR-010, SC-006). The git context is manifest METADATA: it is NOT part of the redacted session payload and NOT part of the contentHash the incremental ledger keys on (FR-011, SC-007). This fragment is the spec-side public contract; the wire field name on the manifest-create request body is the snake_case 'git_context' (matching 001's 'session_id'/'format_version').",
+  "$comment": "This file documents the delta against contracts/../001-cli-ingest-client/contracts/manifest.schema.json. When 001's manifest.schema.json is next revised, fold the 'gitContext' property below into its $defs.ManifestEntry.properties so the two stay in sync. The merge is purely additive.",
+  "$defs": {
+    "GitContext": {
+      "type": "object",
+      "description": "Forge-agnostic git coordinate for one session. Credential-free and path-free by construction (poppi-cli 005 FR-005/FR-015). Either fully present (repository + commitSha required) or the whole gitContext is absent (FR-008): there is no half-resolved git context.",
+      "required": ["repository", "commitSha"],
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "object",
+          "description": "Host + owner/name, derived from the 'origin' remote with any embedded credential stripped before recording (FR-005). Forge-agnostic (GitHub, GitLab, Bitbucket, self-hosted); the cloud decides which hosts it can match a PR for (poppi/005 is GitHub-first).",
+          "required": ["host", "owner", "name"],
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9.-]+(:[0-9]+)?$",
+              "description": "Remote host only, e.g. 'github.com'. Never contains userinfo (no '@'), scheme, path, or whitespace. A token can never appear here (SC-003).",
+              "examples": ["github.com", "gitlab.example.com:2222"]
+            },
+            "owner": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/@\\s]+$",
+              "description": "Repository owner / org, e.g. 'acme'. No '/', no '@', no whitespace.",
+              "examples": ["acme"]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/@\\s]+$",
+              "description": "Repository name with any trailing '.git' stripped, e.g. 'widgets'.",
+              "examples": ["widgets"]
+            }
+          }
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The branch the session was worked on. Prefers the source-recorded work-time branch (FR-006); falls back to the repo's current branch at upload time. OMITTED entirely on detached HEAD (the commitSha still allows PR matching). Sent verbatim when present; may embed a ticket id or codename — this is the user's consented opt-in data (FR-006, spec Edge Cases).",
+          "examples": ["005-cli-pr-metadata", "main"]
+        },
+        "commitSha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Full 40-hex SHA of the working directory's HEAD at upload time (FR-007). Valid even for shallow/grafted clones."
+        }
+      }
+    },
+    "ManifestEntryWithGitContext": {
+      "type": "object",
+      "description": "The 001 ManifestEntry with the additive optional gitContext. Shown here in full only to make the additive merge unambiguous; the authoritative base remains 001 manifest.schema.json $defs.ManifestEntry.",
+      "required": ["sessionId", "identityDerivation", "contentHash", "byteSize"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "identityDerivation": { "enum": ["native", "path-hash"] },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "sha256 of the REDACTED PAYLOAD bytes only. gitContext is NOT included in this hash (FR-011, SC-007), so toggling --link-prs does not reclassify an unchanged session."
+        },
+        "byteSize": { "type": "integer", "minimum": 0 },
+        "gitContext": {
+          "$ref": "#/$defs/GitContext",
+          "description": "OPTIONAL, ADDITIVE (FR-010). Absent on every entry produced without --link-prs and on any entry whose git context could not be resolved (FR-008). A 001-era consumer that ignores this property processes the manifest identically (SC-006)."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "Validation entry point: a single ManifestEntry that MAY carry gitContext.",
+      "$ref": "#/$defs/ManifestEntryWithGitContext"
+    }
+  ]
+}
