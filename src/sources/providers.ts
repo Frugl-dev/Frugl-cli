@@ -32,7 +32,10 @@ function deriveCursorProjects(refs: SessionRef[]): ProjectGroup[] {
   for (const ref of refs) {
     const parts = ref.absolutePath.replace(/\\/g, "/").split("/");
     const projIdx = parts.indexOf("projects");
-    const projectId = projIdx >= 0 && parts[projIdx + 1] ? parts[projIdx + 1]! : path.basename(path.dirname(path.dirname(ref.absolutePath)));
+    const projectId =
+      projIdx >= 0 && parts[projIdx + 1]
+        ? parts[projIdx + 1]!
+        : path.basename(path.dirname(path.dirname(ref.absolutePath)));
     const sessions = byProject.get(projectId);
     if (sessions) sessions.push(ref);
     else byProject.set(projectId, [ref]);
@@ -50,7 +53,15 @@ function deriveFlatProjects(providerId: ProviderId, displayName: string) {
   return (refs: SessionRef[]): ProjectGroup[] =>
     refs.length === 0
       ? []
-      : [{ providerId, projectId: providerId, displayName, sessions: refs, sessionCount: refs.length }];
+      : [
+          {
+            providerId,
+            projectId: providerId,
+            displayName,
+            sessions: refs,
+            sessionCount: refs.length,
+          },
+        ];
 }
 
 export const PROVIDERS: readonly ProviderDescriptor[] = [
