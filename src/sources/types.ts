@@ -28,6 +28,7 @@ export interface DiscoverOptions {
 
 export interface Source<TRecord = unknown> {
   kind: string;
+  formatVersion: string;
   discover(opts?: DiscoverOptions): Promise<SessionRef[]>;
   parse(ref: SessionRef): Promise<ParsedSession<TRecord>>;
   deriveIdentity(ref: SessionRef, parsed: ParsedSession<TRecord>): SessionIdentity;

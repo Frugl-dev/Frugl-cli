@@ -5,7 +5,7 @@ import { EXIT } from "../lib/exit-codes.js";
 import { MockServer } from "../e2e/helpers/mock-server.js";
 import { runCli } from "../e2e/helpers/spawn.js";
 import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
-import { makeTempDir, type TempDir } from "../e2e/helpers/fixtures.js";
+import { makeTempDir, writeTestSessions, type TempDir } from "../e2e/helpers/fixtures.js";
 import { makeGitRepo, writeGitSession } from "../e2e/helpers/git-fixtures.js";
 
 interface ManifestSession {
@@ -86,3 +86,44 @@ describe("poppi upload — best-effort degradation (US4/SC-005)", { timeout: 30_
     expect(manifestSessions[0]!.git_context).toBeUndefined();
   });
 });
+
+describe(
+  "poppi upload — absent new provider sources (multi-provider degradation)",
+  { timeout: 30_000 },
+  () => {
+    let server: MockServer;
+    let home: TempDir;
+
+    beforeEach(async () => {
+      server = await new MockServer().start();
+      MockServer.wireHappyPath(server);
+      home = await makeTempDir();
+      injectAuth(makeTestSession(server.url));
+    });
+
+    afterEach(async () => {
+      clearAuth(server.url);
+      await home.cleanup();
+      await server.close();
+    });
+
+    it("succeeds when .cursor, .codex, .gemini dirs are absent — only claude-code sessions upload", async () => {
+      // Only Claude Code sessions exist; the new provider dirs do not exist at all.
+      await writeTestSessions(home.dir, 1, "claude-only-proj");
+
+      const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
+        env: { POPPI_HOME_DIR: home.dir },
+      });
+      expect(exitCode).toBe(EXIT.OK);
+    });
+
+    it("exits NO_SESSIONS_FOUND when all source dirs are absent", async () => {
+      // Empty home: no .claude, no .cursor, no .codex, no .gemini.
+      const { exitCode, stderr } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
+        env: { POPPI_HOME_DIR: home.dir },
+      });
+      expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
+      expect(stderr).toMatch(/no sessions found/i);
+    });
+  },
+);

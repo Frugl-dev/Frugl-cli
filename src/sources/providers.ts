@@ -1,6 +1,10 @@
+import path from "node:path";
 import type { SessionRef, Source } from "./types.js";
 import { claudeCodeSource } from "./claude-code/index.js";
 import { deriveClaudeProjects } from "./claude-code/project.js";
+import { cursorSource } from "./cursor/index.js";
+import { codexSource } from "./codex/index.js";
+import { geminiSource } from "./gemini/index.js";
 import { probeClaude, probeCodex, probeCursor, probeGemini, type ProbeOptions } from "./probe.js";
 
 export type ProviderId = "claude" | "codex" | "cursor" | "gemini";
@@ -23,8 +27,43 @@ export interface ProviderDescriptor {
   deriveProjects?(refs: SessionRef[]): ProjectGroup[];
 }
 
-// Registry order is the display order. Claude Code is the only provider the CLI
-// can parse/upload in v1; the rest are detection-only (probe only, no parser).
+function deriveCursorProjects(refs: SessionRef[]): ProjectGroup[] {
+  const byProject = new Map<string, SessionRef[]>();
+  for (const ref of refs) {
+    const parts = ref.absolutePath.replace(/\\/g, "/").split("/");
+    const projIdx = parts.indexOf("projects");
+    const projectId =
+      projIdx >= 0 && parts[projIdx + 1]
+        ? parts[projIdx + 1]!
+        : path.basename(path.dirname(path.dirname(ref.absolutePath)));
+    const sessions = byProject.get(projectId);
+    if (sessions) sessions.push(ref);
+    else byProject.set(projectId, [ref]);
+  }
+  return [...byProject.entries()].map(([projectId, sessions]) => ({
+    providerId: "cursor" as ProviderId,
+    projectId,
+    displayName: projectId,
+    sessions,
+    sessionCount: sessions.length,
+  }));
+}
+
+function deriveFlatProjects(providerId: ProviderId, displayName: string) {
+  return (refs: SessionRef[]): ProjectGroup[] =>
+    refs.length === 0
+      ? []
+      : [
+          {
+            providerId,
+            projectId: providerId,
+            displayName,
+            sessions: refs,
+            sessionCount: refs.length,
+          },
+        ];
+}
+
 export const PROVIDERS: readonly ProviderDescriptor[] = [
   {
     id: "claude",
@@ -34,9 +73,30 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     source: claudeCodeSource,
     deriveProjects: deriveClaudeProjects,
   },
-  { id: "codex", displayName: "Codex", supported: false, probe: probeCodex },
-  { id: "cursor", displayName: "Cursor", supported: false, probe: probeCursor },
-  { id: "gemini", displayName: "Gemini", supported: false, probe: probeGemini },
+  {
+    id: "codex",
+    displayName: "Codex",
+    supported: true,
+    probe: probeCodex,
+    source: codexSource,
+    deriveProjects: deriveFlatProjects("codex", "Codex sessions"),
+  },
+  {
+    id: "cursor",
+    displayName: "Cursor",
+    supported: true,
+    probe: probeCursor,
+    source: cursorSource,
+    deriveProjects: deriveCursorProjects,
+  },
+  {
+    id: "gemini",
+    displayName: "Gemini",
+    supported: true,
+    probe: probeGemini,
+    source: geminiSource,
+    deriveProjects: deriveFlatProjects("gemini", "Gemini sessions"),
+  },
 ];
 
 export interface DetectedProvider {

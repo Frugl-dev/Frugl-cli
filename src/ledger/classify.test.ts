@@ -11,6 +11,7 @@ const SOURCE_KIND = "test-source";
 function buildSource(map: Map<string, unknown[]>): Source {
   return {
     kind: SOURCE_KIND,
+    formatVersion: "test-format-v1",
     discover: async () => [],
     parse: async (ref) => {
       const records = map.get(ref.absolutePath) ?? [];

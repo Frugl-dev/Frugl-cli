@@ -29,16 +29,12 @@ describe("detectProviders", () => {
     expect(detected.map((d) => d.descriptor.id)).toEqual(["claude", "codex", "gemini"]);
   });
 
-  it("marks only Claude Code as supported in v1", async () => {
-    const claude = PROVIDERS.find((p) => p.id === "claude");
-    expect(claude?.supported).toBe(true);
-    expect(claude?.source).toBeDefined();
-    expect(claude?.deriveProjects).toBeDefined();
-    for (const id of ["codex", "cursor", "gemini"] as const) {
+  it("all four providers are supported and wired", () => {
+    for (const id of ["claude", "codex", "cursor", "gemini"] as const) {
       const p = PROVIDERS.find((d) => d.id === id);
-      expect(p?.supported).toBe(false);
-      expect(p?.source).toBeUndefined();
-      expect(p?.deriveProjects).toBeUndefined();
+      expect(p?.supported).toBe(true);
+      expect(p?.source).toBeDefined();
+      expect(p?.deriveProjects).toBeDefined();
     }
   });
 

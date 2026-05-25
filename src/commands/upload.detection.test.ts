@@ -79,12 +79,12 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
     expect(manifestSessions.length).toBe(0);
   });
 
-  it("exits NO_SESSIONS_FOUND when only an unsupported provider is present", async () => {
+  it("exits OK with nothing uploaded when a detected provider has no session files", async () => {
     await makeCursorFixture(home.dir);
     const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
       env: { POPPI_HOME_DIR: home.dir },
     });
-    expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
+    expect(exitCode).toBe(EXIT.OK);
     expect(manifestSessions.length).toBe(0);
   });
 
@@ -110,7 +110,7 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
     expect(selection.projects.every((p) => p.selected)).toBe(true);
   });
 
-  it("detected-but-unsupported providers are reported but never uploaded (SC-002)", async () => {
+  it("detected provider with no sessions does not contribute to upload (SC-002)", async () => {
     await writeTestSessions(home.dir, 2, "-Users-me-app");
     await makeCursorFixture(home.dir);
 
@@ -119,13 +119,13 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
       { env: { POPPI_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
-    // Only the two Claude sessions are uploaded; nothing from Cursor.
+    // Only the two Claude sessions are uploaded; Cursor has no session files.
     expect(manifestSessions.length).toBe(2);
 
     const { selection } = lastJson(stdout);
     const cursor = selection.providers.find((p) => p.id === "cursor")!;
-    expect(cursor.supported).toBe(false);
-    expect(cursor.selected).toBe(false);
+    expect(cursor.supported).toBe(true);
+    expect(cursor.selected).toBe(true);
     const claude = selection.providers.find((p) => p.id === "claude")!;
     expect(claude.selected).toBe(true);
   });
