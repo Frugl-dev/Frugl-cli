@@ -34,9 +34,7 @@ describe("deriveClaudeProjects", () => {
         "/home/me/.claude/projects/-Users-me-repo/.claude-worktrees/main/sess.jsonl",
       ),
     ).toBeNull();
-    expect(
-      extractWorktreePath("/home/me/.claude/projects/-Users-me-app/sess.jsonl"),
-    ).toBeNull();
+    expect(extractWorktreePath("/home/me/.claude/projects/-Users-me-app/sess.jsonl")).toBeNull();
   });
 
   it("groups sessions by project and partitions every ref exactly once", async () => {
