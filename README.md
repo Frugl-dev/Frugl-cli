@@ -20,6 +20,23 @@ CLI against the sibling local Docker stack and how to verify the trust gate
 yourself with planted secrets), see
 [`specs/001-cli-ingest-client/quickstart.md`](./specs/001-cli-ingest-client/quickstart.md).
 
+## Guided upload
+
+In an interactive terminal, `poppi upload` walks you through what it found
+before sending anything:
+
+1. **Providers** — it detects which AI assistants have sessions on this machine
+   (Claude Code, Codex, Cursor, Gemini) and shows them as preselected dots.
+   Claude Code is uploaded today; Codex/Cursor/Gemini show as detected but
+   `(not yet supported)` and are skipped.
+2. **Projects** — it lists the projects it discovered, all preselected. Deselect
+   any you don't want to upload (a scratch dir, a client repo under NDA, …).
+3. **Upload** — only the sessions you kept selected are anonymized and uploaded.
+
+Non-interactive runs (`--yes`/`--confirm`, `--json`, or no TTY such as CI)
+skip the prompts and select every detected supported provider and all of its
+projects automatically.
+
 ## Why open source?
 
 The CLI sees raw session content before redaction. You should be able to

@@ -8,6 +8,12 @@ export interface PrLinkingSummary {
   repositories: string[]; // distinct "owner/name", credential-/path-free (FR-015)
 }
 
+export interface ProjectSummaryRow {
+  providerId: string;
+  displayName: string;
+  willUpload: number;
+}
+
 export interface UploadSummary {
   discovered: number;
   unchanged: number;
@@ -21,6 +27,7 @@ export interface UploadSummary {
   prLinking?: PrLinkingSummary;
   dateRange?: { from: string; to: string };
   limited?: { active: boolean; limit?: number; candidateCount?: number };
+  projects?: ProjectSummaryRow[];
 }
 
 export interface BuildSummaryInput {
@@ -31,6 +38,7 @@ export interface BuildSummaryInput {
   sourceKind: string;
   prLinking?: PrLinkingSummary;
   limit?: number;
+  projects?: ProjectSummaryRow[];
 }
 
 export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
@@ -61,6 +69,7 @@ export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
     ...(input.prLinking ? { prLinking: input.prLinking } : {}),
     ...(dateRange ? { dateRange } : {}),
     limited,
+    ...(input.projects ? { projects: input.projects } : {}),
   };
 }
 
@@ -89,6 +98,12 @@ export function formatSummaryForHuman(s: UploadSummary): string {
   lines.push(`  New:              ${s.new}`);
   lines.push(`  Updated:          ${s.updated}`);
   lines.push(`Will upload:        ${s.willUpload}`);
+  if (s.projects && s.projects.length > 0) {
+    lines.push(`By project:`);
+    for (const p of s.projects) {
+      lines.push(`  ${p.displayName}: ${p.willUpload}`);
+    }
+  }
   if (s.limited?.active) {
     lines.push(`  --limit applied:  ${s.limited.limit} of ${s.limited.candidateCount} candidates`);
   }
