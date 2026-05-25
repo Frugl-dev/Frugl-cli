@@ -20,12 +20,21 @@ import {
   buildUploadSummary,
   formatSummaryForHuman,
   type PrLinkingSummary,
+  type ProjectSummaryRow,
 } from "../upload/summary.js";
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
 import { resolveEffectiveLinkPrs, type EffectiveLinkPrs } from "../upload/link-prs.js";
 import { claudeCodeSource, CLAUDE_FORMAT_VERSION } from "../sources/claude-code/index.js";
+import {
+  detectProviders,
+  getProvider,
+  type DetectedProvider,
+  type ProjectGroup,
+} from "../sources/providers.js";
+import { applySelection, isInteractive, selectProjects, selectProviders } from "../select/index.js";
+import type { Selection } from "../select/selection.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   InspectDirError,
@@ -99,13 +108,55 @@ export default class Upload extends Command {
         endpointExplicit: endpoint.resolvedFrom !== "default",
       });
 
-      const refs = await claudeCodeSource.discover(
-        process.env["POPPI_HOME_DIR"] ? { homeDir: process.env["POPPI_HOME_DIR"] } : undefined,
-      );
-      if (refs.length === 0) {
+      const homeDir = process.env["POPPI_HOME_DIR"];
+      const discoverOpts = homeDir ? { homeDir } : undefined;
+
+      // 1) Detect which providers have sessions on this machine.
+      const detected = await detectProviders(discoverOpts);
+      const supportedDetected = detected.filter((d) => d.descriptor.supported);
+      if (supportedDetected.length === 0) {
+        const names = detected.map((d) => d.descriptor.displayName).join(", ");
         throw new NoSessionsError(
-          `No sessions found under ~/.claude/projects/ (source: ${claudeCodeSource.kind}). Make sure Claude Code has been used on this machine.`,
+          detected.length === 0
+            ? "No sessions found on this machine under ~/.claude/projects/ (Claude Code). Make sure Claude Code has been used here."
+            : `Detected ${names}, but none are supported for upload yet (Claude Code only in this version).`,
         );
+      }
+
+      // 2) Choose providers — interactive picker, or auto-select-all when not.
+      const interactive = isInteractive({
+        json: flags.json,
+        yes: flags.yes,
+        confirm: flags.confirm,
+        isTTY: Boolean(process.stdin.isTTY),
+      });
+      const selectedProviderIds = await selectProviders(detected, { interactive });
+      if (selectedProviderIds.length === 0) {
+        if (mode === "text") process.stderr.write("Nothing selected.\n");
+        process.exit(EXIT.OK);
+      }
+
+      // 3) Discover sessions for the selected providers and group them by project.
+      const groups: ProjectGroup[] = [];
+      for (const id of selectedProviderIds) {
+        const descriptor = getProvider(id);
+        if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
+        const providerRefs = await descriptor.source.discover(discoverOpts);
+        groups.push(...descriptor.deriveProjects(providerRefs));
+      }
+
+      // 4) Choose projects — all preselected; deselect to exclude from upload.
+      const selectedProjectIds = await selectProjects(groups, { interactive });
+      const selection: Selection = {
+        providerIds: selectedProviderIds,
+        projectIds: selectedProjectIds,
+      };
+      const selectionReport = buildSelectionReport(detected, groups, selection);
+
+      const refs = applySelection(groups, selection);
+      if (refs.length === 0) {
+        if (mode === "text") process.stderr.write("Nothing selected.\n");
+        process.exit(EXIT.OK);
       }
 
       const ledger = new Ledger({ endpointUrl: endpoint.url, userId: session.userId });
@@ -147,6 +198,7 @@ export default class Upload extends Command {
         };
       }
 
+      const projectRows = buildProjectRows(willUpload, groups);
       const summary = buildUploadSummary({
         buckets,
         willUpload,
@@ -155,6 +207,7 @@ export default class Upload extends Command {
         sourceKind: claudeCodeSource.kind,
         ...(prLinking ? { prLinking } : {}),
         ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
+        ...(projectRows.length > 0 ? { projects: projectRows } : {}),
       });
 
       if (mode === "text") {
@@ -191,6 +244,7 @@ export default class Upload extends Command {
                 },
               }
             : {}),
+          selection: selectionReport,
           dryRun: true,
         };
         process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -215,6 +269,7 @@ export default class Upload extends Command {
             updated: summary.updated,
           },
           limited: summary.limited ?? { active: false },
+          selection: selectionReport,
           noop: true,
         };
         if (mode === "text") {
@@ -285,6 +340,7 @@ export default class Upload extends Command {
       const finalSummary = {
         command: "upload" as const,
         ok: true as const,
+        selection: selectionReport,
         manifestId: pipelineResult.manifestId,
         actualSessionCount: pipelineResult.acked.length,
         expectedSessionCount: jobs.length,
@@ -377,6 +433,57 @@ export default class Upload extends Command {
 
     return [...repositories].sort();
   }
+}
+
+function buildProjectRows(
+  willUpload: SessionClassification[],
+  groups: ProjectGroup[],
+): ProjectSummaryRow[] {
+  const infoById = new Map<string, { providerId: string; displayName: string }>();
+  for (const g of groups) {
+    infoById.set(g.projectId, { providerId: g.providerId, displayName: g.displayName });
+  }
+  const counts = new Map<string, number>();
+  for (const item of willUpload) {
+    if (item.kind === "unchanged") continue;
+    const projectId = path.basename(path.dirname(item.ref.absolutePath));
+    counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
+  }
+  const rows: ProjectSummaryRow[] = [];
+  for (const [projectId, count] of counts) {
+    const info = infoById.get(projectId);
+    rows.push({
+      providerId: info?.providerId ?? "claude",
+      displayName: info?.displayName ?? projectId,
+      willUpload: count,
+    });
+  }
+  rows.sort((a, b) => b.willUpload - a.willUpload || a.displayName.localeCompare(b.displayName));
+  return rows;
+}
+
+function buildSelectionReport(
+  detected: DetectedProvider[],
+  groups: ProjectGroup[],
+  selection: Selection,
+) {
+  const providerSel = new Set(selection.providerIds);
+  const projectSel = new Set(selection.projectIds);
+  return {
+    providers: detected.map((d) => ({
+      id: d.descriptor.id,
+      displayName: d.descriptor.displayName,
+      supported: d.descriptor.supported,
+      selected: providerSel.has(d.descriptor.id),
+    })),
+    projects: groups.map((g) => ({
+      providerId: g.providerId,
+      projectId: g.projectId,
+      displayName: g.displayName,
+      sessionCount: g.sessionCount,
+      selected: projectSel.has(g.projectId),
+    })),
+  };
 }
 
 async function buildJobs(
