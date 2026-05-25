@@ -45,24 +45,47 @@ All four are wired into the `pre-commit` hook in `package.json`. The constitutio
 
 ## 4. Bring up the local cloud stack
 
-In a separate terminal, in the sibling `poppi/` repo:
+The stack has three components that must each be started. Open three terminals in
+the sibling `poppi/` repo.
+
+**Terminal 1 — full local stack** (Supabase + MinIO):
 
 ```bash
 cd ~/Documents/poppi/poppi
-pnpm stack:up      # Supabase + S3-compatible object store (MinIO) + the web app
+pnpm local:up      # supabase start, then docker compose up (MinIO)
+pnpm stack:wait    # blocks until both report healthy
 ```
 
-The stack listens on `http://localhost:54321` (Supabase) plus the cloud's own Astro endpoints. This URL is the canonical CI target (SC-004) and the recommended local-development endpoint.
+Run `supabase status` to see all service URLs. The Supabase API listens on
+`http://localhost:54321`; Mailpit (the local mail catcher for OTP codes) is
+typically at `http://localhost:54324`.
+
+**Terminal 3 — Astro dev server** (the API endpoints the CLI calls):
+
+```bash
+cd ~/Documents/poppi/poppi
+pnpm dev           # listens on http://localhost:4321
+```
+
+> The CLI talks to Astro (`localhost:4321`), not Supabase directly.
+> `POPPI_ENDPOINT` must point at the Astro server.
+
+To tear down when done:
+
+```bash
+cd ~/Documents/poppi/poppi
+pnpm local:down    # docker compose down, then supabase stop
+```
 
 ---
 
 ## 5. Run the CLI in dev mode against the local stack
 
 ```bash
-export POPPI_ENDPOINT=http://localhost:54321
+export POPPI_ENDPOINT=http://localhost:4321
 
 pnpm dev login
-# Email prompt → check the local stack's mailcatcher for the 6-digit code
+# Email prompt → open Mailpit (http://localhost:54324) to get the 6-digit OTP
 # Token persists in OS keychain under service `poppi`, account `<endpoint>`
 
 pnpm dev whoami    # confirms you're signed in, prints {email, userId, endpoint}
@@ -78,7 +101,8 @@ pnpm dev upload --confirm
 # Prints manifest ID and dashboard URL on success.
 ```
 
-`pnpm dev` shells out to `tsx src/cli.ts` (during the Phase-2 migration this becomes `bin/dev.js`); both invoke the same oclif runtime.
+`pnpm dev` shells out to `bin/dev.js` which invokes the same oclif runtime as the
+published binary.
 
 ---
 
