@@ -26,7 +26,6 @@ import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
 import { resolveEffectiveLinkPrs, type EffectiveLinkPrs } from "../upload/link-prs.js";
-import { claudeCodeSource, CLAUDE_FORMAT_VERSION } from "../sources/claude-code/index.js";
 import {
   detectProviders,
   getProvider,
@@ -35,6 +34,8 @@ import {
 } from "../sources/providers.js";
 import { applySelection, isInteractive, selectProjects, selectProviders } from "../select/index.js";
 import type { Selection } from "../select/selection.js";
+import { SOURCES } from "../sources/registry.js";
+import type { Source, SessionRef } from "../sources/types.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   InspectDirError,
@@ -69,7 +70,6 @@ export default class Upload extends Command {
       description: "Maximum number of (new ∪ updated) sessions to upload.",
     }),
     "link-prs": Flags.boolean({
-      // No default: undefined = not passed (fall back to persisted config); true = passed.
       description:
         "Opt in to attaching credential-stripped git context (repo, branch, commit) so sessions can be linked to PRs. Default off.",
     }),
@@ -80,8 +80,6 @@ export default class Upload extends Command {
     const { flags } = await this.parse(Upload);
     const mode = resolveOutputMode({ json: flags.json });
     const reporter = createProgressReporter(mode);
-    // Resolved opt-in: explicit flag wins, else persisted config, else off (R-7).
-    // When inactive, the git-context resolver is never entered (FR-002/SC-001).
     const linkPrs = resolveEffectiveLinkPrs(flags["link-prs"], getLinkPrs());
 
     if (flags.inspect && !flags["dry-run"]) {
@@ -118,8 +116,8 @@ export default class Upload extends Command {
         const names = detected.map((d) => d.descriptor.displayName).join(", ");
         throw new NoSessionsError(
           detected.length === 0
-            ? "No sessions found on this machine under ~/.claude/projects/ (Claude Code). Make sure Claude Code has been used here."
-            : `Detected ${names}, but none are supported for upload yet (Claude Code only in this version).`,
+            ? "No sessions found. Make sure at least one AI coding tool (Claude Code, Cursor, Codex, or Gemini) has been used on this machine."
+            : `Detected ${names}, but none are supported for upload yet.`,
         );
       }
 
@@ -159,33 +157,48 @@ export default class Upload extends Command {
         process.exit(EXIT.OK);
       }
 
+      const uploadId = randomUUID();
+      // Group refs by source for per-source pipeline
+      const refsBySource = new Map<Source, SessionRef[]>();
+      for (const ref of refs) {
+        const source = SOURCES.find((s) => s.kind === ref.sourceKind);
+        if (!source) continue;
+        const existing = refsBySource.get(source) ?? [];
+        existing.push(ref);
+        refsBySource.set(source, existing);
+      }
+
       const ledger = new Ledger({ endpointUrl: endpoint.url, userId: session.userId });
       const resumeStore = new ResumeStore({ endpointUrl: endpoint.url, userId: session.userId });
 
-      const uploadId = randomUUID();
-      const sortedRefs = refs.sort(
-        (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
-      );
+      // Classify per source (each source knows how to parse its own refs)
+      const classificationsBySource = new Map<Source, SessionClassification[]>();
+      for (const [source, sourceRefs] of refsBySource) {
+        const sorted = sourceRefs.sort(
+          (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
+        );
+        const classifications = await classifyAll(sorted, {
+          ledger,
+          source,
+          anonymize: { uploadId, ownerEmail: session.email },
+        });
+        classificationsBySource.set(source, classifications);
+      }
 
-      const classifications = await classifyAll(sortedRefs, {
-        ledger,
-        source: claudeCodeSource,
-        anonymize: {
-          uploadId,
-          ownerEmail: session.email,
-        },
-      });
-      const buckets = bucketize(classifications);
-
-      const candidates: SessionClassification[] = sortByMtimeDesc([
-        ...buckets.new,
-        ...buckets.updated,
+      // Merge for confirmation + summary
+      const allClassifications = [...classificationsBySource.values()].flat();
+      const allBuckets = bucketize(allClassifications);
+      const allCandidates: SessionClassification[] = sortByMtimeDesc([
+        ...allBuckets.new,
+        ...allBuckets.updated,
       ]);
-      const willUpload = flags.limit !== undefined ? candidates.slice(0, flags.limit) : candidates;
+      const willUpload =
+        flags.limit !== undefined ? allCandidates.slice(0, flags.limit) : allCandidates;
 
-      // Opt-in git-context resolution over the willUpload batch ONLY (after
-      // --limit). Hard-gated: when inactive, the resolver is never entered, no
-      // cwd/.git is read, and no git field is attached or emitted (FR-002/SC-001).
+      const activeSources = [...refsBySource.keys()];
+      const displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
+
+      // Opt-in git-context resolution
       const gitBySession = new Map<string, GitContext>();
       let prLinking: PrLinkingSummary | undefined;
       if (linkPrs.active) {
@@ -200,11 +213,11 @@ export default class Upload extends Command {
 
       const projectRows = buildProjectRows(willUpload, groups);
       const summary = buildUploadSummary({
-        buckets,
+        buckets: allBuckets,
         willUpload,
         policyVersion: POLICY_VERSION,
         endpoint,
-        sourceKind: claudeCodeSource.kind,
+        sourceKind: displaySourceKind,
         ...(prLinking ? { prLinking } : {}),
         ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
         ...(projectRows.length > 0 ? { projects: projectRows } : {}),
@@ -225,7 +238,7 @@ export default class Upload extends Command {
           actualSessionCount: 0,
           expectedSessionCount: Math.max(1, willUpload.length),
           redactionPolicyVersion: POLICY_VERSION,
-          sourceKind: claudeCodeSource.kind,
+          sourceKind: displaySourceKind,
           endpoint: endpoint.url,
           dashboardUrl: `${endpoint.url}/dry-run`,
           classification: {
@@ -259,7 +272,7 @@ export default class Upload extends Command {
           actualSessionCount: 0,
           expectedSessionCount: 1,
           redactionPolicyVersion: POLICY_VERSION,
-          sourceKind: claudeCodeSource.kind,
+          sourceKind: displaySourceKind,
           endpoint: endpoint.url,
           dashboardUrl: `${endpoint.url}/dashboard`,
           classification: {
@@ -290,34 +303,25 @@ export default class Upload extends Command {
         }
       }
 
-      const jobs = await buildJobs(willUpload, gitBySession);
-      const gitContextEvent = prLinking
-        ? {
-            active: true,
-            sessionsWithContext: prLinking.sessionsWithContext,
-            repositories: prLinking.repositories,
-          }
-        : undefined;
-      let pipelineResult;
-      try {
-        pipelineResult = await runUploadPipeline({
-          client,
-          jobs,
-          ledger,
-          resumeStore,
-          reporter,
-          concurrency: flags.concurrency,
-          policyVersion: POLICY_VERSION,
-          cliVersion: getCliVersion(),
-          sourceKind: claudeCodeSource.kind,
-          endpointUrl: endpoint.url,
-          userId: session.userId,
-          ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
-        });
-      } catch (err) {
-        if (err instanceof StaleResumeError) {
-          process.stderr.write(`poppi: ${err.message}\n`);
-          resumeStore.clear();
+      // Run a separate pipeline per source — each source gets its own manifest
+      let totalAcked = 0;
+      let lastManifestId = "";
+      let lastDashboardUrl = `${endpoint.url}/dashboard`;
+      for (const [source, _classifications] of classificationsBySource) {
+        const sourceCandidates = willUpload.filter((c) => c.ref.sourceKind === source.kind);
+        if (sourceCandidates.length === 0) continue;
+
+        const jobs = await buildJobsForSource(sourceCandidates, source, gitBySession);
+        const gitContextEvent = prLinking
+          ? {
+              active: true,
+              sessionsWithContext: prLinking.sessionsWithContext,
+              repositories: prLinking.repositories,
+            }
+          : undefined;
+
+        let pipelineResult;
+        try {
           pipelineResult = await runUploadPipeline({
             client,
             jobs,
@@ -327,28 +331,50 @@ export default class Upload extends Command {
             concurrency: flags.concurrency,
             policyVersion: POLICY_VERSION,
             cliVersion: getCliVersion(),
-            sourceKind: claudeCodeSource.kind,
+            sourceKind: source.kind,
             endpointUrl: endpoint.url,
             userId: session.userId,
             ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
           });
-        } else {
-          throw err;
+        } catch (err) {
+          if (err instanceof StaleResumeError) {
+            process.stderr.write(`poppi: ${err.message}\n`);
+            resumeStore.clear();
+            pipelineResult = await runUploadPipeline({
+              client,
+              jobs,
+              ledger,
+              resumeStore,
+              reporter,
+              concurrency: flags.concurrency,
+              policyVersion: POLICY_VERSION,
+              cliVersion: getCliVersion(),
+              sourceKind: source.kind,
+              endpointUrl: endpoint.url,
+              userId: session.userId,
+              ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+            });
+          } else {
+            throw err;
+          }
         }
+
+        totalAcked += pipelineResult.acked.length;
+        lastManifestId = pipelineResult.manifestId;
+        lastDashboardUrl = pipelineResult.dashboardUrl;
       }
 
       const finalSummary = {
         command: "upload" as const,
         ok: true as const,
         selection: selectionReport,
-        manifestId: pipelineResult.manifestId,
-        actualSessionCount: pipelineResult.acked.length,
-        expectedSessionCount: jobs.length,
-        skippedSessionCount: pipelineResult.skipped.length,
+        manifestId: lastManifestId,
+        actualSessionCount: totalAcked,
+        expectedSessionCount: willUpload.length,
         redactionPolicyVersion: POLICY_VERSION,
-        sourceKind: claudeCodeSource.kind,
+        sourceKind: displaySourceKind,
         endpoint: endpoint.url,
-        dashboardUrl: pipelineResult.dashboardUrl,
+        dashboardUrl: lastDashboardUrl,
         classification: {
           discovered: summary.discovered,
           unchanged: summary.unchanged,
@@ -383,10 +409,6 @@ export default class Upload extends Command {
     process.exit(EXIT.GENERIC_FAILURE);
   }
 
-  // Resolve git context for each (new ∪ updated) session, memoised per distinct
-  // (cwd, recordedBranch). Populates `gitBySession` with resolved contexts and
-  // returns the distinct repo list. Emits at most one global notice each for the
-  // two best-effort degradations (FR-008/FR-009/R-8); never fatal, no new exit code.
   private async resolveBatchGitContext(
     willUpload: SessionClassification[],
     gitBySession: Map<string, GitContext>,
@@ -402,7 +424,7 @@ export default class Upload extends Command {
       attempted += 1;
       const cwd = item.parsed.cwd;
       const recordedBranch = item.parsed.recordedBranch;
-      const key = `${cwd ?? ""} ${recordedBranch ?? ""}`;
+      const key = `${cwd ?? ""} ${recordedBranch ?? ""}`;
       let resolution = memo.get(key);
       if (!resolution) {
         resolution = await resolveGitContext({
@@ -420,7 +442,7 @@ export default class Upload extends Command {
       }
     }
 
-    void linkPrs; // opt-in already confirmed active by the caller
+    void linkPrs;
     if (attempted > 0 && gitUnavailable === attempted) {
       process.stderr.write(
         "poppi: PR linking was on, but git could not be inspected; proceeding as if --link-prs were off.\n",
@@ -486,8 +508,9 @@ function buildSelectionReport(
   };
 }
 
-async function buildJobs(
+async function buildJobsForSource(
   items: SessionClassification[],
+  source: Source,
   gitBySession: Map<string, GitContext>,
 ): Promise<SessionUploadJob[]> {
   const jobs: SessionUploadJob[] = [];
@@ -498,7 +521,7 @@ async function buildJobs(
     jobs.push({
       sessionId: item.identity.sessionId,
       identityDerivation: item.identity.derivation,
-      formatVersion: CLAUDE_FORMAT_VERSION,
+      formatVersion: source.formatVersion,
       sourceFilePath: item.ref.absolutePath,
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
@@ -554,10 +577,6 @@ async function writeInspectionDir(
     JSON.stringify(summaryFile, null, 2),
   );
 
-  // Opt-in git context is written DISTINCTLY from the redacted payloads, clearly
-  // labelled as intentionally-in-clear, so a reviewer can audit exactly what would
-  // be transmitted before any byte leaves the machine (FR-014). The GitContext is
-  // credential-/path-free by construction (FR-015).
   if (gitBySession.size > 0) {
     const gitSessions = items
       .filter((item) => item.kind !== "unchanged" && gitBySession.has(item.identity.sessionId))
