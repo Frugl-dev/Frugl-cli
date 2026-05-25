@@ -31,6 +31,9 @@ export interface SessionUploadJob {
   // Opt-in (005) git coordinate, attached as manifest metadata only — never part
   // of the payload PUT or of redactedHashHex/contentHash (FR-011, SC-007).
   gitContext?: GitContext;
+  // Sub-path within the repo's .claude/worktrees/ dir when the session comes
+  // from a git worktree (e.g. "001/cloud/ingest/db"). Null for main checkouts.
+  worktreePath?: string;
 }
 
 export interface PipelineOptions {
@@ -256,6 +259,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
         format_version: job.formatVersion,
         expected_bytes: job.anonymizationResult.byteSize,
         ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
+        ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
       })),
     },
     schema: createManifestResponseSchema,
