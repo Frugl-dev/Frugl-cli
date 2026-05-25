@@ -147,4 +147,24 @@ describe("anonymize", () => {
     const b = table.pseudonymize("project-name", "acme");
     expect(a).toBe(b);
   });
+
+  it("redacts home prefix in Cursor, Codex, and Gemini session paths", () => {
+    const home = "/Users/bob";
+    const fixture = {
+      messages: [
+        { text: `file at ${home}/.cursor/projects/my-project/src/main.ts` },
+        { text: `session log ${home}/.codex/sessions/2026/05/25/abc.jsonl` },
+        { text: `gemini log ${home}/.gemini/tmp/sess-xyz/logs.json` },
+      ],
+    };
+    const result = anonymize(fixture, {
+      uploadId: "u-multi",
+      ownerEmail: OWNER_EMAIL,
+      homeDir: home,
+    });
+    const serialized = JSON.stringify(result.payload);
+    expect(serialized).not.toContain(home);
+    expect(serialized).toContain("<HOME>");
+    expect(result.redactionsByCategory["home-path"]).toBeGreaterThanOrEqual(3);
+  });
 });
