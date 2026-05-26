@@ -115,7 +115,11 @@ export default class Login extends Command {
         // eslint-disable-next-line no-await-in-loop
         const result = await setupOrg(client, orgAction);
 
-        if (result.status === "already-setup" || result.status === "created" || result.status === "joined") {
+        if (
+          result.status === "already-setup" ||
+          result.status === "created" ||
+          result.status === "joined"
+        ) {
           const label =
             result.status === "created"
               ? "Organization created"

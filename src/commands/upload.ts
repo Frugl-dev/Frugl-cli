@@ -175,7 +175,7 @@ export default class Upload extends Command {
       // Classify per source (each source knows how to parse its own refs)
       const classificationsBySource = new Map<Source, SessionClassification[]>();
       for (const [source, sourceRefs] of refsBySource) {
-        const sorted = sourceRefs.sort(
+        const sorted = sourceRefs.toSorted(
           (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
         );
         const classifications = await classifyAll(sorted, {
@@ -464,7 +464,7 @@ export default class Upload extends Command {
       );
     }
 
-    return [...repositories].sort();
+    return [...repositories].toSorted();
   }
 }
 
