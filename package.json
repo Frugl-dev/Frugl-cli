@@ -52,7 +52,7 @@
     "vitest": "^4.1.6"
   },
   "pre-commit": [
-    "format",
+    "format:check",
     "lint",
     "typecheck",
     "test"
