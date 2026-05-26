@@ -44,6 +44,8 @@ export const manifestEntryRequestSchema = z.object({
   format_version: z.string().min(1),
   expected_bytes: z.number().int().min(0),
   git_context: gitContextRequestSchema.optional(),
+  // Sub-path within .claude/worktrees/ when the session comes from a worktree.
+  worktree_path: z.string().min(1).optional(),
 });
 export type ManifestEntryRequest = z.infer<typeof manifestEntryRequestSchema>;
 

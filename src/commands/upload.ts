@@ -25,6 +25,7 @@ import {
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
+import { extractWorktreePath } from "../sources/claude-code/project.js";
 import { resolveEffectiveLinkPrs, type EffectiveLinkPrs } from "../upload/link-prs.js";
 import {
   detectProviders,
@@ -518,6 +519,7 @@ async function buildJobsForSource(
     if (item.kind === "unchanged") continue;
     const raw = await rawFileHash(item.ref.absolutePath);
     const gitContext = gitBySession.get(item.identity.sessionId);
+    const worktreePath = extractWorktreePath(item.ref.absolutePath);
     jobs.push({
       sessionId: item.identity.sessionId,
       identityDerivation: item.identity.derivation,
@@ -526,6 +528,7 @@ async function buildJobsForSource(
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
       ...(gitContext ? { gitContext } : {}),
+      ...(worktreePath ? { worktreePath } : {}),
     });
   }
   return jobs;
