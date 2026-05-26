@@ -1,5 +1,6 @@
 import type { ClassifiedSet, SessionClassification } from "../ledger/classify.js";
 import type { Endpoint } from "../cloud/endpoints.js";
+import { bar, color, formatBytes } from "../lib/theme.js";
 
 export interface PrLinkingSummary {
   active: boolean;
@@ -89,41 +90,78 @@ function computeDateRange(
   };
 }
 
+// Width of the label column; values align just past it (mirrors the design).
+const LABEL = 18;
+const label = (text: string): string => color.mute(text.padEnd(LABEL));
+
+function formatDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+}
+
 export function formatSummaryForHuman(s: UploadSummary): string {
   const lines: string[] = [];
-  lines.push(`Endpoint:           ${s.endpoint.url} (from ${s.endpoint.resolvedFrom})`);
-  lines.push(`Source:             ${s.sourceKind}`);
-  lines.push(`Discovered:         ${s.discovered}`);
-  lines.push(`  Unchanged:        ${s.unchanged} (skipping)`);
-  lines.push(`  New:              ${s.new}`);
-  lines.push(`  Updated:          ${s.updated}`);
-  lines.push(`Will upload:        ${s.willUpload}`);
-  if (s.projects && s.projects.length > 0) {
-    lines.push(`By project:`);
-    for (const p of s.projects) {
-      lines.push(`  ${p.displayName}: ${p.willUpload}`);
-    }
-  }
+  lines.push(
+    `${color.bold("Upload preview")}  ${color.dim("— review before sending. Nothing has been transmitted.")}`,
+  );
+  lines.push("");
+  lines.push(
+    `  ${label("Endpoint")}${s.endpoint.url}  ${color.dim(`(from ${s.endpoint.resolvedFrom})`)}`,
+  );
+  lines.push(`  ${label("Source")}${s.sourceKind}`);
+  lines.push(
+    `  ${label("Discovered")}${color.bold(String(s.discovered))} ${color.dim("sessions")}`,
+  );
+  lines.push(
+    `    ${color.dim("Unchanged".padEnd(LABEL - 2))}${color.dim(`${s.unchanged}   skipping (already uploaded, unmodified)`)}`,
+  );
+  lines.push(`    ${color.dim("New".padEnd(LABEL - 2))}${color.ok(String(s.new))}`);
+  lines.push(`    ${color.dim("Updated".padEnd(LABEL - 2))}${color.warn(String(s.updated))}`);
+  lines.push(
+    `  ${label("Will upload")}${color.poppyBold(String(s.willUpload))} ${color.dim("sessions")}`,
+  );
+
   if (s.limited?.active) {
-    lines.push(`  --limit applied:  ${s.limited.limit} of ${s.limited.candidateCount} candidates`);
+    lines.push(
+      `  ${label("--limit applied")}${color.dim(`${s.limited.limit} of ${s.limited.candidateCount} candidates`)}`,
+    );
   }
-  lines.push(`Estimated bytes:    ${s.estimatedBytesCompressed}`);
-  lines.push(`Redaction policy:   ${s.policyVersion}`);
-  if (s.prLinking) {
-    if (s.prLinking.active) {
-      lines.push(`PR linking:         on (from ${s.prLinking.source})`);
+
+  if (s.projects && s.projects.length > 0) {
+    lines.push("");
+    lines.push(`  ${color.mute("By project")}`);
+    const maxCount = Math.max(...s.projects.map((p) => p.willUpload), 1);
+    const nameWidth = Math.min(28, Math.max(...s.projects.map((p) => p.displayName.length), 8));
+    for (const p of s.projects) {
+      const filled = Math.round((p.willUpload / maxCount) * 20);
       lines.push(
-        `  Git context:      ${s.prLinking.sessionsWithContext} of ${s.willUpload} sessions`,
+        `    ${p.displayName.padEnd(nameWidth)}  ${bar(filled, 20)}  ${color.bold(String(p.willUpload).padStart(3))}`,
       );
-      if (s.prLinking.repositories.length > 0) {
-        lines.push(`  Repos:            ${s.prLinking.repositories.join(", ")}`);
-      }
-    } else {
-      lines.push(`PR linking:         off`);
     }
   }
-  if (s.dateRange) {
-    lines.push(`Date range:         ${s.dateRange.from}  →  ${s.dateRange.to}`);
+
+  lines.push("");
+  lines.push(
+    `  ${label("Estimated bytes")}${formatBytes(s.estimatedBytesCompressed)}  ${color.dim("(after local anonymization)")}`,
+  );
+  const policyBit = `${color.mute("Redaction policy")}   ${color.ok(s.policyVersion)}`;
+  const prBit = s.prLinking?.active
+    ? `   ${color.dim("PR linking")} ${color.ok("on")}`
+    : `   ${color.dim("PR linking off")}`;
+  const dateBit = s.dateRange
+    ? `   ${color.dim(`Date range  ${formatDay(s.dateRange.from)} → ${formatDay(s.dateRange.to)}`)}`
+    : "";
+  lines.push(`  ${policyBit}${prBit}${dateBit}`);
+
+  if (s.prLinking?.active) {
+    lines.push(
+      `    ${color.dim(`Git context  ${s.prLinking.sessionsWithContext} of ${s.willUpload} sessions resolved`)}`,
+    );
+    if (s.prLinking.repositories.length > 0) {
+      lines.push(`    ${color.dim(`Repos        ${s.prLinking.repositories.join(", ")}`)}`);
+    }
   }
+
   return lines.join("\n");
 }

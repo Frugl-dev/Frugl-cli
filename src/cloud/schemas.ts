@@ -90,7 +90,14 @@ export type VersionGateBody = z.infer<typeof versionGateBodySchema>;
 
 export const orgMeResponseSchema = z
   .object({
-    org: z.object({ id: z.string(), name: z.string(), slug: z.string() }).passthrough(),
+    org: z
+      .object({
+        id: z.string(),
+        name: z.string(),
+        slug: z.string(),
+        member_count: z.number().int().optional(),
+      })
+      .passthrough(),
     membership: z.object({ role: z.string() }).passthrough(),
   })
   .passthrough();

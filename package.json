@@ -60,7 +60,8 @@
   "oclif": {
     "bin": "poppi",
     "commands": "./src/commands",
-    "dirname": "poppi"
+    "dirname": "poppi",
+    "topicSeparator": " "
   },
   "engines": {
     "node": ">=20"

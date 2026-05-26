@@ -5,8 +5,9 @@ import { resolveEndpoint } from "../cloud/endpoints.js";
 import { clearAuthSession, loadAuthSession } from "../auth/session.js";
 import { logoutResponseSchema } from "../cloud/schemas.js";
 import { getCliVersion } from "../lib/cli-version.js";
-import { isPoppiError } from "../lib/errors.js";
+import { isPoppiError, printPoppiError } from "../lib/errors.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
+import { color, symbol } from "../lib/theme.js";
 
 export default class Logout extends Command {
   static override description = "Forget the local token and revoke this device's session.";
@@ -49,12 +50,14 @@ export default class Logout extends Command {
       if (mode === "json") {
         process.stdout.write(`${JSON.stringify({ command: "logout", ok: true })}\n`);
       } else {
-        process.stdout.write("Logged out.\n");
+        process.stdout.write(`${color.ok(`${symbol.tick} Logged out.`)}\n`);
+        process.stdout.write(
+          color.dim("  Local token cleared from keychain. Device session revoked on the server.\n"),
+        );
       }
     } catch (err) {
       if (isPoppiError(err)) {
-        process.stderr.write(`poppi: ${err.message}\n`);
-        process.exit(err.exitCode);
+        process.exit(printPoppiError(err, mode));
       }
       throw err;
     }

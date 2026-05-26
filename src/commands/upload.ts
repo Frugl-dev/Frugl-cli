@@ -3,7 +3,7 @@ import { confirm } from "@inquirer/prompts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import pc from "picocolors";
+import { color, symbol } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
@@ -40,15 +40,15 @@ import type { Source, SessionRef } from "../sources/types.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   InspectDirError,
-  isPoppiError,
   NoSessionsError,
+  printPoppiError,
   StaleResumeError,
   UsageError,
 } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { getLinkPrs } from "../lib/config.js";
-import { resolveOutputMode } from "../lib/output-mode.js";
+import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
 
 export default class Upload extends Command {
   static override description =
@@ -84,10 +84,10 @@ export default class Upload extends Command {
     const linkPrs = resolveEffectiveLinkPrs(flags["link-prs"], getLinkPrs());
 
     if (flags.inspect && !flags["dry-run"]) {
-      this.bail(new UsageError("--inspect requires --dry-run."));
+      this.bail(new UsageError("--inspect requires --dry-run."), mode);
     }
     if (flags.limit !== undefined && flags.limit <= 0) {
-      this.bail(new UsageError("--limit must be a positive integer."));
+      this.bail(new UsageError("--limit must be a positive integer."), mode);
     }
 
     const endpoint = resolveEndpoint({
@@ -95,7 +95,9 @@ export default class Upload extends Command {
       env: process.env["POPPI_ENDPOINT"],
     });
     if (mode === "text") {
-      process.stderr.write(pc.dim(`Endpoint: ${endpoint.url} (from ${endpoint.resolvedFrom})\n`));
+      process.stderr.write(
+        color.dim(`Endpoint: ${endpoint.url} (from ${endpoint.resolvedFrom})\n`),
+      );
     }
 
     try {
@@ -131,7 +133,7 @@ export default class Upload extends Command {
       });
       const selectedProviderIds = await selectProviders(detected, { interactive });
       if (selectedProviderIds.length === 0) {
-        if (mode === "text") process.stderr.write("Nothing selected.\n");
+        if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
         process.exit(EXIT.OK);
       }
 
@@ -154,7 +156,7 @@ export default class Upload extends Command {
 
       const refs = applySelection(groups, selection);
       if (refs.length === 0) {
-        if (mode === "text") process.stderr.write("Nothing selected.\n");
+        if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
         process.exit(EXIT.OK);
       }
 
@@ -232,6 +234,20 @@ export default class Upload extends Command {
         if (flags.inspect) {
           await writeInspectionDir(flags.inspect, !!flags.force, willUpload, summary, gitBySession);
         }
+        if (mode === "text") {
+          process.stdout.write(
+            `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
+          );
+          if (flags.inspect) {
+            process.stdout.write(
+              `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.poppy("jq .")}${color.dim(" before transmitting.")}\n`,
+            );
+          } else {
+            process.stdout.write(
+              `${color.dim("  Tip: add ")}${color.poppy("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
+            );
+          }
+        }
         const result = {
           command: "upload" as const,
           ok: true as const,
@@ -287,7 +303,7 @@ export default class Upload extends Command {
           noop: true,
         };
         if (mode === "text") {
-          process.stdout.write("No new or updated sessions.\n");
+          process.stdout.write(`${color.dim("No new or updated sessions. Nothing to upload.")}\n`);
         }
         process.stdout.write(`${JSON.stringify(result)}\n`);
         return;
@@ -299,7 +315,7 @@ export default class Upload extends Command {
           default: false,
         });
         if (!ok) {
-          process.stderr.write("Aborted.\n");
+          process.stderr.write(color.dim("Aborted. 0 bytes sent.\n"));
           process.exit(EXIT.OK);
         }
       }
@@ -339,7 +355,9 @@ export default class Upload extends Command {
           });
         } catch (err) {
           if (err instanceof StaleResumeError) {
-            process.stderr.write(`poppi: ${err.message}\n`);
+            if (mode === "text") {
+              process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
+            }
             resumeStore.clear();
             pipelineResult = await runUploadPipeline({
               client,
@@ -395,29 +413,38 @@ export default class Upload extends Command {
       };
       process.stdout.write(`${JSON.stringify(finalSummary)}\n`);
     } catch (err) {
-      this.bail(err);
+      this.bail(err, mode);
     }
   }
 
-  private bail(err: unknown): never {
-    if (isPoppiError(err)) {
-      process.stderr.write(`poppi: ${err.message}\n`);
-      process.exit(err.exitCode);
-    }
+  private bail(err: unknown, mode: OutputMode = "text"): never {
     if (
       err instanceof CloudHttpError &&
       err.status === 409 &&
       (err.body as Record<string, unknown>)?.error === "org_required"
     ) {
-      process.stderr.write(
-        "poppi: No organization set up. Run 'poppi login' to finish account setup.\n",
-      );
+      if (mode === "text") {
+        process.stderr.write(
+          `${color.err("poppi: You're signed in, but you're not in any org.")}\n\n`,
+        );
+        process.stderr.write(`${color.dim("  Every upload belongs to an org. Pick one:")}\n\n`);
+        process.stderr.write(
+          `    ${color.poppy("poppi org create")}        ${color.dim("start a new org (you become owner)")}\n`,
+        );
+        process.stderr.write(
+          `    ${color.poppy("poppi org join <code>")}   ${color.dim("accept an invite from a teammate")}\n`,
+        );
+        process.stderr.write(
+          `    ${color.poppy("poppi logout")}            ${color.dim("this isn't the right account")}\n`,
+        );
+      } else {
+        process.stderr.write(
+          "poppi: You're signed in, but you're not in any org. Run 'poppi org create' or 'poppi org join <code>'.\n",
+        );
+      }
       process.exit(EXIT.GENERIC_FAILURE);
     }
-    if (err instanceof Error) {
-      process.stderr.write(`poppi: ${err.message}\n`);
-    }
-    process.exit(EXIT.GENERIC_FAILURE);
+    process.exit(printPoppiError(err, mode));
   }
 
   private async resolveBatchGitContext(
@@ -456,11 +483,11 @@ export default class Upload extends Command {
     void linkPrs;
     if (attempted > 0 && gitUnavailable === attempted) {
       process.stderr.write(
-        "poppi: PR linking was on, but git could not be inspected; proceeding as if --link-prs were off.\n",
+        `${color.warn(`${symbol.warn} PR linking was on, but git could not be inspected`)}${color.dim("; proceeding as if --link-prs were off.")}\n`,
       );
     } else if (gitBySession.size === 0) {
       process.stderr.write(
-        "poppi: PR linking was on, but no sessions had resolvable git context.\n",
+        `${color.warn(`${symbol.warn} PR linking was on, but no sessions had resolvable git context.`)}\n`,
       );
     }
 
