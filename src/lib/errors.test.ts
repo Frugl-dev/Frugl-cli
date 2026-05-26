@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { AuthError, exitCodeName, printPoppiError } from "./errors.js";
 import { EXIT } from "./exit-codes.js";
 
-const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
+const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const plain = (s: string): string => s.replace(ANSI_RE, "");
 
 describe("exitCodeName", () => {
   it("maps stable codes back to their symbolic names", () => {

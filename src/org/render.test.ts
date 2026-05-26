@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderOrgTable, renderNoOrg } from "./render.js";
 
-const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
+// Strip ANSI (incl. the ESC byte) so assertions hold whether or not color is on.
+const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const plain = (s: string): string => s.replace(ANSI_RE, "");
 
 describe("renderOrgTable", () => {
   it("renders a header and one aligned row with an active marker", () => {

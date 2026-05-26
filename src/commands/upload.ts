@@ -303,7 +303,7 @@ export default class Upload extends Command {
           noop: true,
         };
         if (mode === "text") {
-          process.stdout.write(color.dim("No new or updated sessions. Nothing to upload.\n"));
+          process.stdout.write(`${color.dim("No new or updated sessions. Nothing to upload.")}\n`);
         }
         process.stdout.write(`${JSON.stringify(result)}\n`);
         return;

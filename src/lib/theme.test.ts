@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { bar, formatBytes } from "./theme.js";
 
-// Strip ANSI so assertions hold whether or not color is enabled in the runner.
-const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
+// Strip ANSI (incl. the ESC byte) so assertions hold whether or not color is on.
+const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const plain = (s: string): string => s.replace(ANSI_RE, "");
 
 describe("theme.bar", () => {
   it("fills the requested cells and pads the rest", () => {
