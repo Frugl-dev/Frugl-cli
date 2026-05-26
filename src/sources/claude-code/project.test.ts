@@ -24,9 +24,10 @@ describe("deriveClaudeProjects", () => {
   });
 
   it("extracts the worktree sub-path from a session absolutePath", () => {
+    // Claude encodes both "/" and "." as "-", so ".claude/worktrees/" becomes "--claude-worktrees-"
     expect(
       extractWorktreePath(
-        "/home/me/.claude/projects/-Users-me-repo-.claude-worktrees-001-cloud-ingest-db/sess.jsonl",
+        "/home/me/.claude/projects/-Users-me-repo--claude-worktrees-001-cloud-ingest-db/sess.jsonl",
       ),
     ).toBe("001/cloud/ingest/db");
     expect(
@@ -63,8 +64,9 @@ describe("deriveClaudeProjects", () => {
 
   it("merges worktree paths from the same repo into one group", async () => {
     // Two worktrees under the same repo, plus a session in a different project.
-    await writeTestSessions(home, 1, "-Users-me-repo-.claude-worktrees-branch1");
-    await writeTestSessions(home, 3, "-Users-me-repo-.claude-worktrees-branch2");
+    // Claude encodes both "/" and "." as "-", so ".claude/worktrees/" → "--claude-worktrees-"
+    await writeTestSessions(home, 1, "-Users-me-repo--claude-worktrees-branch1");
+    await writeTestSessions(home, 3, "-Users-me-repo--claude-worktrees-branch2");
     await writeTestSessions(home, 2, "-Users-me-other");
 
     const refs = await discoverClaudeSessions({ homeDir: home });
@@ -90,8 +92,8 @@ describe("deriveClaudeProjects", () => {
   });
 
   it("keeps worktrees from different repos in separate groups", async () => {
-    await writeTestSessions(home, 1, "-Users-me-repo-a-.claude-worktrees-feat");
-    await writeTestSessions(home, 2, "-Users-me-repo-b-.claude-worktrees-feat");
+    await writeTestSessions(home, 1, "-Users-me-repo-a--claude-worktrees-feat");
+    await writeTestSessions(home, 2, "-Users-me-repo-b--claude-worktrees-feat");
 
     const refs = await discoverClaudeSessions({ homeDir: home });
     const groups = deriveClaudeProjects(refs);
