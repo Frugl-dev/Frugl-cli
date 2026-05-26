@@ -44,7 +44,7 @@ export async function setupOrg(
         body: { name: intent.name, slug: intent.slug },
         schema: orgCreateResponseSchema,
       });
-      return { status: "created", orgName: created.name, slug: created.slug };
+      return { status: "created", orgName: created.org.name, slug: created.org.slug };
     } catch (err) {
       if (err instanceof CloudHttpError && err.status === 409) {
         const body = err.body as Record<string, unknown>;

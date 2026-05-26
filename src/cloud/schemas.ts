@@ -104,7 +104,7 @@ export const orgMeResponseSchema = z
 export type OrgMeResponse = z.infer<typeof orgMeResponseSchema>;
 
 export const orgCreateResponseSchema = z
-  .object({ id: z.string(), name: z.string(), slug: z.string() })
+  .object({ org: z.object({ id: z.string(), name: z.string(), slug: z.string() }).passthrough() })
   .passthrough();
 export type OrgCreateResponse = z.infer<typeof orgCreateResponseSchema>;
 
