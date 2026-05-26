@@ -62,7 +62,7 @@ describe("setupOrg", () => {
   it("creates a new org", async () => {
     const client = makeFakeClient({
       "GET /api/orgs/me": orgRequiredError(),
-      "POST /api/orgs/create": { id: "o1", name: "Acme", slug: "acme" },
+      "POST /api/orgs/create": { org: { id: "o1", name: "Acme", slug: "acme" } },
     });
     const result = await setupOrg(client as never, {
       action: "create",
