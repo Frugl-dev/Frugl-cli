@@ -246,25 +246,42 @@ function toWireGitContext(ctx: GitContext): {
 }
 
 async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
-  const created = await opts.client.call({
-    method: "POST",
-    path: "/api/uploads/manifest",
-    body: {
-      cli_version: opts.cliVersion,
-      redaction_policy_version: opts.policyVersion,
-      source_kind: opts.sourceKind,
-      expected_session_count: opts.jobs.length,
-      sessions: opts.jobs.map((job) => ({
-        session_id: job.sessionId,
-        format_version: job.formatVersion,
-        expected_bytes: job.anonymizationResult.byteSize,
-        ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
-        ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
-      })),
-    },
-    schema: createManifestResponseSchema,
-    timeoutMs: 12_000,
-  });
+  let created;
+  try {
+    created = await opts.client.call({
+      method: "POST",
+      path: "/api/uploads/manifest",
+      body: {
+        cli_version: opts.cliVersion,
+        redaction_policy_version: opts.policyVersion,
+        source_kind: opts.sourceKind,
+        expected_session_count: opts.jobs.length,
+        sessions: opts.jobs.map((job) => ({
+          session_id: job.sessionId,
+          format_version: job.formatVersion,
+          expected_bytes: job.anonymizationResult.byteSize,
+          ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
+          ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
+        })),
+      },
+      schema: createManifestResponseSchema,
+      timeoutMs: 12_000,
+    });
+  } catch (err) {
+    if (
+      err instanceof CloudHttpError &&
+      err.status === 409 &&
+      typeof err.body === "object" &&
+      err.body !== null &&
+      (err.body as Record<string, unknown>).error === "org_required"
+    ) {
+      throw new PoppiError(
+        "Your account has no organization. Run 'poppi setup' to finish setup.",
+        EXIT.GENERIC_FAILURE,
+      );
+    }
+    throw err;
+  }
   return {
     manifestId: created.upload_id,
     cliVersion: opts.cliVersion,

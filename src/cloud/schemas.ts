@@ -87,3 +87,21 @@ export const versionGateBodySchema = z.object({
   minSupportedCliVersion: z.string(),
 });
 export type VersionGateBody = z.infer<typeof versionGateBodySchema>;
+
+export const orgMeResponseSchema = z
+  .object({
+    org: z.object({ id: z.string(), name: z.string(), slug: z.string() }).passthrough(),
+    membership: z.object({ role: z.string() }).passthrough(),
+  })
+  .passthrough();
+export type OrgMeResponse = z.infer<typeof orgMeResponseSchema>;
+
+export const orgCreateResponseSchema = z
+  .object({ id: z.string(), name: z.string(), slug: z.string() })
+  .passthrough();
+export type OrgCreateResponse = z.infer<typeof orgCreateResponseSchema>;
+
+export const joinResponseSchema = z
+  .object({ org: z.object({ name: z.string(), slug: z.string() }).passthrough() })
+  .passthrough();
+export type JoinResponse = z.infer<typeof joinResponseSchema>;

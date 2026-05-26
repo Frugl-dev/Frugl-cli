@@ -1,12 +1,13 @@
 import { Command, Flags } from "@oclif/core";
 import { input, password } from "@inquirer/prompts";
-import { CloudClient } from "../cloud/client.js";
+import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
 import { saveAuthSession } from "../auth/session.js";
 import { isPoppiError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
+import { orgMeResponseSchema } from "../cloud/schemas.js";
 
 export default class Login extends Command {
   static override description =
@@ -49,18 +50,36 @@ export default class Login extends Command {
       const session = await verifyOtp(client, email, code);
       await saveAuthSession(session);
 
+      // Best-effort org check — warn immediately if the account has no org yet.
+      // Errors other than 409 (network, timeout) are swallowed so they don't
+      // block a successful login.
+      let orgRequired = false;
+      client.setToken(session.token);
+      try {
+        await client.call({ method: "GET", path: "/api/orgs/me", schema: orgMeResponseSchema });
+      } catch (err) {
+        if (err instanceof CloudHttpError && err.status === 409) {
+          orgRequired = true;
+        }
+      }
+
       if (mode === "json") {
-        process.stdout.write(
-          `${JSON.stringify({
-            command: "login",
-            ok: true,
-            email: session.email,
-            endpoint: session.endpointUrl,
-            userId: session.userId,
-          })}\n`,
-        );
+        const out: Record<string, unknown> = {
+          command: "login",
+          ok: true,
+          email: session.email,
+          endpoint: session.endpointUrl,
+          userId: session.userId,
+        };
+        if (orgRequired) out["orgRequired"] = true;
+        process.stdout.write(`${JSON.stringify(out)}\n`);
       } else {
         process.stdout.write(`Signed in as ${session.email} (endpoint: ${session.endpointUrl})\n`);
+        if (orgRequired) {
+          process.stderr.write(
+            "poppi: No organization found. Run 'poppi setup' to finish setup.\n",
+          );
+        }
       }
     } catch (err) {
       if (isPoppiError(err)) {
