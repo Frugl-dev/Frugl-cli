@@ -15,7 +15,16 @@ function makeFakeClient(responses: Record<string, unknown | Error>) {
     calls,
     endpointUrl: "https://test",
     setToken: () => {},
-    async call({ method, path, body }: { method: string; path: string; body?: unknown; schema: z.ZodTypeAny }) {
+    async call({
+      method,
+      path,
+      body,
+    }: {
+      method: string;
+      path: string;
+      body?: unknown;
+      schema: z.ZodTypeAny;
+    }) {
       calls.push({ method, path, body });
       const key = `${method} ${path}`;
       const response = responses[key];
@@ -36,9 +45,16 @@ function slugTakenError(suggestion: string) {
 describe("setupOrg", () => {
   it("returns already-setup when org exists", async () => {
     const client = makeFakeClient({
-      "GET /api/orgs/me": { org: { id: "o1", name: "Acme", slug: "acme" }, membership: { role: "owner" } },
+      "GET /api/orgs/me": {
+        org: { id: "o1", name: "Acme", slug: "acme" },
+        membership: { role: "owner" },
+      },
     });
-    const result = await setupOrg(client as never, { action: "create", name: "Acme", slug: "acme" });
+    const result = await setupOrg(client as never, {
+      action: "create",
+      name: "Acme",
+      slug: "acme",
+    });
     expect(result.status).toBe("already-setup");
     expect(client.calls).toHaveLength(1);
   });
@@ -48,7 +64,11 @@ describe("setupOrg", () => {
       "GET /api/orgs/me": orgRequiredError(),
       "POST /api/orgs/create": { id: "o1", name: "Acme", slug: "acme" },
     });
-    const result = await setupOrg(client as never, { action: "create", name: "Acme", slug: "acme" });
+    const result = await setupOrg(client as never, {
+      action: "create",
+      name: "Acme",
+      slug: "acme",
+    });
     expect(result.status).toBe("created");
     if (result.status === "created") expect(result.slug).toBe("acme");
   });
@@ -67,7 +87,11 @@ describe("setupOrg", () => {
       "GET /api/orgs/me": orgRequiredError(),
       "POST /api/orgs/create": slugTakenError("acme-1"),
     });
-    const result = await setupOrg(client as never, { action: "create", name: "Acme", slug: "acme" });
+    const result = await setupOrg(client as never, {
+      action: "create",
+      name: "Acme",
+      slug: "acme",
+    });
     expect(result.status).toBe("slug-taken");
     if (result.status === "slug-taken") expect(result.suggestion).toBe("acme-1");
   });
@@ -93,7 +117,11 @@ describe("setupOrg", () => {
   it("throws on rate limit", async () => {
     const client = makeFakeClient({
       "GET /api/orgs/me": orgRequiredError(),
-      "POST /api/join": new CloudHttpError(429, { error: "rate_limited", details: { retry_after_seconds: 30 } }, "HTTP 429"),
+      "POST /api/join": new CloudHttpError(
+        429,
+        { error: "rate_limited", details: { retry_after_seconds: 30 } },
+        "HTTP 429",
+      ),
     });
     await expect(setupOrg(client as never, { action: "join", code: "CODE" })).rejects.toThrow();
   });

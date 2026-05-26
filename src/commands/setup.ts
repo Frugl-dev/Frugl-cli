@@ -78,7 +78,8 @@ export default class Setup extends Command {
         if (choice === "create") {
           const name = await input({
             message: "Organization name:",
-            validate: (v) => (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+            validate: (v) =>
+              (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
           });
           orgAction = { action: "create", name, slug: deriveSlug(name) };
         } else {
@@ -114,7 +115,8 @@ export default class Setup extends Command {
           );
           const name = await input({
             message: "Organization name (try a different one):",
-            validate: (v) => (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+            validate: (v) =>
+              (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
           });
           orgAction = { action: "create", name, slug: deriveSlug(name) };
           continue;
@@ -165,7 +167,8 @@ export default class Setup extends Command {
         `${JSON.stringify({ command: "setup", ok: true, email, orgName, slug, outcome })}\n`,
       );
     } else {
-      const label = outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
+      const label =
+        outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
       process.stdout.write(`Setup complete · ${email} · ${label}: ${orgName}\n`);
     }
   }
