@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import pc from "picocolors";
 import { randomUUID } from "node:crypto";
-import { CloudClient } from "../cloud/client.js";
+import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requireAuthSession } from "../auth/session.js";
 import {
@@ -175,7 +175,7 @@ export default class Upload extends Command {
       // Classify per source (each source knows how to parse its own refs)
       const classificationsBySource = new Map<Source, SessionClassification[]>();
       for (const [source, sourceRefs] of refsBySource) {
-        const sorted = sourceRefs.sort(
+        const sorted = sourceRefs.toSorted(
           (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
         );
         const classifications = await classifyAll(sorted, {
@@ -404,6 +404,16 @@ export default class Upload extends Command {
       process.stderr.write(`poppi: ${err.message}\n`);
       process.exit(err.exitCode);
     }
+    if (
+      err instanceof CloudHttpError &&
+      err.status === 409 &&
+      (err.body as Record<string, unknown>)?.error === "org_required"
+    ) {
+      process.stderr.write(
+        "poppi: No organization set up. Run 'poppi login' to finish account setup.\n",
+      );
+      process.exit(EXIT.GENERIC_FAILURE);
+    }
     if (err instanceof Error) {
       process.stderr.write(`poppi: ${err.message}\n`);
     }
@@ -454,7 +464,7 @@ export default class Upload extends Command {
       );
     }
 
-    return [...repositories].sort();
+    return [...repositories].toSorted();
   }
 }
 
