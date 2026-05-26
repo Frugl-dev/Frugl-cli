@@ -1,4 +1,6 @@
 import { EXIT, type ExitCode } from "./exit-codes.js";
+import type { OutputMode } from "./output-mode.js";
+import { color } from "./theme.js";
 
 export class PoppiError extends Error {
   readonly exitCode: ExitCode;
@@ -72,6 +74,36 @@ export class UsageError extends PoppiError {
 
 export function isPoppiError(value: unknown): value is PoppiError {
   return value instanceof PoppiError;
+}
+
+// Reverse-lookup the symbolic name for a stable exit code (e.g. 10 → AUTH_FAILURE).
+const EXIT_NAME: Record<number, string> = Object.fromEntries(
+  Object.entries(EXIT).map(([name, code]) => [code, name]),
+);
+
+export function exitCodeName(code: number): string | undefined {
+  return EXIT_NAME[code];
+}
+
+// Render an error to stderr in poppi's house style and return the exit code to
+// use. PoppiErrors get a `poppi: <message>` line plus, in text mode, a dim
+// `Exit code N (NAME)` footer matching the design's error screens. Anything
+// else is reported as a generic failure. Never colorizes structured data —
+// picocolors auto-disables on non-TTY/NO_COLOR so piped output stays plain.
+export function printPoppiError(err: unknown, mode: OutputMode = "text"): ExitCode {
+  if (isPoppiError(err)) {
+    process.stderr.write(`${color.err(`poppi: ${err.message}`)}\n`);
+    if (mode === "text") {
+      const name = exitCodeName(err.exitCode);
+      process.stderr.write(
+        `\n${color.dim(`  Exit code ${err.exitCode}${name ? `  (${name})` : ""}`)}\n`,
+      );
+    }
+    return err.exitCode;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`${color.err(`poppi: ${message}`)}\n`);
+  return EXIT.GENERIC_FAILURE;
 }
 
 export class StaleResumeError extends Error {

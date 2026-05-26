@@ -3,13 +3,14 @@ import { input, password, select } from "@inquirer/prompts";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
-import { saveAuthSession } from "../auth/session.js";
-import { isPoppiError } from "../lib/errors.js";
+import { clearAuthSession, saveAuthSession } from "../auth/session.js";
+import { isPoppiError, printPoppiError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
-import { orgMeResponseSchema } from "../cloud/schemas.js";
-import { setupOrg, type OrgSetupAction } from "../org/setup.js";
+import { orgMeResponseSchema, type OrgMeResponse } from "../cloud/schemas.js";
+import { setupOrg, type OrgSetupAction, type OrgSetupResult } from "../org/setup.js";
 import { deriveSlug } from "../org/slug.js";
+import { color, symbol } from "../lib/theme.js";
 
 export default class Login extends Command {
   static override description =
@@ -54,9 +55,14 @@ export default class Login extends Command {
       client.setToken(session.token);
 
       // Check whether the account already has an org.
+      let orgContext: OrgMeResponse | null = null;
       let orgRequired = false;
       try {
-        await client.call({ method: "GET", path: "/api/orgs/me", schema: orgMeResponseSchema });
+        orgContext = await client.call({
+          method: "GET",
+          path: "/api/orgs/me",
+          schema: orgMeResponseSchema,
+        });
       } catch (err) {
         if (err instanceof CloudHttpError && err.status === 409) {
           orgRequired = true;
@@ -78,25 +84,76 @@ export default class Login extends Command {
         return;
       }
 
-      process.stdout.write(`Signed in as ${session.email} (endpoint: ${session.endpointUrl})\n`);
+      process.stdout.write(
+        `${color.ok(`${symbol.tick} Signed in as ${session.email}`)}  ${color.dim(`(endpoint: ${session.endpointUrl})`)}\n`,
+      );
 
-      if (!orgRequired) return;
+      if (!orgRequired) {
+        if (orgContext) {
+          process.stdout.write(
+            `${color.dim("  Active org: ")}${color.bold(orgContext.org.name)}  ${color.dim(`(role: ${orgContext.membership.role})`)}\n`,
+          );
+        }
+        this.printNextSteps();
+        return;
+      }
 
-      // No org yet — run the org setup flow inline.
-      process.stdout.write("\nYou don't have an organization yet. Set one up to continue.\n");
+      // No org yet — every Poppi account belongs to one. Offer the fork.
+      process.stdout.write(
+        `\n${color.bold("You're new here — every Poppi account belongs to an org.")}\n`,
+      );
+      process.stdout.write(
+        color.dim(
+          "An org is the team whose AI retros you share. You can be in more than one later.\n\n",
+        ),
+      );
 
-      let orgAction: OrgSetupAction;
       const choice = await select({
-        message: "Organization setup:",
+        message: "What would you like to do?",
         choices: [
-          { name: "Create a new organization", value: "create" },
-          { name: "Join an existing organization with an invite code", value: "join" },
+          {
+            name: "Create a new org",
+            value: "create",
+            description: "You become the owner. Invite teammates later.",
+          },
+          {
+            name: "Join an existing org",
+            value: "join",
+            description: "Paste an invite code from a teammate.",
+          },
+          {
+            name: "I'll decide later",
+            value: "later",
+            description: "Logs you in, but upload is blocked until you have one.",
+          },
+          {
+            name: "Log out — wrong account",
+            value: "logout",
+            description: "Forget this token; you'll be back at poppi login.",
+          },
         ],
       });
 
+      if (choice === "later") {
+        process.stdout.write(
+          `\n${color.dim("  No problem. Set one up anytime with ")}${color.poppy("poppi org create")}${color.dim(" or ")}${color.poppy("poppi org join <code>")}${color.dim(".")}\n`,
+        );
+        process.stdout.write(color.dim("  Upload stays blocked until then.\n"));
+        return;
+      }
+
+      if (choice === "logout") {
+        await clearAuthSession(endpoint.url);
+        process.stdout.write(
+          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.poppy("poppi login")}${color.dim(" to sign in with a different account.")}\n`,
+        );
+        return;
+      }
+
+      let orgAction: OrgSetupAction;
       if (choice === "create") {
         const name = await input({
-          message: "Organization name:",
+          message: "Org name:",
           validate: (v) =>
             (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
         });
@@ -120,19 +177,14 @@ export default class Login extends Command {
           result.status === "created" ||
           result.status === "joined"
         ) {
-          const label =
-            result.status === "created"
-              ? "Organization created"
-              : result.status === "joined"
-                ? "Joined organization"
-                : "Organization";
-          process.stdout.write(`${label}: ${result.orgName}\n`);
+          this.printSetupSuccess(result);
+          this.printNextSteps();
           return;
         }
 
         if (result.status === "slug-taken") {
           process.stderr.write(
-            `poppi: That slug is already taken. Suggested alternative: ${result.suggestion}\n`,
+            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${result.suggestion}\n`)}`,
           );
           // eslint-disable-next-line no-await-in-loop
           const name = await input({
@@ -145,7 +197,9 @@ export default class Login extends Command {
         }
 
         if (result.status === "invalid-code") {
-          process.stderr.write("poppi: Invite code not found. Check the code and try again.\n");
+          process.stderr.write(
+            `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}\n`,
+          );
           // eslint-disable-next-line no-await-in-loop
           const inviteCode = await input({
             message: "Invite code:",
@@ -156,7 +210,9 @@ export default class Login extends Command {
         }
 
         if (result.status === "expired-code") {
-          process.stderr.write("poppi: That invite code has expired or been used up.\n");
+          process.stderr.write(
+            `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}\n`,
+          );
           // eslint-disable-next-line no-await-in-loop
           const inviteCode = await input({
             message: "Invite code:",
@@ -168,14 +224,40 @@ export default class Login extends Command {
       }
     } catch (err) {
       if (isPoppiError(err)) {
-        process.stderr.write(`poppi: ${err.message}\n`);
-        process.exit(err.exitCode);
+        process.exit(printPoppiError(err, mode));
       }
       if (err instanceof CloudHttpError) {
-        process.stderr.write(`poppi: ${err.message}\n`);
-        process.exit(1);
+        process.exit(printPoppiError(err, mode));
       }
       throw err;
     }
+  }
+
+  private printSetupSuccess(
+    result: Extract<OrgSetupResult, { status: "created" | "joined" | "already-setup" }>,
+  ): void {
+    if (result.status === "created") {
+      process.stdout.write(
+        `\n${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(result.slug)}${color.dim(".")}\n`,
+      );
+    } else if (result.status === "joined") {
+      process.stdout.write(
+        `\n${color.ok(`${symbol.tick} Joined ${result.slug}`)}  ${color.dim("as member.")}\n`,
+      );
+    } else {
+      process.stdout.write(
+        `\n${color.ok(`${symbol.tick} Active org: ${result.orgName}`)}  ${color.dim(`(${result.slug})`)}\n`,
+      );
+    }
+  }
+
+  private printNextSteps(): void {
+    process.stdout.write(`\n${color.dim("  Next:")}\n`);
+    process.stdout.write(
+      `${color.dim("    ")}${color.poppy("poppi upload --dry-run")}${color.dim("   preview what would be sent")}\n`,
+    );
+    process.stdout.write(
+      `${color.dim("    ")}${color.poppy("poppi upload")}${color.dim("             anonymize + upload your first batch")}\n`,
+    );
   }
 }

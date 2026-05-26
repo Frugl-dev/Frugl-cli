@@ -8,7 +8,11 @@ machine.
 ```bash
 npm install -g poppi          # or: npx poppi <command>
 poppi login                   # email one-time code; token stored in OS keychain
-poppi whoami                  # show signed-in identity
+                              #   first-time accounts are prompted to create or join an org
+poppi whoami                  # show signed-in identity + active org and role
+poppi org                     # show your active org (alias: poppi org ls)
+poppi org create              # start a new org (you become the owner)
+poppi org join <code>         # accept an invite code from a teammate
 poppi upload --dry-run        # discover + anonymize; transmit zero bytes
 poppi upload --dry-run --inspect ./out   # also write redacted output to ./out
 poppi upload --confirm        # upload anonymized sessions to the cloud
@@ -36,6 +40,22 @@ before sending anything:
 Non-interactive runs (`--yes`/`--confirm`, `--json`, or no TTY such as CI)
 skip the prompts and select every detected supported provider and all of its
 projects automatically.
+
+## Organizations
+
+Every Poppi account belongs to exactly one org — the team whose AI retros you
+share. A brand-new account is prompted right after `poppi login` to **create**
+an org (you become the owner) or **join** an existing one with an invite code.
+Until you do, `poppi upload` is blocked.
+
+```bash
+poppi org                     # show your active org, role, and member count
+poppi org create --name "Acme Corp"   # non-interactive create (slug auto-derived)
+poppi org join pop_inv_…      # redeem an invite code from a teammate
+```
+
+Invite codes come from a teammate (org owners/admins generate them on the
+dashboard); accept one with `poppi org join <code>`.
 
 ## Why open source?
 
