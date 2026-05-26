@@ -92,8 +92,10 @@ export default class Setup extends Command {
       }
 
       // Retry loop: slug conflicts and invalid codes prompt the user to try again.
+      // Each iteration awaits user input, so sequential awaits are intentional here.
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        // eslint-disable-next-line no-await-in-loop
         const result = await setupOrg(client, orgAction);
 
         if (result.status === "already-setup") {
@@ -113,6 +115,7 @@ export default class Setup extends Command {
           process.stderr.write(
             `poppi: That slug is already taken. Suggested alternative: ${result.suggestion}\n`,
           );
+          // eslint-disable-next-line no-await-in-loop
           const name = await input({
             message: "Organization name (try a different one):",
             validate: (v) =>
@@ -124,6 +127,7 @@ export default class Setup extends Command {
 
         if (result.status === "invalid-code") {
           process.stderr.write("poppi: Invite code not found. Check the code and try again.\n");
+          // eslint-disable-next-line no-await-in-loop
           const code = await input({
             message: "Invite code:",
             validate: (v) => v.trim().length > 0 || "Enter an invite code",
@@ -134,6 +138,7 @@ export default class Setup extends Command {
 
         if (result.status === "expired-code") {
           process.stderr.write("poppi: That invite code has expired or been used up.\n");
+          // eslint-disable-next-line no-await-in-loop
           const code = await input({
             message: "Invite code:",
             validate: (v) => v.trim().length > 0 || "Enter an invite code",

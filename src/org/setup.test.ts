@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { setupOrg, type OrgSetupResult } from "./setup.js";
+import { setupOrg } from "./setup.js";
 import { CloudHttpError } from "../cloud/client.js";
 import { z } from "zod";
 
@@ -70,7 +70,7 @@ describe("setupOrg", () => {
       slug: "acme",
     });
     expect(result.status).toBe("created");
-    if (result.status === "created") expect(result.slug).toBe("acme");
+    expect((result as { status: "created"; slug: string }).slug).toBe("acme");
   });
 
   it("joins an org with invite code", async () => {
@@ -93,7 +93,7 @@ describe("setupOrg", () => {
       slug: "acme",
     });
     expect(result.status).toBe("slug-taken");
-    if (result.status === "slug-taken") expect(result.suggestion).toBe("acme-1");
+    expect((result as { status: "slug-taken"; suggestion: string }).suggestion).toBe("acme-1");
   });
 
   it("returns invalid-code when join code not found", async () => {
@@ -123,6 +123,8 @@ describe("setupOrg", () => {
         "HTTP 429",
       ),
     });
-    await expect(setupOrg(client as never, { action: "join", code: "CODE" })).rejects.toThrow();
+    await expect(setupOrg(client as never, { action: "join", code: "CODE" })).rejects.toThrow(
+      "Too many attempts.",
+    );
   });
 });
