@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import pc from "picocolors";
 import { randomUUID } from "node:crypto";
-import { CloudClient } from "../cloud/client.js";
+import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requireAuthSession } from "../auth/session.js";
 import {
@@ -403,6 +403,16 @@ export default class Upload extends Command {
     if (isPoppiError(err)) {
       process.stderr.write(`poppi: ${err.message}\n`);
       process.exit(err.exitCode);
+    }
+    if (
+      err instanceof CloudHttpError &&
+      err.status === 409 &&
+      (err.body as Record<string, unknown>)?.error === "org_required"
+    ) {
+      process.stderr.write(
+        "poppi: No organization set up. Run 'poppi login' to finish account setup.\n",
+      );
+      process.exit(EXIT.GENERIC_FAILURE);
     }
     if (err instanceof Error) {
       process.stderr.write(`poppi: ${err.message}\n`);
