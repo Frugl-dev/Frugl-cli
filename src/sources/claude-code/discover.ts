@@ -14,7 +14,7 @@ export const CLAUDE_FORMAT_VERSION = "claude-jsonl-2026-04";
 export async function discoverClaudeSessions(opts?: { homeDir?: string }): Promise<SessionRef[]> {
   const home = opts?.homeDir ?? homedir();
   const root = path.join(home, ".claude", "projects");
-  const files = await glob(["**/*.jsonl"], {
+  const files = await glob(["*/*.jsonl"], {
     cwd: root,
     absolute: true,
     dot: false,

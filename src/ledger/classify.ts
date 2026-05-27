@@ -75,8 +75,13 @@ export async function classifyAll(
   ctx: ClassifyContext,
 ): Promise<SessionClassification[]> {
   const results: SessionClassification[] = [];
+  const seen = new Set<string>();
   for (const ref of refs) {
-    results.push(await classifySession(ref, ctx));
+    const result = await classifySession(ref, ctx);
+    if (!seen.has(result.identity.sessionId)) {
+      seen.add(result.identity.sessionId);
+      results.push(result);
+    }
   }
   return results;
 }
