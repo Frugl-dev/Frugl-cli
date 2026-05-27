@@ -1,5 +1,5 @@
 import type { OutputMode } from "../lib/output-mode.js";
-import { bar, color, formatBytes, symbol } from "../lib/theme.js";
+import { bar, color, symbol } from "../lib/theme.js";
 
 // Shorten a session id for display: keep head + tail (e.g. sess_5fa1…81d3).
 function shortSession(id: string): string {
@@ -102,16 +102,15 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
     process.stderr.write(`${line}\n`);
   };
 
-  // Human-mode state: total comes from upload-start, per-session sizes from
-  // session-start; a completed counter drives the "[ n/total]" prefix and the
-  // closing progress bar. JSON mode ignores all of this.
+  // Human-mode state: reset per pipeline in uploadStart. JSON mode ignores all of this.
   let total = 0;
   let done = 0;
   let skipped = 0;
-  const sizeBySession = new Map<string, number>();
-  const idxPrefix = (): string => {
-    const w = Math.max(2, String(total).length);
-    return `[${String(done).padStart(w)}/${total}]`;
+
+  const liveBar = (): void => {
+    const filled = total > 0 ? Math.round((done / total) * 32) : 0;
+    const tail = skipped > 0 ? color.dim(`  ${skipped} skipped`) : "";
+    process.stderr.write(`\r\x1b[K  ${bar(filled, 32)}  ${done} / ${total}${tail}`);
   };
 
   return {
@@ -124,6 +123,8 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       };
       if (mode === "json") return emitJson(event);
       total = input.expectedSessionCount;
+      done = 0;
+      skipped = 0;
       emitText(
         color.dim(
           `Uploading ${input.expectedSessionCount} sessions to ${input.endpoint} (policy ${input.redactionPolicyVersion})`,
@@ -141,7 +142,6 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       };
       if (mode === "json") return emitJson(event);
       total = input.total;
-      sizeBySession.set(input.sessionId, input.byteSize);
     },
     sessionAcked(input) {
       const event: ProgressEvent = {
@@ -153,10 +153,7 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       };
       if (mode === "json") return emitJson(event);
       done += 1;
-      const size = sizeBySession.get(input.sessionId);
-      emitText(
-        `${color.ok(idxPrefix())} ${color.mute(shortSession(input.sessionId))}  ${color.ok("uploaded")}   ${color.dim(size !== undefined ? formatBytes(size) : "")}`,
-      );
+      liveBar();
     },
     sessionFailed(input) {
       const event: ProgressEvent = {
@@ -170,9 +167,11 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       };
       if (mode === "json") return emitJson(event);
       done += 1;
+      process.stderr.write(`\n`);
       emitText(
-        `${color.err(idxPrefix())} ${color.mute(shortSession(input.sessionId))}  ${color.err("failed")}     ${color.dim(`${input.reason}${input.message ? `: ${input.message}` : ""}`)}`,
+        `  ${color.err(shortSession(input.sessionId))}  ${color.err("failed")}  ${color.dim(`${input.reason}${input.message ? `: ${input.message}` : ""}`)}`,
       );
+      liveBar();
     },
     sessionSkipped(input) {
       const event: ProgressEvent = {
@@ -186,9 +185,7 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       if (mode === "json") return emitJson(event);
       done += 1;
       skipped += 1;
-      emitText(
-        `${color.warn(`~ ${idxPrefix()}`)} ${color.mute(shortSession(input.sessionId))}  ${color.warn("skipped")}    ${color.dim(`(${input.reason})`)}`,
-      );
+      liveBar();
     },
     uploadComplete(input) {
       const event: ProgressEvent = {
@@ -200,13 +197,10 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
         dashboardUrl: input.dashboardUrl,
       };
       if (mode === "json") return emitJson(event);
-      const filled = total > 0 ? Math.round((input.actualSessionCount / total) * 32) : 32;
       const tail = skipped > 0 ? color.dim(`   ${skipped} skipped`) : "";
+      process.stderr.write(`\n`);
       emitText(
-        `\n  ${bar(filled, 32)}  ${color.bold(String(input.actualSessionCount))} / ${color.bold(String(total))}${tail}`,
-      );
-      emitText(
-        `\n${color.ok(`${symbol.tick} Uploaded ${input.actualSessionCount} sessions.`)}  ${color.dim(`Manifest ${input.manifestId}`)}`,
+        `\n${color.ok(`${symbol.tick} Uploaded ${input.actualSessionCount} sessions.`)}  ${color.dim(`Manifest ${input.manifestId}`)}${tail}`,
       );
       emitText(`${color.dim("  Dashboard: ")}${color.poppy(color.underline(input.dashboardUrl))}`);
     },
