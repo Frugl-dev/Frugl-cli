@@ -7,7 +7,7 @@ import { color, symbol } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
-import { requireAuthSession } from "../auth/session.js";
+import { resolveUploadAuth } from "../auth/headless.js";
 import {
   classifyAll,
   bucketize,
@@ -63,6 +63,10 @@ export default class Upload extends Command {
     }),
     force: Flags.boolean({ description: "Overwrite existing --inspect dir." }),
     endpoint: Flags.string({ description: "Override the API endpoint." }),
+    token: Flags.string({
+      description:
+        "Access token for non-interactive auth (CI / hooks). Overrides POPPI_TOKEN and any stored login.",
+    }),
     concurrency: Flags.integer({
       description: "Per-session upload concurrency (default 4).",
       default: 4,
@@ -101,7 +105,11 @@ export default class Upload extends Command {
     }
 
     try {
-      const session = await requireAuthSession(endpoint.url);
+      const session = await resolveUploadAuth({
+        endpointUrl: endpoint.url,
+        endpointExplicit: endpoint.resolvedFrom !== "default",
+        flagToken: flags.token,
+      });
       const client = new CloudClient({
         endpointUrl: endpoint.url,
         cliVersion: getCliVersion(),

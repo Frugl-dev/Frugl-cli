@@ -3,7 +3,8 @@ import { input, password, select } from "@inquirer/prompts";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
-import { clearAuthSession, saveAuthSession } from "../auth/session.js";
+import { clearAuthSession, saveAuthSession, type AuthSession } from "../auth/session.js";
+import { fetchIdentity } from "../auth/headless.js";
 import { isPoppiError, printPoppiError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
@@ -18,6 +19,10 @@ export default class Login extends Command {
 
   static override flags = {
     email: Flags.string({ description: "Email address to sign in with" }),
+    token: Flags.string({
+      description:
+        "Store a pre-issued access token for non-interactive use (CI / hooks) instead of the email OTP flow.",
+    }),
     endpoint: Flags.string({ description: "Override the API endpoint" }),
     json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
   };
@@ -29,6 +34,13 @@ export default class Login extends Command {
       flag: flags.endpoint,
       env: process.env["POPPI_ENDPOINT"],
     });
+
+    // Non-interactive: store a pre-issued access token (no OTP).
+    if (flags.token) {
+      await this.loginWithToken(flags.token, endpoint, mode);
+      return;
+    }
+
     const client = new CloudClient({
       endpointUrl: endpoint.url,
       cliVersion: getCliVersion(),
@@ -227,6 +239,50 @@ export default class Login extends Command {
         process.exit(printPoppiError(err, mode));
       }
       if (err instanceof CloudHttpError) {
+        process.exit(printPoppiError(err, mode));
+      }
+      throw err;
+    }
+  }
+
+  private async loginWithToken(
+    token: string,
+    endpoint: ReturnType<typeof resolveEndpoint>,
+    mode: ReturnType<typeof resolveOutputMode>,
+  ): Promise<void> {
+    try {
+      const identity = await fetchIdentity(
+        endpoint.url,
+        endpoint.resolvedFrom !== "default",
+        token,
+      );
+      const session: AuthSession = {
+        email: identity.primary_email,
+        userId: identity.user_id,
+        token,
+        endpointUrl: endpoint.url,
+        loggedInAt: new Date().toISOString(),
+      };
+      await saveAuthSession(session);
+
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({
+            command: "login",
+            ok: true,
+            email: session.email,
+            endpoint: session.endpointUrl,
+            userId: session.userId,
+            headless: true,
+          })}\n`,
+        );
+        return;
+      }
+      process.stdout.write(
+        `${color.ok(`${symbol.tick} Stored access token for ${session.email}`)}  ${color.dim(`(endpoint: ${session.endpointUrl})`)}\n`,
+      );
+    } catch (err) {
+      if (isPoppiError(err) || err instanceof CloudHttpError) {
         process.exit(printPoppiError(err, mode));
       }
       throw err;

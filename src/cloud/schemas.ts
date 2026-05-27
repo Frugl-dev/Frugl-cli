@@ -27,6 +27,15 @@ export const whoamiResponseSchema = z.object({
 });
 export type WhoamiResponse = z.infer<typeof whoamiResponseSchema>;
 
+// GET /api/auth/whoami wire shape — used to resolve identity for a headless
+// access token (and for the synthetic org service identity).
+export const identityResponseSchema = z.object({
+  user_id: z.string().min(1),
+  primary_email: z.string().email(),
+  providers: z.array(z.string()).optional(),
+});
+export type IdentityResponse = z.infer<typeof identityResponseSchema>;
+
 // Opt-in (005) git coordinate, snake_case wire shape. Strictly additive.
 export const gitContextRequestSchema = z.object({
   repository: z.object({

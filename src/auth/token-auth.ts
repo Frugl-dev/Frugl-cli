@@ -13,7 +13,7 @@ export interface ResolveTokenOptions {
   flagToken?: string | undefined;
   endpointUrl: string;
   /** Injectable for tests; defaults to process.env. */
-  env?: NodeJS.ProcessEnv;
+  env?: NodeJS.ProcessEnv | undefined;
 }
 
 export interface ResolvedToken {
