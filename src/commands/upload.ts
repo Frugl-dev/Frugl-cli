@@ -48,6 +48,7 @@ import {
 import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { getLinkPrs } from "../lib/config.js";
+import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
 import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
 
 export default class Upload extends Command {
@@ -69,7 +70,10 @@ export default class Upload extends Command {
     }),
     concurrency: Flags.integer({
       description: "Per-session upload concurrency (default 4).",
-      default: 4,
+    }),
+    config: Flags.string({
+      description:
+        "Path to a poppi.config.json declaring upload scope/options (else discovered from the cwd up).",
     }),
     limit: Flags.integer({
       description: "Maximum number of (new ∪ updated) sessions to upload.",
@@ -85,7 +89,6 @@ export default class Upload extends Command {
     const { flags } = await this.parse(Upload);
     const mode = resolveOutputMode({ json: flags.json });
     const reporter = createProgressReporter(mode);
-    const linkPrs = resolveEffectiveLinkPrs(flags["link-prs"], getLinkPrs());
 
     if (flags.inspect && !flags["dry-run"]) {
       this.bail(new UsageError("--inspect requires --dry-run."), mode);
@@ -105,6 +108,15 @@ export default class Upload extends Command {
     }
 
     try {
+      // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
+      const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
+      // Precedence (FR-026): flag > config file > default.
+      const linkPrs = resolveEffectiveLinkPrs(
+        flags["link-prs"],
+        uploadConfig?.upload?.linkPrs ?? getLinkPrs(),
+      );
+      const concurrency = flags.concurrency ?? uploadConfig?.upload?.concurrency ?? 4;
+
       const session = await resolveUploadAuth({
         endpointUrl: endpoint.url,
         endpointExplicit: endpoint.resolvedFrom !== "default",
@@ -132,34 +144,44 @@ export default class Upload extends Command {
         );
       }
 
-      // 2) Choose providers — interactive picker, or auto-select-all when not.
       const interactive = isInteractive({
         json: flags.json,
         yes: flags.yes,
         confirm: flags.confirm,
         isTTY: Boolean(process.stdin.isTTY),
       });
-      const selectedProviderIds = await selectProviders(detected, { interactive });
-      if (selectedProviderIds.length === 0) {
-        if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
-        process.exit(EXIT.OK);
-      }
 
-      // 3) Discover sessions for the selected providers and group them by project.
       const groups: ProjectGroup[] = [];
-      for (const id of selectedProviderIds) {
-        const descriptor = getProvider(id);
-        if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
-        const providerRefs = await descriptor.source.discover(discoverOpts);
-        groups.push(...descriptor.deriveProjects(providerRefs));
-      }
+      let selection: Selection;
 
-      // 4) Choose projects — all preselected; deselect to exclude from upload.
-      const selectedProjectIds = await selectProjects(groups, { interactive });
-      const selection: Selection = {
-        providerIds: selectedProviderIds,
-        projectIds: selectedProjectIds,
-      };
+      if (uploadConfig) {
+        // Config-driven scope: derive all supported providers' projects, then
+        // filter by the config's providers + project include/exclude globs.
+        for (const d of supportedDetected) {
+          const descriptor = getProvider(d.descriptor.id);
+          if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
+          const providerRefs = await descriptor.source.discover(discoverOpts);
+          groups.push(...descriptor.deriveProjects(providerRefs));
+        }
+        selection = resolveConfigSelection(uploadConfig, detected, groups);
+      } else {
+        // 2) Choose providers — interactive picker, or auto-select-all when not.
+        const selectedProviderIds = await selectProviders(detected, { interactive });
+        if (selectedProviderIds.length === 0) {
+          if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
+          process.exit(EXIT.OK);
+        }
+        // 3) Discover sessions for the selected providers, grouped by project.
+        for (const id of selectedProviderIds) {
+          const descriptor = getProvider(id);
+          if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
+          const providerRefs = await descriptor.source.discover(discoverOpts);
+          groups.push(...descriptor.deriveProjects(providerRefs));
+        }
+        // 4) Choose projects — all preselected; deselect to exclude from upload.
+        const selectedProjectIds = await selectProjects(groups, { interactive });
+        selection = { providerIds: selectedProviderIds, projectIds: selectedProjectIds };
+      }
       const selectionReport = buildSelectionReport(detected, groups, selection);
 
       const refs = applySelection(groups, selection);
@@ -353,7 +375,7 @@ export default class Upload extends Command {
             ledger,
             resumeStore,
             reporter,
-            concurrency: flags.concurrency,
+            concurrency,
             policyVersion: POLICY_VERSION,
             cliVersion: getCliVersion(),
             sourceKind: source.kind,
@@ -373,7 +395,7 @@ export default class Upload extends Command {
               ledger,
               resumeStore,
               reporter,
-              concurrency: flags.concurrency,
+              concurrency,
               policyVersion: POLICY_VERSION,
               cliVersion: getCliVersion(),
               sourceKind: source.kind,
