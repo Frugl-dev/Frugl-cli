@@ -142,7 +142,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("writes inspect dir and exits 0 with no network traffic", async () => {
       const inspectDir = path.join(tmp.dir, "inspect-out");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--inspect", inspectDir, "--endpoint", endpoint],
+        ["upload", "--dry-run", "--json", "--inspect", inspectDir, "--endpoint", endpoint],
         { env: { POPPI_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -200,9 +200,12 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     });
 
     it("exits 0 and emits manifest ID + dashboard URL on stdout", async () => {
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: { POPPI_HOME_DIR: tmp.dir },
-      });
+      const { exitCode, stdout } = await runCli(
+        ["upload", "--confirm", "--json", "--endpoint", server.url],
+        {
+          env: { POPPI_HOME_DIR: tmp.dir },
+        },
+      );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
       expect(result.ok).toBe(true);
@@ -235,12 +238,16 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("first run uploads; second run reports no new or updated sessions", async () => {
       const env = { POPPI_HOME_DIR: tmp.dir };
-      const first = await runCli(["upload", "--confirm", "--endpoint", server.url], { env });
+      const first = await runCli(["upload", "--confirm", "--json", "--endpoint", server.url], {
+        env,
+      });
       expect(first.exitCode).toBe(EXIT.OK);
       const firstResult = JSON.parse(first.stdout.trim().split("\n").at(-1)!);
       expect(firstResult.actualSessionCount).toBe(2);
 
-      const second = await runCli(["upload", "--confirm", "--endpoint", server.url], { env });
+      const second = await runCli(["upload", "--confirm", "--json", "--endpoint", server.url], {
+        env,
+      });
       expect(second.exitCode).toBe(EXIT.OK);
       const secondResult = JSON.parse(second.stdout.trim().split("\n").at(-1)!);
       expect(secondResult.noop).toBe(true);
@@ -271,7 +278,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("uploads only N sessions when --limit N is passed", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--confirm", "--limit", "2", "--endpoint", server.url],
+        ["upload", "--confirm", "--limit", "2", "--json", "--endpoint", server.url],
         { env: { POPPI_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -417,7 +424,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("emits zero HTTP requests to the endpoint during --dry-run", async () => {
       requestCount = 0;
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--endpoint", recordingEndpoint],
+        ["upload", "--dry-run", "--json", "--endpoint", recordingEndpoint],
         { env: { POPPI_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -459,7 +466,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("step 2: dry-run + inspect writes dir, exit 0, no network", async () => {
       const inspectDir = path.join(tmp.dir, "sc004-inspect");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--inspect", inspectDir, "--endpoint", server.url],
+        ["upload", "--dry-run", "--json", "--inspect", inspectDir, "--endpoint", server.url],
         { env: env() },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -470,9 +477,12 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     });
 
     it("step 3: upload --confirm uploads all 3 sessions", async () => {
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: env(),
-      });
+      const { exitCode, stdout } = await runCli(
+        ["upload", "--confirm", "--json", "--endpoint", server.url],
+        {
+          env: env(),
+        },
+      );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
       expect(result.ok).toBe(true);
@@ -480,9 +490,12 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     });
 
     it("step 4: second upload --confirm is a noop", async () => {
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: env(),
-      });
+      const { exitCode, stdout } = await runCli(
+        ["upload", "--confirm", "--json", "--endpoint", server.url],
+        {
+          env: env(),
+        },
+      );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
       expect(result.noop).toBe(true);
@@ -492,7 +505,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("step 5: --limit 1 uploads exactly 1 new session", async () => {
       await writeTestSessions(tmp.dir, 1, "sc004-new-project");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--limit", "1", "--confirm", "--endpoint", server.url],
+        ["upload", "--limit", "1", "--confirm", "--json", "--endpoint", server.url],
         { env: env() },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -536,10 +549,13 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("uploads 200 sessions in ≤ 60 s (SC-003)", async () => {
       const start = performance.now();
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: { POPPI_HOME_DIR: tmp.dir },
-        timeoutMs: 70_000,
-      });
+      const { exitCode, stdout } = await runCli(
+        ["upload", "--confirm", "--json", "--endpoint", server.url],
+        {
+          env: { POPPI_HOME_DIR: tmp.dir },
+          timeoutMs: 70_000,
+        },
+      );
       const elapsedMs = performance.now() - start;
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
