@@ -307,7 +307,7 @@ export default class Upload extends Command {
           selection: selectionReport,
           dryRun: true,
         };
-        process.stdout.write(`${JSON.stringify(result)}\n`);
+        if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
         return;
       }
 
@@ -335,7 +335,7 @@ export default class Upload extends Command {
         if (mode === "text") {
           process.stdout.write(`${color.dim("No new or updated sessions. Nothing to upload.")}\n`);
         }
-        process.stdout.write(`${JSON.stringify(result)}\n`);
+        if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
         return;
       }
 
@@ -441,7 +441,7 @@ export default class Upload extends Command {
             }
           : {}),
       };
-      process.stdout.write(`${JSON.stringify(finalSummary)}\n`);
+      if (mode === "json") process.stdout.write(`${JSON.stringify(finalSummary)}\n`);
     } catch (err) {
       this.bail(err, mode);
     }

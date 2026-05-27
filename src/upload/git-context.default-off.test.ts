@@ -51,9 +51,12 @@ describe("poppi upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
   });
 
   it("default (no --link-prs): NO git field is attached, even for a session in a real repo (SC-001)", async () => {
-    const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-      env: { POPPI_HOME_DIR: home.dir },
-    });
+    const { exitCode, stdout } = await runCli(
+      ["upload", "--confirm", "--json", "--endpoint", server.url],
+      {
+        env: { POPPI_HOME_DIR: home.dir },
+      },
+    );
     expect(exitCode).toBe(EXIT.OK);
     expect(manifestSessions.length).toBe(1);
     for (const s of manifestSessions) {
