@@ -147,10 +147,12 @@ export class CloudClient {
       } catch {
         body = await response.text().catch(() => "");
       }
+      const bodyDesc =
+        typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200);
       throw new CloudHttpError(
         response.status,
         body,
-        `HTTP ${response.status} from ${opts.method} ${opts.path}`,
+        `HTTP ${response.status} from ${opts.method} ${opts.path}: ${bodyDesc}`,
       );
     }
     // Some endpoints (OTP request, signout) succeed with 204 / an empty body.
