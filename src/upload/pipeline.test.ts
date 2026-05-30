@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { Ledger } from "../ledger/ledger.js";
 import { ResumeStore } from "./resume.js";
 import { runUploadPipeline, type SessionUploadJob } from "./pipeline.js";
+import { buildReport } from "./report.js";
 import type { ProgressReporter } from "./progress.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
 
@@ -191,5 +192,71 @@ describe("upload pipeline", () => {
 
     // Resume state is cleared on completion (FR-028).
     expect(resumeStore.load()).toBeNull();
+  });
+
+  it("persists a classified failure reason on the resume entry for --report", async () => {
+    const endpoint = "https://test";
+    const userId = "user-1";
+    const stateCwd = path.join(tempDir, "state");
+    mkdirSync(stateCwd, { recursive: true });
+    const ledger = new Ledger({ endpointUrl: endpoint, userId }, { cwd: stateCwd });
+    const resumeStore = new ResumeStore({ endpointUrl: endpoint, userId }, { cwd: stateCwd });
+
+    const filesDir = path.join(tempDir, "files");
+    mkdirSync(filesDir, { recursive: true });
+    const jobs: SessionUploadJob[] = [];
+    for (let i = 0; i < 2; i++) {
+      const filePath = path.join(filesDir, `sess-${i}.jsonl`);
+      const text = `record-${i}`;
+      writeFileSync(filePath, text, "utf8");
+      jobs.push({
+        sessionId: `sess-${i}`,
+        identityDerivation: "native",
+        formatVersion: "claude-jsonl-2026-04",
+        sourceFilePath: filePath,
+        anonymizationResult: fakeAnonResult(text),
+        rawContentHashAtFirstRun: createHash("sha256").update(text).digest("hex"),
+      });
+    }
+
+    // sess-1's presign throws status 500 → classified as `network`.
+    const client = makeFakeClient({
+      manifestId: "mfst_report",
+      failOnPresignFor: new Set(["sess-1"]),
+    });
+    await runUploadPipeline({
+      client: client as never,
+      jobs,
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    }).catch(() => {});
+
+    const state = resumeStore.load();
+    expect(state).not.toBeNull();
+    const failed = state!.manifest.entries.find((e) => e.sessionId === "sess-1");
+    expect(failed).toMatchObject({
+      status: "pending",
+      lastFailureReason: "network",
+      lastFailureMessage: "HTTP 500",
+    });
+    expect(failed!.failedAt).toBeTypeOf("string");
+
+    // The acked session carries no stale failure reason.
+    const acked = state!.manifest.entries.find((e) => e.sessionId === "sess-0");
+    expect(acked!.status).toBe("acked");
+    expect(acked!.lastFailureReason).toBeUndefined();
+
+    // buildReport reads it: one network failure, one uploaded, of two.
+    const report = buildReport(state!);
+    expect(report.counts).toEqual({ uploaded: 1, failed: 1, skipped: 0, total: 2 });
+    expect(report.failures).toHaveLength(1);
+    expect(report.failures[0]!.reason).toBe("network");
   });
 });

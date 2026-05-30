@@ -169,7 +169,7 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       done += 1;
       process.stderr.write(`\n`);
       emitText(
-        `  ${color.err(shortSession(input.sessionId))}  ${color.err("failed")}  ${color.dim(`${input.reason}${input.message ? `: ${input.message}` : ""}`)}`,
+        `  ${color.err(symbol.cross)} ${color.mute(shortSession(input.sessionId))}  ${color.err("failed")}  ${color.dim(`${input.reason}${input.message ? `: ${input.message}` : ""}`)}`,
       );
       liveBar();
     },

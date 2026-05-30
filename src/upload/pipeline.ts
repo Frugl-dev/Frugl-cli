@@ -7,8 +7,9 @@ import {
   presignResponseSchema,
   completeUploadResponseSchema,
 } from "../cloud/schemas.js";
-import { withRetry, extractStatus } from "../lib/retry.js";
-import { AnonymizationError, NetworkError, PoppiError, StaleResumeError } from "../lib/errors.js";
+import { withRetry } from "../lib/retry.js";
+import { NetworkError, PoppiError, StaleResumeError } from "../lib/errors.js";
+import { classifyFailure } from "./failure-reasons.js";
 import { EXIT } from "../lib/exit-codes.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
 import type { Ledger } from "../ledger/ledger.js";
@@ -148,11 +149,15 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
           }));
           await uploadOneSession(opts.client, manifestState.manifestId, job);
           const now = new Date().toISOString();
-          opts.resumeStore.updateEntry(entry.sessionId, (e) => ({
-            ...e,
-            status: "acked",
-            ackedAt: now,
-          }));
+          opts.resumeStore.updateEntry(entry.sessionId, (e) => {
+            // A prior attempt may have recorded a failure on this entry; clear it
+            // now that the session landed so --report won't show a stale reason.
+            const cleaned: ManifestEntryState = { ...e, status: "acked", ackedAt: now };
+            delete cleaned.lastFailureReason;
+            delete cleaned.lastFailureMessage;
+            delete cleaned.failedAt;
+            return cleaned;
+          });
           opts.ledger.upsertEntry({
             sessionId: entry.sessionId,
             contentHash: entry.contentHash,
@@ -168,15 +173,24 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
           if (err instanceof StaleResumeError) {
             throw err;
           }
-          const reason = describeFailure(err);
-          opts.resumeStore.updateEntry(entry.sessionId, (e) => ({ ...e, status: "pending" }));
+          // Isolate the failure: reset to pending so a re-run retries only this
+          // session, and persist the classified reason so `poppi upload --report`
+          // can explain the cause and remedy.
+          const failure = classifyFailure(err);
+          opts.resumeStore.updateEntry(entry.sessionId, (e) => ({
+            ...e,
+            status: "pending",
+            lastFailureReason: failure.reason,
+            failedAt: new Date().toISOString(),
+            ...(failure.message !== undefined ? { lastFailureMessage: failure.message } : {}),
+          }));
           opts.reporter.sessionFailed({
             manifestId: manifestState.manifestId,
             sessionId: entry.sessionId,
-            reason: reason.category,
-            ...(reason.message !== undefined ? { message: reason.message } : {}),
+            reason: failure.reason,
+            ...(failure.message !== undefined ? { message: failure.message } : {}),
           });
-          failures.push({ sessionId: entry.sessionId, reason: reason.category });
+          failures.push({ sessionId: entry.sessionId, reason: failure.reason });
         }
       }),
     ),
@@ -369,14 +383,4 @@ async function uploadOneSession(
       throw err;
     }
   });
-}
-
-function describeFailure(err: unknown): { category: string; message?: string } {
-  if (err instanceof AnonymizationError) return { category: "anonymization", message: err.message };
-  if (err instanceof NetworkError) return { category: "network", message: err.message };
-  const status = extractStatus(err);
-  if (status === 403) return { category: "presign-expired", message: `HTTP ${status}` };
-  if (status) return { category: "network", message: `HTTP ${status}` };
-  if (err instanceof Error) return { category: "network", message: err.message };
-  return { category: "unknown" };
 }
