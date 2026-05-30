@@ -13,13 +13,36 @@ import { getCliVersion } from "../lib/cli-version.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { isPoppiError, printPoppiError } from "../lib/errors.js";
 import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
-import { color, symbol } from "../lib/theme.js";
+import { bar, color, symbol } from "../lib/theme.js";
 
 const STATUSES = ["open", "applied", "dismissed", "resolved", "all"] as const;
 
 function formatSavings(usd: number): string {
   if (usd < 0.01) return "<$0.01";
   return `$${usd.toFixed(2)}`;
+}
+
+// "$312.40" → "~$312.40/mo", padded to a fixed width so the savings column
+// lines up across rows regardless of magnitude.
+function savingsCol(usd: number): string {
+  const s = `~${formatSavings(usd)}/mo`;
+  return s + " ".repeat(Math.max(0, 11 - s.length));
+}
+
+// Snake/kebab category keys ("root_context_bloat") → a readable tag
+// ("root context bloat"). Generic so it survives new server categories.
+function humanizeCategory(category: string): string {
+  return category.replace(/[_-]+/g, " ").trim().toLowerCase();
+}
+
+// The status word used in the list header / footer copy.
+function statusWord(status: string): string {
+  return status === "all" ? "" : status;
+}
+
+// Pad a fixed-width impact label so the values line up.
+function impactLabel(label: string): string {
+  return label + " ".repeat(Math.max(0, 11 - label.length));
 }
 
 export default class Recommendations extends Command {
@@ -106,22 +129,121 @@ export default class Recommendations extends Command {
     }
 
     if (recs.length === 0) {
-      process.stdout.write(`${color.dim("No recommendations right now.")}\n`);
+      this.printEmpty();
       return;
     }
 
+    // Applied recs carry a measured `impact` object — render the loop-closing
+    // before/after view instead of the plain ranked list.
+    if (status === "applied") {
+      this.printImpact(recs);
+      return;
+    }
+
+    const word = statusWord(status);
+    const count = `${recs.length}${word ? ` ${word}` : ""}`;
     process.stdout.write(
-      `${color.bold("Cost-saving recommendations")} ${color.dim("(ranked)")}\n\n`,
+      `${color.bold("Cost-saving recommendations")} ${color.dim(`(ranked · ${count})`)}\n\n`,
     );
     recs.forEach((r, i) => {
-      const savings = color.poppy(`~${formatSavings(r.estimated_savings_usd)}/mo`);
+      const savings = color.poppyBold(savingsCol(r.estimated_savings_usd));
       const flag = r.status === "applied" ? color.ok(" [applied]") : "";
-      process.stdout.write(`${color.dim(`${i + 1}.`)} ${savings}  ${color.bold(r.title)}${flag}\n`);
-      process.stdout.write(`   ${color.dim(r.description)}\n`);
-      process.stdout.write(`   ${color.dim(`id=${r.id}`)}\n`);
+      process.stdout.write(`${color.dim(`${i + 1}.`)} ${savings} ${color.bold(r.title)}${flag}\n`);
+      process.stdout.write(
+        `      ${color.mute(humanizeCategory(r.category))}   ${color.dim(`· ${r.description}`)}\n`,
+      );
+      process.stdout.write(`      ${color.dim(`id=${r.id}`)}\n\n`);
     });
+
+    const total = recs.reduce((sum, r) => sum + r.estimated_savings_usd, 0);
+    const plural = recs.length === 1 ? "recommendation" : "recommendations";
     process.stdout.write(
-      `\n${color.dim("Get a fix prompt: ")}${color.poppy("poppi recommendations --fix <id>")}\n`,
+      `  ${color.dim("Estimated total  ")}${color.poppyBold(`~${formatSavings(total)}/mo`)}` +
+        `  ${color.dim(`across ${recs.length} ${word ? `${word} ` : ""}${plural}`)}\n\n`,
+    );
+    const top = recs[0];
+    if (top) {
+      process.stdout.write(
+        `${color.dim("Fix the top one: ")}${color.poppy(`poppi recs --fix ${top.id} | claude`)}\n`,
+      );
+    }
+  }
+
+  // Helpful empty state: why it's empty + the two ways forward.
+  private printEmpty(): void {
+    const dot = color.mute("·");
+    process.stdout.write(`${color.dim("No recommendations right now.")}\n\n`);
+    process.stdout.write(
+      `  ${color.dim("Either you're caught up, or Poppi hasn't analyzed a recent retro yet.")}\n\n`,
+    );
+    process.stdout.write(
+      `  ${dot} New here? ${color.underline("poppi upload")}` +
+        ` — recommendations land after your first retro.\n`,
+    );
+    process.stdout.write(
+      `  ${dot} Snoozed some? ${color.underline("poppi recs --status dismissed")} to see them.\n`,
+    );
+  }
+
+  // The impact view (`--status applied`): baseline vs. now, realized savings,
+  // and a measuring/available indicator — closing the recommend→fix→measure loop.
+  private printImpact(recs: RecommendationItem[]): void {
+    process.stdout.write(
+      `${color.bold("Applied recommendations")} ` +
+        `${color.dim("— impact (measured against your baseline)")}\n\n`,
+    );
+
+    let realizedTotal = 0;
+    let measuring = 0;
+    let available = 0;
+
+    recs.forEach((r) => {
+      process.stdout.write(`${symbol.tick} ${color.bold(r.title)}   ${color.dim(r.id)}\n`);
+      const im = r.impact;
+      if (!im) {
+        process.stdout.write(
+          `    ${color.mute(impactLabel("Measuring"))}${color.dim("not started yet")}\n\n`,
+        );
+        return;
+      }
+
+      process.stdout.write(
+        `    ${color.mute(impactLabel("Baseline"))}${formatSavings(im.baseline_cost_usd)}/mo` +
+          `   ${color.dim(`${im.baseline_window_days} days before applying`)}\n`,
+      );
+
+      if (im.measurement_status === "available") {
+        available += 1;
+        if (im.actual_cost_usd != null) {
+          process.stdout.write(
+            `    ${color.mute(impactLabel("Now"))}${formatSavings(im.actual_cost_usd)}/mo` +
+              `   ${color.dim("trailing window, annualized")}\n`,
+          );
+        }
+        const realized = im.realized_savings_usd ?? 0;
+        realizedTotal += realized;
+        const ratio = im.baseline_cost_usd > 0 ? realized / im.baseline_cost_usd : 0;
+        process.stdout.write(
+          `    ${color.mute(impactLabel("Realized"))}` +
+            `${color.ok(`~${formatSavings(realized)}/mo saved`)}   ${bar(ratio * 20)}` +
+            `  ${symbol.activeDot} ${color.dim("available")}\n\n`,
+        );
+      } else {
+        measuring += 1;
+        process.stdout.write(
+          `    ${color.mute(impactLabel("Measuring"))}${color.warn("in progress")}` +
+            `   ${color.warn("●")} ${color.dim("measuring")}\n\n`,
+        );
+      }
+    });
+
+    const parts: string[] = [];
+    if (measuring > 0) parts.push(`${measuring} measuring`);
+    if (available > 0) parts.push(`${available} available`);
+    const suffix = parts.length > 0 ? `  ${color.dim(`· ${parts.join(" · ")}`)}` : "";
+    process.stdout.write(
+      `  ${color.mute("Total realized so far  ")}` +
+        `${color.poppyBold(`~${formatSavings(realizedTotal)}/mo`)}${suffix}\n`,
     );
   }
 
