@@ -121,3 +121,55 @@ export const joinResponseSchema = z
   .object({ org: z.object({ name: z.string(), slug: z.string() }).passthrough() })
   .passthrough();
 export type JoinResponse = z.infer<typeof joinResponseSchema>;
+
+// Cost-saving recommendations (poppi/ spec 023). The CLI lists + ranks them and
+// can emit a fix prompt or mark one applied/dismissed.
+export const recommendationImpactSchema = z
+  .object({
+    baseline_cost_usd: z.number(),
+    baseline_window_days: z.number(),
+    actual_cost_usd: z.number().nullable(),
+    projected_baseline_cost_usd: z.number().nullable(),
+    realized_savings_usd: z.number().nullable(),
+    measurement_status: z.enum(["measuring", "available"]),
+  })
+  .passthrough();
+
+export const recommendationSchema = z
+  .object({
+    id: z.string().min(1),
+    rule_key: z.string(),
+    target_key: z.string(),
+    category: z.string(),
+    title: z.string(),
+    description: z.string(),
+    estimated_savings_usd: z.number(),
+    fix_prompt: z.string(),
+    automatable: z.boolean(),
+    status: z.enum(["open", "applied", "dismissed", "resolved"]),
+    applied_at: z.string().nullable(),
+    impact: recommendationImpactSchema.nullable(),
+  })
+  .passthrough();
+export type RecommendationItem = z.infer<typeof recommendationSchema>;
+
+export const recommendationsListResponseSchema = z.object({
+  recommendations: z.array(recommendationSchema),
+});
+export type RecommendationsListResponse = z.infer<typeof recommendationsListResponseSchema>;
+
+export const recommendationApplyResponseSchema = z
+  .object({
+    id: z.string(),
+    status: z.string(),
+    applied_at: z.string().nullable(),
+  })
+  .passthrough();
+
+export const recommendationDismissResponseSchema = z
+  .object({
+    id: z.string(),
+    status: z.string(),
+    dismissed_until: z.string(),
+  })
+  .passthrough();
