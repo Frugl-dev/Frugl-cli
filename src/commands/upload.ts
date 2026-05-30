@@ -1,4 +1,4 @@
-import { Command, Flags } from "@oclif/core";
+import { Args, Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -23,6 +23,7 @@ import {
   type ProjectSummaryRow,
 } from "../upload/summary.js";
 import { createProgressReporter } from "../upload/progress.js";
+import { buildReport, formatReportHuman } from "../upload/report.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
 import { extractWorktreePath } from "../sources/claude-code/project.js";
@@ -55,6 +56,13 @@ export default class Upload extends Command {
   static override description =
     "Discover local AI-coding session sources, anonymize them, and batch-upload to hosted Poppi.";
 
+  static override args = {
+    manifestId: Args.string({
+      description: "With --report: the manifest to explain (defaults to the in-flight upload).",
+      required: false,
+    }),
+  };
+
   static override flags = {
     confirm: Flags.boolean({ description: "Skip the interactive confirmation prompt." }),
     yes: Flags.boolean({ description: "Alias for --confirm" }),
@@ -83,10 +91,15 @@ export default class Upload extends Command {
         "Opt in to attaching credential-stripped git context (repo, branch, commit) so sessions can be linked to PRs. Default off.",
     }),
     json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    report: Flags.boolean({
+      description:
+        "Explain the last upload's failures (grouped by reason, with remedies) instead of uploading.",
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(Upload);
+    const { flags, args } = await this.parse(Upload);
     const mode = resolveOutputMode({ json: flags.json });
     const reporter = createProgressReporter(mode);
 
@@ -128,6 +141,18 @@ export default class Upload extends Command {
         token: session.token,
         endpointExplicit: endpoint.resolvedFrom !== "default",
       });
+
+      // `--report`: explain the in-flight manifest's failures and exit — no
+      // discovery, no upload. Reads the resume store (keyed by endpoint + user),
+      // which holds failed sessions while they sit pending and resumable.
+      if (flags.report) {
+        this.runReport({
+          endpointUrl: endpoint.url,
+          userId: session.userId,
+          requestedManifestId: args.manifestId,
+          mode,
+        });
+      }
 
       const homeDir = process.env["POPPI_HOME_DIR"];
       const discoverOpts = homeDir ? { homeDir } : undefined;
@@ -475,6 +500,48 @@ export default class Upload extends Command {
       process.exit(EXIT.GENERIC_FAILURE);
     }
     process.exit(printPoppiError(err, mode));
+  }
+
+  // Render `poppi upload --report` and exit. Never returns.
+  private runReport(input: {
+    endpointUrl: string;
+    userId: string;
+    requestedManifestId: string | undefined;
+    mode: OutputMode;
+  }): never {
+    const { endpointUrl, userId, requestedManifestId, mode } = input;
+    const resumeStore = new ResumeStore({ endpointUrl, userId });
+    const state = resumeStore.load();
+    const matches =
+      state !== null &&
+      (requestedManifestId === undefined || state.manifest.manifestId === requestedManifestId);
+
+    if (!matches) {
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({ command: "upload-report", ok: true, report: null })}\n`,
+        );
+      } else {
+        process.stdout.write(
+          `${color.dim(
+            requestedManifestId
+              ? `No in-flight manifest ${requestedManifestId} to report — failed sessions clear once they upload.`
+              : "No in-flight upload to report. Run 'poppi upload' first.",
+          )}\n`,
+        );
+      }
+      process.exit(EXIT.OK);
+    }
+
+    const report = buildReport(state);
+    if (mode === "json") {
+      process.stdout.write(
+        `${JSON.stringify({ command: "upload-report", ok: report.counts.failed === 0, report })}\n`,
+      );
+    } else {
+      process.stdout.write(`${formatReportHuman(report)}\n`);
+    }
+    process.exit(EXIT.OK);
   }
 
   private async resolveBatchGitContext(
