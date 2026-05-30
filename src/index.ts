@@ -4,3 +4,4 @@ export { default as Login } from "./commands/login.js";
 export { default as Logout } from "./commands/logout.js";
 export { default as Whoami } from "./commands/whoami.js";
 export { default as Upload } from "./commands/upload.js";
+export { default as Recommendations } from "./commands/recommendations.js";
