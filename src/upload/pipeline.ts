@@ -34,9 +34,9 @@ export interface SessionUploadJob {
   // Sub-path within the repo's .claude/worktrees/ dir when the session comes
   // from a git worktree (e.g. "001/cloud/ingest/db"). Null for main checkouts.
   worktreePath?: string;
-  // File modification time in milliseconds since epoch, used by the server as a
-  // session-start hint before NDJSON parsing completes.
-  mtimeMs?: number;
+  // Session start time extracted by the source adapter. Sent to the server as a
+  // hint so sessions are dated correctly before async NDJSON parsing completes.
+  startedAt?: Date;
 }
 
 export interface PipelineOptions {
@@ -265,7 +265,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
           expected_bytes: job.anonymizationResult.byteSize,
           ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
           ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
-          ...(job.mtimeMs !== undefined ? { mtime_ms: job.mtimeMs } : {}),
+          ...(job.startedAt !== undefined ? { started_at_ms: job.startedAt.getTime() } : {}),
         })),
       },
       schema: createManifestResponseSchema,

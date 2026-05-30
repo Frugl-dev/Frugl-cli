@@ -17,5 +17,5 @@ export async function parseCursorSession(ref: SessionRef): Promise<ParsedSession
     }
   }
   const identity = deriveCursorIdentity(ref);
-  return { sourceKind: CURSOR_SOURCE_KIND, ref, identity, records };
+  return { sourceKind: CURSOR_SOURCE_KIND, ref, identity, records, meta: {} };
 }

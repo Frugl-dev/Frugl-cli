@@ -596,7 +596,12 @@ async function buildJobsForSource(
       rawContentHashAtFirstRun: raw,
       ...(gitContext ? { gitContext } : {}),
       ...(worktreePath ? { worktreePath } : {}),
-      ...(item.ref.mtimeMs > 0 ? { mtimeMs: item.ref.mtimeMs } : {}),
+      ...(() => {
+        const d =
+          item.parsed.meta.startedAt ??
+          (item.ref.mtimeMs > 0 ? new Date(item.ref.mtimeMs) : undefined);
+        return d !== undefined ? { startedAt: d } : {};
+      })(),
     });
   }
   return jobs;

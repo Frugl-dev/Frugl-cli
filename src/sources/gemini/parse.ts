@@ -14,5 +14,25 @@ export async function parseGeminiSession(ref: SessionRef): Promise<ParsedSession
   }
   const firstRecord = records[0] ?? null;
   const identity = deriveGeminiIdentity(ref, firstRecord);
-  return { sourceKind: GEMINI_SOURCE_KIND, ref, identity, records };
+
+  let startedAt: Date | undefined;
+  for (const record of records) {
+    if (!record || typeof record !== "object") continue;
+    const ts = (record as Record<string, unknown>)["timestamp"];
+    if (typeof ts === "string" && ts) {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        startedAt = d;
+        break;
+      }
+    }
+  }
+
+  return {
+    sourceKind: GEMINI_SOURCE_KIND,
+    ref,
+    identity,
+    records,
+    meta: startedAt !== undefined ? { startedAt } : {},
+  };
 }

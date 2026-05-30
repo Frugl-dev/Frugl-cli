@@ -20,9 +20,14 @@ export async function parseCodexSession(ref: SessionRef): Promise<ParsedSession>
   const identity = deriveCodexIdentity(ref, firstRecord);
 
   let cwd: string | undefined;
+  let startedAt: Date | undefined;
   for (const record of records) {
     if (!record || typeof record !== "object") continue;
     const r = record as Record<string, unknown>;
+    if (startedAt === undefined && typeof r["timestamp"] === "string" && r["timestamp"]) {
+      const d = new Date(r["timestamp"] as string);
+      if (!isNaN(d.getTime())) startedAt = d;
+    }
     if (r["type"] === "session_meta") {
       const payload = r["payload"];
       if (payload && typeof payload === "object") {
@@ -31,7 +36,7 @@ export async function parseCodexSession(ref: SessionRef): Promise<ParsedSession>
           cwd = p["cwd"];
         }
       }
-      break;
+      if (startedAt !== undefined) break;
     }
   }
 
@@ -40,6 +45,7 @@ export async function parseCodexSession(ref: SessionRef): Promise<ParsedSession>
     ref,
     identity,
     records,
+    meta: startedAt !== undefined ? { startedAt } : {},
     ...(cwd !== undefined ? { cwd } : {}),
   };
 }

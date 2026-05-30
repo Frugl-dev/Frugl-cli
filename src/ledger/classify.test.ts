@@ -20,6 +20,7 @@ function buildSource(map: Map<string, unknown[]>): Source {
         ref,
         identity: { sessionId: path.basename(ref.absolutePath, ".jsonl"), derivation: "native" },
         records,
+        meta: {},
       };
       return parsed;
     },
@@ -244,5 +245,6 @@ function stubParsed(name: string): ParsedSession {
     ref: makeRef(`/${name}.jsonl`, 0),
     identity: { sessionId: name, derivation: "native" },
     records: [],
+    meta: {},
   };
 }

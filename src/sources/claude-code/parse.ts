@@ -23,10 +23,18 @@ export async function parseClaudeSession(ref: SessionRef): Promise<ParsedSession
   // each. These are NOT added to `records`, so the anonymizer never sees them.
   let cwd: string | undefined;
   let recordedBranch: string | undefined;
+  let startedAt: Date | undefined;
   for (const record of records) {
+    if (startedAt === undefined) {
+      const ts = readNonEmptyString(record, "timestamp");
+      if (ts) {
+        const d = new Date(ts);
+        if (!isNaN(d.getTime())) startedAt = d;
+      }
+    }
     if (cwd === undefined) cwd = readNonEmptyString(record, "cwd");
     if (recordedBranch === undefined) recordedBranch = readNonEmptyString(record, "gitBranch");
-    if (cwd !== undefined && recordedBranch !== undefined) break;
+    if (startedAt !== undefined && cwd !== undefined && recordedBranch !== undefined) break;
   }
 
   return {
@@ -34,6 +42,7 @@ export async function parseClaudeSession(ref: SessionRef): Promise<ParsedSession
     ref,
     identity,
     records,
+    meta: startedAt !== undefined ? { startedAt } : {},
     ...(cwd !== undefined ? { cwd } : {}),
     ...(recordedBranch !== undefined ? { recordedBranch } : {}),
   };
