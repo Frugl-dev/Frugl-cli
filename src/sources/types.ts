@@ -6,7 +6,14 @@ export interface SessionRef {
 }
 
 export interface SessionIdentity {
+  // Always a canonical UUID — reused from the source's native id when that is
+  // itself a UUID, otherwise derived (UUIDv5) from the session file path.
   sessionId: string;
+  // The source's own session id, when present and read from content/path. May be
+  // a non-UUID; preserved so several physical files (e.g. worktree copies) can be
+  // grouped back to one logical session. Absent when no native id was found.
+  nativeSessionId?: string;
+  // "native" = sessionId is the source's own (UUID) id; "path-hash" = derived.
   derivation: "native" | "path-hash";
 }
 

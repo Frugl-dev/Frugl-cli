@@ -126,7 +126,7 @@ describe("deriveCursorIdentity", () => {
     };
     const id = deriveCursorIdentity(ref);
     expect(id.derivation).toBe("path-hash");
-    expect(id.sessionId).toMatch(/^[0-9a-f]{24}$/);
+    expect(id.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 
   it("falls back to path hash when UUID-like segment fails safe validation", () => {
@@ -209,7 +209,8 @@ describe("parseCursorSession", () => {
   });
 
   it("identity derivation uses path-based UUID extraction", async () => {
-    const sessionDir = path.join(tempHome, "agent-transcripts", "my-session-uuid-1234");
+    const sessionUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const sessionDir = path.join(tempHome, "agent-transcripts", sessionUuid);
     mkdirSync(sessionDir, { recursive: true });
     const filePath = path.join(sessionDir, "00000000-0000-0000-0000-000000000001.jsonl");
     writeFileSync(filePath, '{"role":"user"}\n');
@@ -221,7 +222,9 @@ describe("parseCursorSession", () => {
       mtimeMs: 1000,
     };
     const parsed = await parseCursorSession(ref);
-    expect(parsed.identity.sessionId).toBe("my-session-uuid-1234");
+    // The agent-transcripts dir segment is a UUID → reused as the session id.
+    expect(parsed.identity.sessionId).toBe(sessionUuid);
+    expect(parsed.identity.nativeSessionId).toBe(sessionUuid);
     expect(parsed.identity.derivation).toBe("native");
   });
 });

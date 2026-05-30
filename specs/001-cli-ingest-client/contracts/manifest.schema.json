@@ -54,12 +54,12 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 128,
-          "pattern": "^[A-Za-z0-9._-]+$",
-          "description": "Stable per-session identifier. For Claude Code sources this is the JSONL-native sessionId (FR-006b); otherwise derived per identityDerivation."
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "description": "Stable per-session identifier — always a canonical UUID, because cloud ingest keys session_objects by a uuid primary key. 'native' = the source's own session id when it is itself a UUID (e.g. a Claude/Codex/Gemini/Cursor session UUID); otherwise derived per identityDerivation."
         },
         "identityDerivation": {
           "enum": ["native", "path-hash"],
-          "description": "How sessionId was obtained. 'native' = read from the source file's own content; 'path-hash' = sha256 of canonicalized absolute path (fallback per research.md R-10)."
+          "description": "How sessionId was obtained. 'native' = the source's own UUID, reused verbatim; 'path-hash' = a deterministic UUIDv5 derived from the canonicalized absolute file path (used when the native id is absent or not a UUID, and to disambiguate Claude worktree copies that share one native id). The raw native id, when present, is carried separately so physical files can be grouped back to one logical session."
         },
         "contentHash": {
           "type": "string",
