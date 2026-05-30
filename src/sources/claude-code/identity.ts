@@ -1,16 +1,18 @@
-import { createHash } from "node:crypto";
-import path from "node:path";
 import type { SessionIdentity, SessionRef } from "../types.js";
-
-const SESSION_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
-const MAX_ID_LENGTH = 128;
+import { resolveIdentity } from "../identity.js";
+import { extractWorktreePath } from "./project.js";
 
 export function deriveClaudeIdentity(ref: SessionRef, firstRecord: unknown): SessionIdentity {
-  const native = readNativeSessionId(firstRecord);
-  if (native && SESSION_ID_PATTERN.test(native) && native.length <= MAX_ID_LENGTH) {
-    return { sessionId: native, derivation: "native" };
-  }
-  return { sessionId: pathHash(ref.absolutePath), derivation: "path-hash" };
+  // Claude reuses one session UUID across a main checkout and its worktree
+  // copies, so the same native id can appear in multiple files. Only the main
+  // checkout keeps the native id; worktree copies derive a path-unique id so the
+  // two never collide on the cloud's UUID primary key.
+  const isWorktreeCopy = extractWorktreePath(ref.absolutePath) !== null;
+  return resolveIdentity({
+    ref,
+    nativeId: readNativeSessionId(firstRecord),
+    allowNativeReuse: !isWorktreeCopy,
+  });
 }
 
 function readNativeSessionId(record: unknown): string | undefined {
@@ -18,16 +20,4 @@ function readNativeSessionId(record: unknown): string | undefined {
   const candidate = (record as { sessionId?: unknown }).sessionId;
   if (typeof candidate === "string" && candidate.length > 0) return candidate;
   return undefined;
-}
-
-export function pathHash(absolutePath: string): string {
-  const canonical = canonicalize(absolutePath);
-  return createHash("sha256").update(canonical).digest("hex").slice(0, 24);
-}
-
-function canonicalize(absolutePath: string): string {
-  const resolved = path.resolve(absolutePath);
-  return process.platform === "darwin" || process.platform === "win32"
-    ? resolved.toLowerCase()
-    : resolved;
 }

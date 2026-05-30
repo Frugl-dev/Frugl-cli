@@ -7,6 +7,8 @@ import { deriveCodexIdentity } from "./identity.js";
 import { parseCodexSession } from "./parse.js";
 import type { SessionRef } from "../types.js";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ── discover ─────────────────────────────────────────────────────────────────
 
 describe("CODEX constants", () => {
@@ -69,6 +71,24 @@ describe("deriveCodexIdentity", () => {
     const firstRecord = {
       type: "session_meta",
       timestamp: "2026-05-25T10:00:00Z",
+      payload: { id: "019e38ab-78b3-7c30-b22d-f27544f97fda", cwd: "/proj" },
+    };
+    const ref: SessionRef = {
+      sourceKind: "codex",
+      absolutePath: "/home/user/.codex/sessions/2026/05/25/session.jsonl",
+      byteSizeOnDisk: 100,
+      mtimeMs: 1000,
+    };
+    const id = deriveCodexIdentity(ref, firstRecord);
+    // A native id that is itself a UUID is reused verbatim.
+    expect(id.sessionId).toBe("019e38ab-78b3-7c30-b22d-f27544f97fda");
+    expect(id.nativeSessionId).toBe("019e38ab-78b3-7c30-b22d-f27544f97fda");
+    expect(id.derivation).toBe("native");
+  });
+
+  it("derives a UUID but preserves a non-UUID native id", () => {
+    const firstRecord = {
+      type: "session_meta",
       payload: { id: "codex-session-abc123", cwd: "/proj" },
     };
     const ref: SessionRef = {
@@ -78,8 +98,9 @@ describe("deriveCodexIdentity", () => {
       mtimeMs: 1000,
     };
     const id = deriveCodexIdentity(ref, firstRecord);
-    expect(id.sessionId).toBe("codex-session-abc123");
-    expect(id.derivation).toBe("native");
+    expect(id.sessionId).toMatch(UUID_RE);
+    expect(id.derivation).toBe("path-hash");
+    expect(id.nativeSessionId).toBe("codex-session-abc123");
   });
 
   it("falls back to path hash when first record is not session_meta", () => {
@@ -92,7 +113,7 @@ describe("deriveCodexIdentity", () => {
     };
     const id = deriveCodexIdentity(ref, firstRecord);
     expect(id.derivation).toBe("path-hash");
-    expect(id.sessionId).toMatch(/^[0-9a-f]{24}$/);
+    expect(id.sessionId).toMatch(UUID_RE);
   });
 
   it("falls back to path hash when first record is null", () => {
@@ -186,11 +207,11 @@ describe("parseCodexSession", () => {
     const filePath = path.join(tempHome, "session.jsonl");
     writeFileSync(
       filePath,
-      '{"type":"session_meta","timestamp":"2026-05-25T10:00:00Z","payload":{"id":"my-codex-session-id"}}\n',
+      '{"type":"session_meta","timestamp":"2026-05-25T10:00:00Z","payload":{"id":"00000000-0000-4000-8000-0000000000c0"}}\n',
     );
 
     const parsed = await parseCodexSession(makeRef(filePath));
-    expect(parsed.identity.sessionId).toBe("my-codex-session-id");
+    expect(parsed.identity.sessionId).toBe("00000000-0000-4000-8000-0000000000c0");
     expect(parsed.identity.derivation).toBe("native");
   });
 });

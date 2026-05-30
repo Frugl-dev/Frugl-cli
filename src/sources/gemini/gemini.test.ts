@@ -103,7 +103,7 @@ describe("deriveGeminiIdentity", () => {
     };
     const id = deriveGeminiIdentity(ref, null);
     expect(id.derivation).toBe("path-hash");
-    expect(id.sessionId).toMatch(/^[0-9a-f]{24}$/);
+    expect(id.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 
   it("falls back to path hash when sessionId is missing", () => {
