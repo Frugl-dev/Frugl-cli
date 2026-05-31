@@ -103,6 +103,23 @@ describe("anonymize", () => {
     expect(result.policyVersion).toBe(POLICY_VERSION);
     expect(result.byteSize).toBeGreaterThan(0);
     expect(result.redactedHashHex).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.contentHashHex).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("contentHashHex is uploadId-independent but sensitive to input and policy", () => {
+    const base = anonymize({ text: "hello" }, { uploadId: "u", ownerEmail: OWNER_EMAIL });
+    // Same input, different uploadId (different pseudonym salt) → same hash.
+    const sameInput = anonymize({ text: "hello" }, { uploadId: "u2", ownerEmail: OWNER_EMAIL });
+    expect(sameInput.contentHashHex).toBe(base.contentHashHex);
+    // Different input → different hash.
+    const otherInput = anonymize({ text: "world" }, { uploadId: "u", ownerEmail: OWNER_EMAIL });
+    expect(otherInput.contentHashHex).not.toBe(base.contentHashHex);
+    // Same input, bumped policy version → different hash (forces re-upload).
+    const newPolicy = anonymize(
+      { text: "hello" },
+      { uploadId: "u", ownerEmail: OWNER_EMAIL, policyVersion: `${POLICY_VERSION}-next` },
+    );
+    expect(newPolicy.contentHashHex).not.toBe(base.contentHashHex);
   });
 
   it("uses stable pseudonyms within a single invocation", () => {

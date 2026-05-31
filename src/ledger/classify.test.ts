@@ -77,7 +77,7 @@ describe("classify", () => {
     if (firstNew?.kind !== "new") throw new Error("expected new");
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
-      contentHash: firstNew.anonymizationResult.redactedHashHex,
+      contentHash: firstNew.anonymizationResult.contentHashHex,
       lastUploadedAt: new Date().toISOString(),
       manifestId: "m-1",
     });
@@ -86,6 +86,39 @@ describe("classify", () => {
       ledger,
       source,
       anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    expect(second[0]?.kind).toBe("unchanged");
+  });
+
+  it("stays unchanged across runs with different uploadIds (deterministic hash)", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://salt.test", userId: "u-salt" },
+      { cwd: tempHome },
+    );
+    const refs = [makeRef("/abs/sess-salt.jsonl", 1)];
+    // A home path forces pseudonymization, whose HMAC key is the per-run uploadId.
+    const records = [{ msg: "see /Users/alice/proj/file.ts" }];
+    const source = buildSource(new Map([["/abs/sess-salt.jsonl", records]]));
+
+    const first = await classifyAll(refs, {
+      ledger,
+      source,
+      anonymize: { uploadId: "upload-A", ownerEmail: "o@x.com" },
+    });
+    const firstNew = first[0];
+    if (firstNew?.kind !== "new") throw new Error("expected new");
+    ledger.upsertEntry({
+      sessionId: firstNew.identity.sessionId,
+      contentHash: firstNew.anonymizationResult.contentHashHex,
+      lastUploadedAt: new Date().toISOString(),
+      manifestId: "m-A",
+    });
+
+    // Second upload run: identical content, different uploadId (new salt).
+    const second = await classifyAll(refs, {
+      ledger,
+      source,
+      anonymize: { uploadId: "upload-B", ownerEmail: "o@x.com" },
     });
     expect(second[0]?.kind).toBe("unchanged");
   });
@@ -107,7 +140,7 @@ describe("classify", () => {
     if (firstNew?.kind !== "new") throw new Error("expected new");
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
-      contentHash: firstNew.anonymizationResult.redactedHashHex,
+      contentHash: firstNew.anonymizationResult.contentHashHex,
       lastUploadedAt: new Date().toISOString(),
       manifestId: "m-1",
     });
@@ -144,7 +177,7 @@ describe("classify", () => {
       if (c.kind === "new") {
         ledger.upsertEntry({
           sessionId: c.identity.sessionId,
-          contentHash: c.anonymizationResult.redactedHashHex,
+          contentHash: c.anonymizationResult.contentHashHex,
           lastUploadedAt: new Date().toISOString(),
           manifestId: "m-init",
         });
@@ -234,6 +267,7 @@ function stubResult() {
     redactionsByCategory: {} as never,
     policyVersion: "v0.1",
     redactedHashHex: "0".repeat(64),
+    contentHashHex: "0".repeat(64),
     byteSize: 0,
   };
 }

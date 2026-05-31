@@ -57,7 +57,7 @@ export async function classifySession(
     ownerEmail: ctx.anonymize.ownerEmail,
     ...(ctx.anonymize.homeDir !== undefined ? { homeDir: ctx.anonymize.homeDir } : {}),
   });
-  if (result.redactedHashHex === existing.contentHash) {
+  if (result.contentHashHex === existing.contentHash) {
     return { kind: "unchanged", ref, identity, ledgerEntry: existing };
   }
   return {

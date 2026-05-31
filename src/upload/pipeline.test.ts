@@ -29,6 +29,7 @@ function fakeAnonResult(text: string): AnonymizationResult {
     redactionsByCategory: {} as never,
     policyVersion: "v0.1",
     redactedHashHex: createHash("sha256").update(serialized).digest("hex"),
+    contentHashHex: createHash("sha256").update(serialized).digest("hex"),
     byteSize: serialized.length,
   };
 }
