@@ -23,6 +23,11 @@ export interface AnonymizationResult {
   redactionsByCategory: Record<RedactionCategory, number>;
   policyVersion: string;
   redactedHashHex: string;
+  // Deterministic change-detection hash over the RAW input plus policy version.
+  // Unlike redactedHashHex, it does not depend on the per-run uploadId (which
+  // salts pseudonyms), so an unchanged session hashes identically across
+  // uploads. Used by the ledger to decide unchanged/updated. See classify.ts.
+  contentHashHex: string;
   byteSize: number;
 }
 
@@ -112,11 +117,21 @@ export function anonymize(input: unknown, opts: AnonymizeOptions): Anonymization
   const serialized = JSON.stringify(payload);
   const hash = createHash("sha256").update(serialized).digest("hex");
   const byteSize = Buffer.byteLength(serialized, "utf8");
+  const policyVersion = opts.policyVersion ?? POLICY_VERSION;
+  // Hash the raw input (pre-redaction) plus the policy version. This is
+  // independent of the per-run uploadId, so identical content yields an
+  // identical hash across uploads; a policy bump still forces a re-upload.
+  const contentHashHex = createHash("sha256")
+    .update(policyVersion)
+    .update("\n")
+    .update(JSON.stringify(input))
+    .digest("hex");
   return {
     payload,
     redactionsByCategory: counts,
-    policyVersion: opts.policyVersion ?? POLICY_VERSION,
+    policyVersion,
     redactedHashHex: hash,
+    contentHashHex,
     byteSize,
   };
 }

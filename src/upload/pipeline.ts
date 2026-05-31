@@ -160,7 +160,11 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
           });
           opts.ledger.upsertEntry({
             sessionId: entry.sessionId,
-            contentHash: entry.contentHash,
+            // Prefer this run's freshly-computed deterministic hash over the
+            // value stored in resume state: a manifest created by an older
+            // binary may hold the salt-dependent redactedHashHex, which would
+            // re-trigger a spurious "updated" on the next run.
+            contentHash: job.anonymizationResult.contentHashHex,
             lastUploadedAt: now,
             manifestId: manifestState.manifestId,
           });
@@ -307,7 +311,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
     entries: opts.jobs.map((job) => ({
       sessionId: job.sessionId,
       identityDerivation: job.identityDerivation,
-      contentHash: job.anonymizationResult.redactedHashHex,
+      contentHash: job.anonymizationResult.contentHashHex,
       byteSize: job.anonymizationResult.byteSize,
       sourceFilePath: job.sourceFilePath,
       rawContentHashAtFirstRun: job.rawContentHashAtFirstRun,
