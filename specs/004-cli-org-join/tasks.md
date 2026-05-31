@@ -1,5 +1,15 @@
 # Tasks: poppi-cli org membership — `poppi join` + org-aware `whoami` / `upload`
 
+> **⚠️ SUPERSEDED (2026-05-30).** This task list was never executed as written. Org
+> membership shipped on `main` (PR #9) under a **different design**: a `poppi org`
+> command namespace (`src/commands/org/{join,create,invites,use,ls}.ts` +
+> `src/org/setup.ts`) with `pop_inv_…` invite codes — **not** the top-level
+> `poppi join <code>` with base32-Crockford codes and `src/join/`, `src/cloud/join.ts`,
+> `src/cloud/orgs.ts` modules this plan describes. The unchecked `[ ]` boxes below
+> point at files that were never created and will not be. Kept for historical context
+> only; do **not** treat these as a live backlog. See `src/commands/org/` for what
+> actually shipped.
+
 **Input**: Design documents from `/specs/004-cli-org-join/`
 
 **Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/ ✅
