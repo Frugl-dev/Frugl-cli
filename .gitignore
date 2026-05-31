@@ -11,3 +11,10 @@ out
 *.log
 coverage
 .claude/worktrees
+
+# Local artifacts (not source)
+.playwright-mcp
+poppi-inspect
+# stray debug screenshots
+dashboard-view-report.png
+login-page.png
