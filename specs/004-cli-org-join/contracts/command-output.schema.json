@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://poppi.app/schemas/v1/command-output-org.json",
-  "title": "Poppi Command Output — org membership additions (004-cli-org-join)",
-  "description": "Structured --json output shapes ADDED or EXTENDED by 004-cli-org-join. These layer onto specs/001-cli-ingest-client/contracts/command-output.schema.json (FR-040). FR-036 contract surface. New: JoinResultOk / JoinResultError (poppi join --json, FR-021). Extended: WhoamiResultOk gains an additive `organization` field (FR-026); the upload-start NDJSON event gains an additive `organization` object (FR-030). All extensions are STRICTLY ADDITIVE — no existing 001 field is renamed or removed.",
+  "$id": "https://frugl.app/schemas/v1/command-output-org.json",
+  "title": "Frugl Command Output — org membership additions (004-cli-org-join)",
+  "description": "Structured --json output shapes ADDED or EXTENDED by 004-cli-org-join. These layer onto specs/001-cli-ingest-client/contracts/command-output.schema.json (FR-040). FR-036 contract surface. New: JoinResultOk / JoinResultError (frugl join --json, FR-021). Extended: WhoamiResultOk gains an additive `organization` field (FR-026); the upload-start NDJSON event gains an additive `organization` object (FR-030). All extensions are STRICTLY ADDITIVE — no existing 001 field is renamed or removed.",
   "oneOf": [
     { "$ref": "#/$defs/JoinResultOk" },
     { "$ref": "#/$defs/JoinResultError" },
@@ -15,7 +15,7 @@
     },
     "JoinResultOk": {
       "type": "object",
-      "description": "Single stdout JSON object for `poppi join --json` on success. Also emitted for 409 already_member (which is an idempotent no-op success, ok:true, exit 0 — research.md R-2 / FR-017). The plaintext invite code is NEVER present (SC-005 / FR-006).",
+      "description": "Single stdout JSON object for `frugl join --json` on success. Also emitted for 409 already_member (which is an idempotent no-op success, ok:true, exit 0 — research.md R-2 / FR-017). The plaintext invite code is NEVER present (SC-005 / FR-006).",
       "required": ["command", "ok", "organization", "membership"],
       "additionalProperties": false,
       "properties": {
@@ -45,7 +45,7 @@
     },
     "JoinResultError": {
       "type": "object",
-      "description": "Single stdout JSON object for `poppi join --json` on a non-success, non-idempotent outcome. The `error` mirrors the cloud's typed error code; the exit code is the machine-actionable signal (see contracts/exit-codes.md). The plaintext invite code is NEVER present (SC-005 / FR-006).",
+      "description": "Single stdout JSON object for `frugl join --json` on a non-success, non-idempotent outcome. The `error` mirrors the cloud's typed error code; the exit code is the machine-actionable signal (see contracts/exit-codes.md). The plaintext invite code is NEVER present (SC-005 / FR-006).",
       "required": ["command", "ok", "error", "message"],
       "additionalProperties": false,
       "properties": {

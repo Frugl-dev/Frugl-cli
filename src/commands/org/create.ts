@@ -1,7 +1,7 @@
 import { Command, Flags } from "@oclif/core";
 import { input } from "@inquirer/prompts";
 import { CloudHttpError } from "../../cloud/client.js";
-import { isPoppiError, printPoppiError, UsageError } from "../../lib/errors.js";
+import { isFruglError, printFruglError, UsageError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient } from "../../org/runtime.js";
 import { setupOrg, type OrgSetupAction } from "../../org/setup.js";
@@ -81,8 +81,8 @@ export default class OrgCreate extends Command {
         throw new UsageError(`Unexpected org-create result: ${result.status}`);
       }
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }

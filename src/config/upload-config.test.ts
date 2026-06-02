@@ -8,12 +8,12 @@ import type { DetectedProvider, ProjectGroup } from "../sources/providers.js";
 
 const tmpDirs: string[] = [];
 function makeTmp(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "poppi-cfg-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "frugl-cfg-"));
   tmpDirs.push(dir);
   return dir;
 }
 function writeConfig(dir: string, contents: string): string {
-  const p = path.join(dir, "poppi.config.json");
+  const p = path.join(dir, "frugl.config.json");
   writeFileSync(p, contents);
   return p;
 }

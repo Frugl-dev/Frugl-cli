@@ -1,12 +1,12 @@
-# Cloud HTTP Boundary: `GET /api/orgs/me` (consumed by `poppi whoami` + `poppi upload`)
+# Cloud HTTP Boundary: `GET /api/orgs/me` (consumed by `frugl whoami` + `frugl upload`)
 
 **Feature**: 004-cli-org-join | **Date**: 2026-05-24 | **Status**: contract surface (FR-036)
 
-This document records what the CLI expects from the cloud's `GET /api/orgs/me` endpoint — verbatim consumer expectations against the cloud's `003-org-membership-permissions` spec (`poppi/specs/003-org-membership-permissions/contracts/orgs.md`). **Any change here MUST be coordinated with the cloud repo.**
+This document records what the CLI expects from the cloud's `GET /api/orgs/me` endpoint — verbatim consumer expectations against the cloud's `003-org-membership-permissions` spec (`frugl/specs/003-org-membership-permissions/contracts/orgs.md`). **Any change here MUST be coordinated with the cloud repo.**
 
 This layers onto the existing cloud HTTP boundary in `specs/001-cli-ingest-client/contracts/cloud-api.md`; the common headers and common response-status semantics from that document apply unchanged. This file records only the `/api/orgs/me`-specific shapes and how the **two** consuming commands (`whoami`, `upload`) interpret the same response differently.
 
-The endpoint is `GET /api/orgs/me` on the resolved endpoint host (default `https://api.poppi.app`; overridable via `--endpoint` / `POPPI_ENDPOINT`, spec edge case). Response bodies are mirrored as `zod` schemas in `src/cloud/schemas.ts`; a `ZodError` becomes `GENERIC_FAILURE` (1), the cross-repo drift sentinel (FR-012, SC-006).
+The endpoint is `GET /api/orgs/me` on the resolved endpoint host (default `https://api.frugl.app`; overridable via `--endpoint` / `FRUGL_ENDPOINT`, spec edge case). Response bodies are mirrored as `zod` schemas in `src/cloud/schemas.ts`; a `ZodError` becomes `GENERIC_FAILURE` (1), the cross-repo drift sentinel (FR-012, SC-006).
 
 ---
 
@@ -14,7 +14,7 @@ The endpoint is `GET /api/orgs/me` on the resolved endpoint host (default `https
 
 **Method + path**: `GET /api/orgs/me`
 
-**Headers** (per `001` common headers): `Authorization: Bearer <token>`, `X-Poppi-Client: poppi-cli/<semver>`. No request body.
+**Headers** (per `001` common headers): `Authorization: Bearer <token>`, `X-Frugl-Client: frugl-cli/<semver>`. No request body.
 
 **Pre-network fast-fails** (no request issued): no token → `AUTH_FAILURE` (10); keychain unavailable → `KEYCHAIN_UNAVAILABLE` (11). (For `whoami`, this matches the unchanged `001` "not logged in" path; for `upload`, the unchanged `001` auth gate.)
 
@@ -53,10 +53,10 @@ Resolved internally as `OrgContext { kind: "none" }` (data-model.md §3) — **m
 
 The same response drives two different success conditions (R-3):
 
-| Response           | `poppi whoami` (FR-024/025)                                                                                                                           | `poppi upload` (FR-027/028)                                                                                                                                                                                                        |
+| Response           | `frugl whoami` (FR-024/025)                                                                                                                           | `frugl upload` (FR-027/028)                                                                                                                                                                                                        |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `200` (member)     | Report email + "Organization: `<name>` (`<slug>`) — `<member_count>` members" + "Your role: `<role>`". Exit 0.                                        | Carry `{ org, role }` into the pre-upload summary (FR-029) and the `upload-start` event (FR-030). Continue the pipeline.                                                                                                           |
-| `409 org_required` | Report email + "Not a member of any organization yet." + both remedies (`poppi join <code>` / dashboard). **Exit 0** — reported state, not a failure. | **`ORG_REQUIRED` gate**: onboarding-gate message naming both remedies; **no** discovery/anonymization; transmit **zero bytes**; write **no** inspection dir. Exit `ORG_REQUIRED` (12). Fires for `--dry-run` too (US5 scenario 3). |
+| `409 org_required` | Report email + "Not a member of any organization yet." + both remedies (`frugl join <code>` / dashboard). **Exit 0** — reported state, not a failure. | **`ORG_REQUIRED` gate**: onboarding-gate message naming both remedies; **no** discovery/anonymization; transmit **zero bytes**; write **no** inspection dir. Exit `ORG_REQUIRED` (12). Fires for `--dry-run` too (US5 scenario 3). |
 | `401 unauthorized` | Unchanged `001` "not logged in" message. Exit `AUTH_FAILURE` (10).                                                                                    | Unchanged `001` auth gate. Exit `AUTH_FAILURE` (10).                                                                                                                                                                               |
 | `426`              | Shared version-gate message. Exit `VERSION_GATE_FAILURE` (50). No retry.                                                                              | Shared version-gate message. Exit `VERSION_GATE_FAILURE` (50). No retry.                                                                                                                                                           |
 | `5xx`              | Bounded retry (`001` FR-029a); on exhaustion, `NETWORK_FAILURE` (40).                                                                                 | Bounded retry; on exhaustion, `NETWORK_FAILURE` (40) **before** anonymizing or transmitting (never proceed with an unknown destination — spec edge case).                                                                          |
@@ -68,8 +68,8 @@ The same response drives two different success conditions (R-3):
 
 ## `--json` output
 
-- `poppi whoami --json` (FR-026): the `001` `WhoamiResultOk` gains an **additive** `organization` field — the org object (`id`, `name`, `slug`, `member_count`, `role`) on member, or `null` on no-Membership. See `command-output.schema.json`.
-- `poppi upload --json` (FR-030): the `001` `upload-start` NDJSON event gains an **additive** `organization` object (`id`, `slug`). Strictly additive; no existing field changes.
+- `frugl whoami --json` (FR-026): the `001` `WhoamiResultOk` gains an **additive** `organization` field — the org object (`id`, `name`, `slug`, `member_count`, `role`) on member, or `null` on no-Membership. See `command-output.schema.json`.
+- `frugl upload --json` (FR-030): the `001` `upload-start` NDJSON event gains an **additive** `organization` object (`id`, `slug`). Strictly additive; no existing field changes.
 
 ---
 

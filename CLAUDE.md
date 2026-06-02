@@ -10,7 +10,7 @@ shell commands, and other important information, read the current plan at
 - `specs/001-cli-ingest-client/contracts/` — public contract surface (FR-036)
 - `specs/001-cli-ingest-client/quickstart.md` — contributor and verifier walk-through
 
-The applicable constitution is at `../poppi/.specify/memory/constitution.md`
-(Poppi Cloud v2.0.0); the local `.specify/memory/constitution.md` is a placeholder.
+The applicable constitution is at `../frugl/.specify/memory/constitution.md`
+(Frugl Cloud v2.0.0); the local `.specify/memory/constitution.md` is a placeholder.
 
 <!-- SPECKIT END -->

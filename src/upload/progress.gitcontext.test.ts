@@ -44,7 +44,7 @@ describe("--json gitContext additive contract (FR-016)", { timeout: 30_000 }, ()
   it("--link-prs: upload-start + final summary gitContext have exactly the documented keys", async () => {
     const { exitCode, stdout } = await runCli(
       ["upload", "--confirm", "--link-prs", "--json", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     const lines = parseLines(stdout);
@@ -67,7 +67,7 @@ describe("--json gitContext additive contract (FR-016)", { timeout: 30_000 }, ()
   it("default off: neither upload-start nor the final summary carries gitContext", async () => {
     const { exitCode, stdout } = await runCli(
       ["upload", "--confirm", "--json", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     const lines = parseLines(stdout);

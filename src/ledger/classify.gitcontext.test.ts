@@ -34,7 +34,7 @@ describe("ledger: --link-prs does not churn the ledger (SC-007)", { timeout: 30_
   });
 
   it("upload without --link-prs, then re-run WITH --link-prs → session is unchanged (skipped)", async () => {
-    const env = { POPPI_HOME_DIR: home.dir };
+    const env = { FRUGL_HOME_DIR: home.dir };
 
     const first = await runCli(["upload", "--confirm", "--json", "--endpoint", server.url], {
       env,

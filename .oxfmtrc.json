@@ -9,6 +9,6 @@
     ".claude/skills/**",
     ".claude/worktrees/**",
     ".specify/**",
-    "poppi-inspect/**"
+    "frugl-inspect/**"
   ]
 }

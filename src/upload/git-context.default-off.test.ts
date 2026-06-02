@@ -12,7 +12,7 @@ interface ManifestSession {
   git_context?: unknown;
 }
 
-describe("poppi upload — git-context opt-in wiring (US1/US2)", { timeout: 30_000 }, () => {
+describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_000 }, () => {
   let server: MockServer;
   let home: TempDir;
   let repo: TempDir;
@@ -54,7 +54,7 @@ describe("poppi upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
     const { exitCode, stdout } = await runCli(
       ["upload", "--confirm", "--json", "--endpoint", server.url],
       {
-        env: { POPPI_HOME_DIR: home.dir },
+        env: { FRUGL_HOME_DIR: home.dir },
       },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -70,7 +70,7 @@ describe("poppi upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
   it("--link-prs: attaches the credential-stripped git context to the manifest (US1)", async () => {
     const { exitCode } = await runCli(
       ["upload", "--confirm", "--link-prs", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     expect(manifestSessions.length).toBe(1);
@@ -84,7 +84,7 @@ describe("poppi upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
   it("--link-prs --json: upload-start + final summary carry an additive gitContext", async () => {
     const { exitCode, stdout } = await runCli(
       ["upload", "--confirm", "--link-prs", "--json", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     const lines = stdout

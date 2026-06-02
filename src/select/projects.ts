@@ -20,5 +20,5 @@ export async function selectProjects(
     value: g.projectId,
     checked: true,
   }));
-  return checkbox({ message: "Which projects should Poppi upload?", choices });
+  return checkbox({ message: "Which projects should Frugl upload?", choices });
 }

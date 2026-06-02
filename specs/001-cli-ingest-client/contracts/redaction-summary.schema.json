@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://poppi.app/schemas/v1/redaction-summary.json",
-  "title": "Poppi Redaction Summary (v1)",
+  "$id": "https://frugl.app/schemas/v1/redaction-summary.json",
+  "title": "Frugl Redaction Summary (v1)",
   "description": "Per-session, per-category counts of redactions applied by the anonymizer. Printed to stdout during --dry-run --inspect and (when --inspect dir is provided) written alongside each session's inspection payload. FR-019, FR-036 contract surface.",
   "type": "object",
   "required": ["redactionPolicyVersion", "sessions"],

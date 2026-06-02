@@ -1,11 +1,11 @@
 import { Command, Flags } from "@oclif/core";
 import { uninstallHook, type HookScope } from "../../hook/claude-code.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
-import { isPoppiError, printPoppiError } from "../../lib/errors.js";
+import { isFruglError, printFruglError } from "../../lib/errors.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class HookUninstall extends Command {
-  static override description = "Remove the Poppi upload hook from Claude Code settings.";
+  static override description = "Remove the Frugl upload hook from Claude Code settings.";
 
   static override flags = {
     global: Flags.boolean({
@@ -29,13 +29,13 @@ export default class HookUninstall extends Command {
       }
       if (removed) {
         process.stdout.write(
-          `${color.ok(`${symbol.tick} Removed Poppi hook`)}  ${color.dim(`(${scope}: ${file})`)}\n`,
+          `${color.ok(`${symbol.tick} Removed Frugl hook`)}  ${color.dim(`(${scope}: ${file})`)}\n`,
         );
       } else {
-        process.stdout.write(color.dim(`No Poppi hook was installed (${scope}).\n`));
+        process.stdout.write(color.dim(`No Frugl hook was installed (${scope}).\n`));
       }
     } catch (err) {
-      if (isPoppiError(err)) process.exit(printPoppiError(err, mode));
+      if (isFruglError(err)) process.exit(printFruglError(err, mode));
       throw err;
     }
   }

@@ -15,7 +15,7 @@ export interface OrgRuntime {
 export async function authedClient(endpointFlag: string | undefined): Promise<OrgRuntime> {
   const endpoint = resolveEndpoint({
     flag: endpointFlag,
-    env: process.env["POPPI_ENDPOINT"],
+    env: process.env["FRUGL_ENDPOINT"],
   });
   const session = await requireAuthSession(endpoint.url);
   const client = new CloudClient({

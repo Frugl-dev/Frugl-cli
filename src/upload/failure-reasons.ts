@@ -3,7 +3,7 @@ import { extractStatus } from "../lib/retry.js";
 
 // The fine-grained, human-readable reason a single session failed to upload.
 // One bad session never blocks the others (see pipeline.ts); each failure is
-// bucketed here so `poppi upload --report` can explain the cause and the fix.
+// bucketed here so `frugl upload --report` can explain the cause and the fix.
 //
 // `skipped` is intentionally NOT a failure reason — a skipped session (its file
 // went missing or changed mid-upload) is picked up automatically next run. It
@@ -39,19 +39,19 @@ export const FAILURE_REASON_INFO: Record<FailureReason, FailureReasonInfo> = {
   conflict: {
     reason: "conflict",
     summary: "already uploaded (HTTP 409)",
-    remedy: "Safe to ignore — its data is already in Poppi. Clears on next run.",
+    remedy: "Safe to ignore — its data is already in Frugl. Clears on next run.",
     order: 1,
   },
   "presign-expired": {
     reason: "presign-expired",
     summary: "upload URL expired (HTTP 403)",
-    remedy: "Transient. poppi upload re-presigns and retries it.",
+    remedy: "Transient. frugl upload re-presigns and retries it.",
     order: 2,
   },
   network: {
     reason: "network",
     summary: "server error or timeout",
-    remedy: "Transient. poppi upload retries it once the endpoint is reachable.",
+    remedy: "Transient. frugl upload retries it once the endpoint is reachable.",
     order: 3,
   },
   anonymization: {
@@ -63,7 +63,7 @@ export const FAILURE_REASON_INFO: Record<FailureReason, FailureReasonInfo> = {
   unknown: {
     reason: "unknown",
     summary: "unexpected error",
-    remedy: "Re-run poppi upload; if it persists, please report it.",
+    remedy: "Re-run frugl upload; if it persists, please report it.",
     order: 5,
   },
 };

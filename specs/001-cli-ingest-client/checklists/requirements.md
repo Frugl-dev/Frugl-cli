@@ -1,4 +1,4 @@
-# Specification Quality Checklist: poppi-cli v1 — Public OSS Ingest Client
+# Specification Quality Checklist: frugl-cli v1 — Public OSS Ingest Client
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-23

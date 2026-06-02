@@ -43,7 +43,7 @@ function lastJson(stdout: string): { selection: SelectionReport; ok: boolean } {
   throw new Error(`no upload result JSON in stdout:\n${stdout}`);
 }
 
-describe("poppi upload — provider detection & guided selection", { timeout: 30_000 }, () => {
+describe("frugl upload — provider detection & guided selection", { timeout: 30_000 }, () => {
   let server: MockServer;
   let home: TempDir;
   let manifestSessions: ManifestSession[];
@@ -73,7 +73,7 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
 
   it("exits NO_SESSIONS_FOUND when no provider is detected", async () => {
     const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-      env: { POPPI_HOME_DIR: home.dir },
+      env: { FRUGL_HOME_DIR: home.dir },
     });
     expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
     expect(manifestSessions.length).toBe(0);
@@ -82,7 +82,7 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
   it("exits OK with nothing uploaded when a detected provider has no session files", async () => {
     await makeCursorFixture(home.dir);
     const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-      env: { POPPI_HOME_DIR: home.dir },
+      env: { FRUGL_HOME_DIR: home.dir },
     });
     expect(exitCode).toBe(EXIT.OK);
     expect(manifestSessions.length).toBe(0);
@@ -94,7 +94,7 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
 
     const { exitCode, stdout } = await runCli(
       ["upload", "--confirm", "--json", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     expect(manifestSessions.length).toBe(3);
@@ -116,7 +116,7 @@ describe("poppi upload — provider detection & guided selection", { timeout: 30
 
     const { exitCode, stdout } = await runCli(
       ["upload", "--confirm", "--json", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     // Only the two Claude sessions are uploaded; Cursor has no session files.

@@ -1,4 +1,4 @@
-# Tasks: poppi-cli PR-link metadata — opt-in per-session git context at upload time
+# Tasks: frugl-cli PR-link metadata — opt-in per-session git context at upload time
 
 **Input**: Design documents from `/specs/005-cli-pr-metadata/`
 
@@ -30,7 +30,7 @@
 
 **⚠️ CRITICAL**: No user story wiring can begin until this phase is complete.
 
-- [x] T004 [P] Create src/lib/config.ts: `conf`-backed `poppi-config` namespace under the env-paths state dir (reuse src/lib/paths.ts); `zod`-validated `PoppiConfig { schemaVersion: 1, linkPrs: boolean }` default `linkPrs:false`; `getLinkPrs()` / `setLinkPrs(bool)`; schema-version mismatch or missing file → defaults (never a failure) per data-model.md §7 / FR-003 in src/lib/config.ts
+- [x] T004 [P] Create src/lib/config.ts: `conf`-backed `frugl-config` namespace under the env-paths state dir (reuse src/lib/paths.ts); `zod`-validated `FruglConfig { schemaVersion: 1, linkPrs: boolean }` default `linkPrs:false`; `getLinkPrs()` / `setLinkPrs(bool)`; schema-version mismatch or missing file → defaults (never a failure) per data-model.md §7 / FR-003 in src/lib/config.ts
 - [x] T005 [P] Write src/lib/config.test.ts: default is `linkPrs:false`; round-trip set/get; schema-version mismatch → defaults not error; config holds only the boolean (no repo data) per FR-003 in src/lib/config.test.ts
 - [x] T006 Create src/upload/git-context.ts — the resolver core. Export `resolveGitContext(input: { cwd?: string; recordedBranch?: string }): Promise<GitContextResolution>` returning `{kind:"resolved"|"unresolved"|"git-unavailable"}` per data-model.md §1–2. Implement, reading `.git/` files ONLY (no `git` subprocess, no hooks — FR-004/R-2):
   - repo-root ascent from `cwd` (handle `.git` dir and `gitdir:` pointer file; memoise per cwd) per R-3
@@ -49,7 +49,7 @@
 
 **Goal**: Prove and lock the default-off guarantee: with no `--link-prs`, the resolver is never entered, no `.git` is read, and no git field is attached or emitted — even when sessions were worked inside git repos. This phase must pass before US1's opt-in path is trusted.
 
-**Independent Test**: Run `poppi upload` (no `--link-prs`) against a mock server recording every request body, with a session whose `cwd` is a real git repo. Assert: no manifest entry contains any git field, and a filesystem spy records zero `.git` reads. The absence of git context is identical to a session worked outside any repo.
+**Independent Test**: Run `frugl upload` (no `--link-prs`) against a mock server recording every request body, with a session whose `cwd` is a real git repo. Assert: no manifest entry contains any git field, and a filesystem spy records zero `.git` reads. The absence of git context is identical to a session worked outside any repo.
 
 ### Tests for User Story 2 (write first, must FAIL before wiring) ⚠️
 
@@ -68,7 +68,7 @@
 
 **Goal**: With `--link-prs`, resolve git context for each `(new ∪ updated)` session, attach it as additive manifest metadata, and surface it in the pre-upload summary. After upload, sessions become linkable once the team connects GitHub.
 
-**Independent Test**: A session whose recorded `cwd` is a clean checkout with a GitHub `origin` on a feature branch, run with `poppi upload --link-prs` against the local stack, produces a manifest whose entry carries the correct `owner/name`, branch, and 40-hex commit. The same session without `--link-prs` carries none.
+**Independent Test**: A session whose recorded `cwd` is a clean checkout with a GitHub `origin` on a feature branch, run with `frugl upload --link-prs` against the local stack, produces a manifest whose entry carries the correct `owner/name`, branch, and 40-hex commit. The same session without `--link-prs` carries none.
 
 ### Tests for User Story 1 (write first, must FAIL before implementation) ⚠️
 
@@ -83,7 +83,7 @@
 - [x] T016 [US1] Attach resolved git context as manifest metadata in src/upload/pipeline.ts: thread an optional `gitContext` through `SessionUploadJob`; include it as `sessions[].git_context` in the manifest-create body; ensure it is EXCLUDED from the payload PUT and from `redactedHashHex`/`contentHash` per FR-010 / FR-011 / data-model.md §5 in src/upload/pipeline.ts
 - [x] T017 [US1] Extend src/upload/summary.ts (and `UploadSummary`) with `prLinking { active, source, sessionsWithContext, repositories[] }`; `formatSummaryForHuman` prints `PR linking: on (from flag|config)`, the `N of M` count, and the distinct repo list — credential-/path-free per FR-013 / FR-015 / data-model.md §6 in src/upload/summary.ts
 
-**Checkpoint**: `poppi upload --link-prs --confirm` attaches correct context to the manifest; the summary names repos and counts; the same run without the flag attaches none.
+**Checkpoint**: `frugl upload --link-prs --confirm` attaches correct context to the manifest; the summary names repos and counts; the same run without the flag attaches none.
 
 ---
 
@@ -91,7 +91,7 @@
 
 **Goal**: `--link-prs --dry-run --inspect` writes the exact per-session git context that would be transmitted, distinctly from the redacted payload, and transmits zero bytes.
 
-**Independent Test**: For a batch across two repos, `poppi upload --link-prs --dry-run --inspect <dir>` writes every would-be-transmitted git-context value in human-readable form, makes zero upload-endpoint requests, and a textual search for a planted credential token returns zero hits.
+**Independent Test**: For a batch across two repos, `frugl upload --link-prs --dry-run --inspect <dir>` writes every would-be-transmitted git-context value in human-readable form, makes zero upload-endpoint requests, and a textual search for a planted credential token returns zero hits.
 
 ### Tests for User Story 3 (write first, must FAIL before implementation) ⚠️
 

@@ -11,8 +11,8 @@ import { UsageError } from "../lib/errors.js";
 export type HookScope = "project" | "global";
 
 const SESSION_END_EVENT = "SessionEnd";
-export const UPLOAD_COMMAND = "poppi upload --yes --json";
-const POPPI_COMMAND_RE = /\bpoppi\s+upload\b/;
+export const UPLOAD_COMMAND = "frugl upload --yes --json";
+const FRUGL_COMMAND_RE = /\bfrugl\s+upload\b/;
 
 export interface HookFsOptions {
   cwd?: string;
@@ -71,9 +71,9 @@ function writeSettings(file: string, settings: Settings): void {
   }
 }
 
-function isPoppiGroup(group: HookGroup): boolean {
+function isFruglGroup(group: HookGroup): boolean {
   return (
-    Array.isArray(group.hooks) && group.hooks.some((h) => POPPI_COMMAND_RE.test(h.command ?? ""))
+    Array.isArray(group.hooks) && group.hooks.some((h) => FRUGL_COMMAND_RE.test(h.command ?? ""))
   );
 }
 
@@ -85,7 +85,7 @@ function sessionEndGroups(settings: Settings): HookGroup[] {
 export function isInstalled(scope: HookScope, opts: HookFsOptions = {}): boolean {
   const file = settingsPath(scope, opts);
   if (!existsSync(file)) return false;
-  return sessionEndGroups(readSettings(file)).some(isPoppiGroup);
+  return sessionEndGroups(readSettings(file)).some(isFruglGroup);
 }
 
 export function installHook(
@@ -95,8 +95,8 @@ export function installHook(
   const file = settingsPath(scope, opts);
   const settings = readSettings(file);
   const hooks = settings.hooks ?? {};
-  // Drop any prior Poppi entry, then add a fresh one — idempotent.
-  const others = sessionEndGroups(settings).filter((g) => !isPoppiGroup(g));
+  // Drop any prior Frugl entry, then add a fresh one — idempotent.
+  const others = sessionEndGroups(settings).filter((g) => !isFruglGroup(g));
   others.push({ hooks: [{ type: "command", command: UPLOAD_COMMAND }] });
   hooks[SESSION_END_EVENT] = others;
   settings.hooks = hooks;
@@ -115,7 +115,7 @@ export function uninstallHook(
     return { path: file, removed: false };
   }
   const existing = settings.hooks[SESSION_END_EVENT];
-  const kept = existing.filter((g) => !isPoppiGroup(g));
+  const kept = existing.filter((g) => !isFruglGroup(g));
   const removed = kept.length < existing.length;
   if (kept.length === 0) {
     delete settings.hooks[SESSION_END_EVENT];

@@ -2,7 +2,7 @@ import { color, symbol } from "../lib/theme.js";
 import { FAILURE_REASON_INFO, type FailureReason } from "./failure-reasons.js";
 import type { ManifestEntryState, ResumeState } from "./resume.js";
 
-// `poppi upload --report` — explain a partial upload after the fact: which
+// `frugl upload --report` — explain a partial upload after the fact: which
 // sessions failed, grouped by reason, each with the cause and a one-line remedy.
 // Reads the resume store (the in-flight manifest), so it works exactly while
 // failed sessions sit pending and resumable. Pure + structured so it renders to
@@ -156,7 +156,7 @@ export function formatReportHuman(report: UploadReport): string {
 
   if (counts.failed > 0) {
     lines.push(
-      `  ${color.dim(`${counts.failed} failed session${counts.failed === 1 ? "" : "s"} queued as `)}${color.bold("pending")}${color.dim(". Resume: ")}${color.poppy("poppi upload")}`,
+      `  ${color.dim(`${counts.failed} failed session${counts.failed === 1 ? "" : "s"} queued as `)}${color.bold("pending")}${color.dim(". Resume: ")}${color.poppy("frugl upload")}`,
     );
   }
 

@@ -15,9 +15,9 @@ export interface ResolveUploadAuthOptions {
 
 // Resolves the identity + token for an upload WITHOUT ever performing
 // interactive OTP login. Order:
-//   1. an explicit headless token (--token / POPPI_TOKEN), whose identity is
+//   1. an explicit headless token (--token / FRUGL_TOKEN), whose identity is
 //      resolved from the server (works for a human or an org service identity);
-//   2. otherwise a stored keychain session from `poppi login`.
+//   2. otherwise a stored keychain session from `frugl login`.
 // Throws AuthError when neither is available (a non-interactive run then exits
 // non-zero rather than prompting).
 export async function resolveUploadAuth(opts: ResolveUploadAuthOptions): Promise<AuthSession> {
@@ -29,14 +29,14 @@ export async function resolveUploadAuth(opts: ResolveUploadAuthOptions): Promise
 
   if (!resolved) {
     throw new AuthError(
-      "Not logged in. Provide a token via --token or POPPI_TOKEN, or run 'poppi login'.",
+      "Not logged in. Provide a token via --token or FRUGL_TOKEN, or run 'frugl login'.",
     );
   }
 
   if (resolved.source === "session") {
     const session = await loadAuthSession(opts.endpointUrl);
     if (!session) {
-      throw new AuthError("Not logged in. Run 'poppi login' or set POPPI_TOKEN.");
+      throw new AuthError("Not logged in. Run 'frugl login' or set FRUGL_TOKEN.");
     }
     return session;
   }

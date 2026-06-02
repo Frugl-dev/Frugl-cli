@@ -23,7 +23,7 @@ describe("discoverGeminiSessions", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-gemini-discover-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-gemini-discover-"));
   });
 
   afterEach(() => {
@@ -124,7 +124,7 @@ describe("parseGeminiSession", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-gemini-parse-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-gemini-parse-"));
   });
 
   afterEach(() => {

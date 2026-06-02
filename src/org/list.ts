@@ -1,6 +1,6 @@
 import { CloudHttpError } from "../cloud/client.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { isPoppiError, printPoppiError } from "../lib/errors.js";
+import { isFruglError, printFruglError } from "../lib/errors.js";
 import { resolveOutputMode, type OutputModeFlags } from "../lib/output-mode.js";
 import { authedClient, fetchOrgContext } from "./runtime.js";
 import { renderNoOrg, renderOrgTable } from "./render.js";
@@ -9,7 +9,7 @@ export interface OrgListFlags extends OutputModeFlags {
   endpoint?: string | undefined;
 }
 
-// Shared body for `poppi org` and `poppi org ls`. The backend models a single
+// Shared body for `frugl org` and `frugl org ls`. The backend models a single
 // active org per account (GET /api/orgs/me), so the table has one row today;
 // 409 is reported as "no org" at exit 0, not a failure.
 export async function runOrgList(flags: OrgListFlags): Promise<never> {
@@ -59,8 +59,8 @@ export async function runOrgList(flags: OrgListFlags): Promise<never> {
     );
     process.exit(EXIT.OK);
   } catch (err) {
-    if (isPoppiError(err) || err instanceof CloudHttpError) {
-      process.exit(printPoppiError(err, mode));
+    if (isFruglError(err) || err instanceof CloudHttpError) {
+      process.exit(printFruglError(err, mode));
     }
     throw err;
   }

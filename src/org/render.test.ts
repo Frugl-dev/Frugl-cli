@@ -32,8 +32,8 @@ describe("renderOrgTable", () => {
 describe("renderNoOrg", () => {
   it("names both remedies", () => {
     const out = plain(renderNoOrg("dave@acme.co"));
-    expect(out).toContain("poppi org create");
-    expect(out).toContain("poppi org join <code>");
+    expect(out).toContain("frugl org create");
+    expect(out).toContain("frugl org join <code>");
     expect(out).toContain("dave@acme.co");
   });
 });

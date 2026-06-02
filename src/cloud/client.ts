@@ -3,7 +3,7 @@ import {
   AuthError,
   EndpointError,
   NetworkError,
-  PoppiError,
+  FruglError,
   VersionGateError,
 } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
@@ -68,8 +68,8 @@ export class CloudClient {
   async call<T extends ZodTypeAny>(opts: CallOptions<T>): Promise<z.infer<T>> {
     const url = `${this.endpointUrl}${opts.path}`;
     const headers: Record<string, string> = {
-      "X-Poppi-Client": `poppi-cli/${this.cliVersion}`,
-      "X-Poppi-CLI-Version": this.cliVersion,
+      "X-Frugl-Client": `frugl-cli/${this.cliVersion}`,
+      "X-Frugl-CLI-Version": this.cliVersion,
     };
     if (opts.body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -137,7 +137,7 @@ export class CloudClient {
     }
     if (response.status === 401 || response.status === 403) {
       throw new AuthError(
-        `Authentication failed (${response.status}). Run 'poppi login' to re-authenticate.`,
+        `Authentication failed (${response.status}). Run 'frugl login' to re-authenticate.`,
       );
     }
     if (!response.ok) {
@@ -168,7 +168,7 @@ export class CloudClient {
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
-      throw new PoppiError(
+      throw new FruglError(
         `Failed to parse JSON from ${opts.method} ${opts.path}: ${err instanceof Error ? err.message : String(err)}`,
         EXIT.GENERIC_FAILURE,
       );
@@ -178,7 +178,7 @@ export class CloudClient {
     } catch (err) {
       if (err instanceof ZodError) {
         const offending = err.issues[0]?.path?.join(".") ?? "<root>";
-        throw new PoppiError(
+        throw new FruglError(
           `Cloud response schema mismatch on ${opts.method} ${opts.path}: ${offending} (${err.issues[0]?.message ?? "unknown"})`,
           EXIT.GENERIC_FAILURE,
         );

@@ -42,7 +42,7 @@ import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   InspectDirError,
   NoSessionsError,
-  printPoppiError,
+  printFruglError,
   StaleResumeError,
   UsageError,
 } from "../lib/errors.js";
@@ -54,7 +54,7 @@ import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
 
 export default class Upload extends Command {
   static override description =
-    "Discover local AI-coding session sources, anonymize them, and batch-upload to hosted Poppi.";
+    "Discover local AI-coding session sources, anonymize them, and batch-upload to hosted Frugl.";
 
   static override args = {
     manifestId: Args.string({
@@ -74,14 +74,14 @@ export default class Upload extends Command {
     endpoint: Flags.string({ description: "Override the API endpoint." }),
     token: Flags.string({
       description:
-        "Access token for non-interactive auth (CI / hooks). Overrides POPPI_TOKEN and any stored login.",
+        "Access token for non-interactive auth (CI / hooks). Overrides FRUGL_TOKEN and any stored login.",
     }),
     concurrency: Flags.integer({
       description: "Per-session upload concurrency (default 4).",
     }),
     config: Flags.string({
       description:
-        "Path to a poppi.config.json declaring upload scope/options (else discovered from the cwd up).",
+        "Path to a frugl.config.json declaring upload scope/options (else discovered from the cwd up).",
     }),
     limit: Flags.integer({
       description: "Maximum number of (new ∪ updated) sessions to upload.",
@@ -112,7 +112,7 @@ export default class Upload extends Command {
 
     const endpoint = resolveEndpoint({
       flag: flags.endpoint,
-      env: process.env["POPPI_ENDPOINT"],
+      env: process.env["FRUGL_ENDPOINT"],
     });
     if (mode === "text") {
       process.stderr.write(
@@ -154,7 +154,7 @@ export default class Upload extends Command {
         });
       }
 
-      const homeDir = process.env["POPPI_HOME_DIR"];
+      const homeDir = process.env["FRUGL_HOME_DIR"];
       const discoverOpts = homeDir ? { homeDir } : undefined;
 
       // 1) Detect which providers have sessions on this machine.
@@ -480,29 +480,29 @@ export default class Upload extends Command {
     ) {
       if (mode === "text") {
         process.stderr.write(
-          `${color.err("poppi: You're signed in, but you're not in any org.")}\n\n`,
+          `${color.err("frugl: You're signed in, but you're not in any org.")}\n\n`,
         );
         process.stderr.write(`${color.dim("  Every upload belongs to an org. Pick one:")}\n\n`);
         process.stderr.write(
-          `    ${color.poppy("poppi org create")}        ${color.dim("start a new org (you become owner)")}\n`,
+          `    ${color.poppy("frugl org create")}        ${color.dim("start a new org (you become owner)")}\n`,
         );
         process.stderr.write(
-          `    ${color.poppy("poppi org join <code>")}   ${color.dim("accept an invite from a teammate")}\n`,
+          `    ${color.poppy("frugl org join <code>")}   ${color.dim("accept an invite from a teammate")}\n`,
         );
         process.stderr.write(
-          `    ${color.poppy("poppi logout")}            ${color.dim("this isn't the right account")}\n`,
+          `    ${color.poppy("frugl logout")}            ${color.dim("this isn't the right account")}\n`,
         );
       } else {
         process.stderr.write(
-          "poppi: You're signed in, but you're not in any org. Run 'poppi org create' or 'poppi org join <code>'.\n",
+          "frugl: You're signed in, but you're not in any org. Run 'frugl org create' or 'frugl org join <code>'.\n",
         );
       }
       process.exit(EXIT.GENERIC_FAILURE);
     }
-    process.exit(printPoppiError(err, mode));
+    process.exit(printFruglError(err, mode));
   }
 
-  // Render `poppi upload --report` and exit. Never returns.
+  // Render `frugl upload --report` and exit. Never returns.
   private runReport(input: {
     endpointUrl: string;
     userId: string;
@@ -526,7 +526,7 @@ export default class Upload extends Command {
           `${color.dim(
             requestedManifestId
               ? `No in-flight manifest ${requestedManifestId} to report — failed sessions clear once they upload.`
-              : "No in-flight upload to report. Run 'poppi upload' first.",
+              : "No in-flight upload to report. Run 'frugl upload' first.",
           )}\n`,
         );
       }

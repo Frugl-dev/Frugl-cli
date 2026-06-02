@@ -24,7 +24,7 @@ export const manifestEntrySchema = z.object({
   ackedAt: z.string().datetime().optional(),
   skippedReason: z.enum(["missing", "modified"]).optional(),
   // The last per-session upload failure, retained across the reset-to-pending so
-  // `poppi upload --report` can explain what failed and why. Cleared on ack.
+  // `frugl upload --report` can explain what failed and why. Cleared on ack.
   lastFailureReason: z.enum(FAILURE_REASONS).optional(),
   lastFailureMessage: z.string().optional(),
   failedAt: z.string().datetime().optional(),

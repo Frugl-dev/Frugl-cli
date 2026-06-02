@@ -1,19 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://poppi.app/schemas/v1/manifest-entry.gitcontext.json",
-  "title": "Poppi Manifest Entry gitContext extension (v1, additive)",
-  "description": "STRICTLY ADDITIVE extension to the 001 Upload Manifest (https://poppi.app/schemas/v1/manifest.json) ManifestEntry. Adds one OPTIONAL property, 'gitContext', carrying the opt-in, credential-stripped, forge-agnostic git coordinate the cloud uses to link a session to a pull request (poppi/005 FR-024). Present only when 'poppi upload --link-prs' was active AND the session's git context resolved. No existing 001 field is renamed, removed, or made required; additionalProperties stays false by ADDING this property to ManifestEntry, not by relaxing the constraint (poppi-cli 005 FR-010, SC-006). The git context is manifest METADATA: it is NOT part of the redacted session payload and NOT part of the contentHash the incremental ledger keys on (FR-011, SC-007). This fragment is the spec-side public contract; the wire field name on the manifest-create request body is the snake_case 'git_context' (matching 001's 'session_id'/'format_version').",
+  "$id": "https://frugl.app/schemas/v1/manifest-entry.gitcontext.json",
+  "title": "Frugl Manifest Entry gitContext extension (v1, additive)",
+  "description": "STRICTLY ADDITIVE extension to the 001 Upload Manifest (https://frugl.app/schemas/v1/manifest.json) ManifestEntry. Adds one OPTIONAL property, 'gitContext', carrying the opt-in, credential-stripped, forge-agnostic git coordinate the cloud uses to link a session to a pull request (frugl/005 FR-024). Present only when 'frugl upload --link-prs' was active AND the session's git context resolved. No existing 001 field is renamed, removed, or made required; additionalProperties stays false by ADDING this property to ManifestEntry, not by relaxing the constraint (frugl-cli 005 FR-010, SC-006). The git context is manifest METADATA: it is NOT part of the redacted session payload and NOT part of the contentHash the incremental ledger keys on (FR-011, SC-007). This fragment is the spec-side public contract; the wire field name on the manifest-create request body is the snake_case 'git_context' (matching 001's 'session_id'/'format_version').",
   "$comment": "This file documents the delta against contracts/../001-cli-ingest-client/contracts/manifest.schema.json. When 001's manifest.schema.json is next revised, fold the 'gitContext' property below into its $defs.ManifestEntry.properties so the two stay in sync. The merge is purely additive.",
   "$defs": {
     "GitContext": {
       "type": "object",
-      "description": "Forge-agnostic git coordinate for one session. Credential-free and path-free by construction (poppi-cli 005 FR-005/FR-015). Either fully present (repository + commitSha required) or the whole gitContext is absent (FR-008): there is no half-resolved git context.",
+      "description": "Forge-agnostic git coordinate for one session. Credential-free and path-free by construction (frugl-cli 005 FR-005/FR-015). Either fully present (repository + commitSha required) or the whole gitContext is absent (FR-008): there is no half-resolved git context.",
       "required": ["repository", "commitSha"],
       "additionalProperties": false,
       "properties": {
         "repository": {
           "type": "object",
-          "description": "Host + owner/name, derived from the 'origin' remote with any embedded credential stripped before recording (FR-005). Forge-agnostic (GitHub, GitLab, Bitbucket, self-hosted); the cloud decides which hosts it can match a PR for (poppi/005 is GitHub-first).",
+          "description": "Host + owner/name, derived from the 'origin' remote with any embedded credential stripped before recording (FR-005). Forge-agnostic (GitHub, GitLab, Bitbucket, self-hosted); the cloud decides which hosts it can match a PR for (frugl/005 is GitHub-first).",
           "required": ["host", "owner", "name"],
           "additionalProperties": false,
           "properties": {

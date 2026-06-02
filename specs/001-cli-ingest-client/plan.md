@@ -1,4 +1,4 @@
-# Implementation Plan: poppi-cli v1 — Public OSS Ingest Client
+# Implementation Plan: frugl-cli v1 — Public OSS Ingest Client
 
 **Branch**: `001-cli-ingest-client` | **Date**: 2026-05-23 | **Spec**: [./spec.md](./spec.md)
 
@@ -6,9 +6,9 @@
 
 ## Summary
 
-`poppi-cli` is the only ingest path into the hosted Poppi cloud and the public trust gate of the product: it discovers AI-coding session logs on the user's machine, anonymizes every byte client-side with a fail-closed policy, and uploads to that user's isolated cloud prefix.
+`frugl-cli` is the only ingest path into the hosted Frugl cloud and the public trust gate of the product: it discovers AI-coding session logs on the user's machine, anonymizes every byte client-side with a fail-closed policy, and uploads to that user's isolated cloud prefix.
 
-The technical approach is a single TypeScript Node ≥ 20 CLI distributed via `npm i -g poppi` / `npx poppi`, structured around oclif's command-class + plugin architecture (locked at spec level to keep FR-007's open extension point for future source adapters viable). The six load-bearing dependencies named in the spec (`zod`, `semver`, `p-retry`, `p-limit`, `@inquirer/prompts`, `conf`) are joined by Node-built-in choices for everything else (native `fetch`, `crypto`, `zlib`) and a small set of well-trodden helpers (`tinyglobby`, `picocolors`, `@napi-rs/keyring`).
+The technical approach is a single TypeScript Node ≥ 20 CLI distributed via `npm i -g frugl` / `npx frugl`, structured around oclif's command-class + plugin architecture (locked at spec level to keep FR-007's open extension point for future source adapters viable). The six load-bearing dependencies named in the spec (`zod`, `semver`, `p-retry`, `p-limit`, `@inquirer/prompts`, `conf`) are joined by Node-built-in choices for everything else (native `fetch`, `crypto`, `zlib`) and a small set of well-trodden helpers (`tinyglobby`, `picocolors`, `@napi-rs/keyring`).
 
 The pipeline is: **discover → derive stable identity → classify against local ledger → apply `--limit` → anonymize → confirm → bounded-concurrency PUT to presigned URLs → resumable manifest finalize**. Anonymization runs before any network bytes, retries are bounded and excluded for auth/version-gate failures, output emits stable NDJSON under `--json` (FR-036/039 contract surface) and human progress on stderr by default.
 
@@ -42,15 +42,15 @@ Note: the existing `src/` scaffold uses `commander`, `prompts`, `keytar`, and `@
 
 - **OS keychain** (`@napi-rs/keyring`) — auth tokens only. Never plaintext on disk (FR-004).
 - **State directory** (`conf`, env-paths conventions) — two `conf` namespaces under the OS-appropriate state dir:
-  - `poppi-resume-state` — in-flight upload identifier + per-session ack status (FR-026)
-  - `poppi-ledger` — per-`(endpoint, user)` map of `sessionId → {contentHash, lastUploadedAt, manifestId}` (FR-006c)
+  - `frugl-resume-state` — in-flight upload identifier + per-session ack status (FR-026)
+  - `frugl-ledger` — per-`(endpoint, user)` map of `sessionId → {contentHash, lastUploadedAt, manifestId}` (FR-006c)
 - **No application database.** The cloud is the system of record for uploaded sessions; the CLI persists only the two `conf` namespaces above.
 
 **Testing**: vitest, co-located `*.test.ts` next to source (matches existing convention in `src/anonymize/anonymize.test.ts`). Three test tiers:
 
 - **Unit** — anonymizer rules + planted-secrets fixture (SC-001), classifier (FR-006d), retry predicate (FR-029a/b), pseudonym stability (FR-016).
 - **Contract** — `zod` round-trip every cloud response against the recorded schemas in `contracts/`. Drift = test failure.
-- **Integration** — full `login → discover → anonymize → upload → dashboard-visible` loop against the local Docker stack brought up from the sibling `poppi/` repo (`pnpm stack:up`). Per SC-004, this loop must complete with zero external credentials and zero internet access; the same loop runs in CI.
+- **Integration** — full `login → discover → anonymize → upload → dashboard-visible` loop against the local Docker stack brought up from the sibling `frugl/` repo (`pnpm stack:up`). Per SC-004, this loop must complete with zero external credentials and zero internet access; the same loop runs in CI.
 
 **Target Platform**: Cross-platform — macOS, Windows, Linux. All on Node ≥ 20. Headless Linux without a system secret service is explicitly out of scope (FR-005: surface clear error, refuse to start, exit cleanly).
 
@@ -60,12 +60,12 @@ Note: the existing `src/` scaffold uses `commander`, `prompts`, `keytar`, and `@
 
 - **SC-003**: First upload ≤ 200 sessions / ≤ 200 MB compressed completes in ≤ 60 s on broadband.
 - **SC-003a**: Incremental classification of M = 1000 sessions on disk completes in ≤ 5 s on a typical developer laptop; subsequent transmission time scales with the (new ∪ updated) subset only.
-- **SC-007**: Zero network traffic in any 24-hour window in which the user does not invoke a poppi command.
+- **SC-007**: Zero network traffic in any 24-hour window in which the user does not invoke a frugl command.
 
 **Constraints**:
 
 - **Privacy posture (FR-034/035 + Principle VI)**: no telemetry, no auto-update, no background activity. Every network request is a direct, traceable consequence of a user-invoked command.
-- **Output contract surface (FR-036)**: manifest JSON, redaction-summary JSON, NDJSON event shape, final-summary JSON, and exit codes are all public contracts; non-additive changes require a coordinated cross-repo bump with `poppi/001-cloud-ingest-platform`.
+- **Output contract surface (FR-036)**: manifest JSON, redaction-summary JSON, NDJSON event shape, final-summary JSON, and exit codes are all public contracts; non-additive changes require a coordinated cross-repo bump with `frugl/001-cloud-ingest-platform`.
 - **Trust gate (FR-009/014)**: anonymization MUST run on every byte before any network transmission, fail-closed on uncertainty. `--dry-run` MUST transmit nothing.
 - **Concurrency (FR-025a)**: fixed default 4, overridable via `--concurrency N`. No adaptive scheme in v1.
 - **Retry (FR-029a/b)**: 3 attempts total, transient errors only (network reset, request timeout, HTTP 5xx, HTTP 429). Auth/version-gate/other 4xx never retried.
@@ -80,7 +80,7 @@ Note: the existing `src/` scaffold uses `commander`, `prompts`, `keytar`, and `@
 
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-The applicable constitution is **Poppi Cloud Constitution v2.0.0** at `~/Documents/poppi/poppi/.specify/memory/constitution.md` (the CLI inherits per the README pointer; the local `.specify/memory/constitution.md` is a placeholder).
+The applicable constitution is **Frugl Cloud Constitution v2.0.0** at `~/Documents/frugl/frugl/.specify/memory/constitution.md` (the CLI inherits per the README pointer; the local `.specify/memory/constitution.md` is a placeholder).
 
 | Principle                                                               | Applies                         | Gate evaluation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -122,7 +122,7 @@ specs/001-cli-ingest-client/
 Single-package CLI. The existing `src/` scaffold is migrated in place; no new packages, no monorepo split. Co-located `*.test.ts` is the existing convention (`vitest.config.ts` already configured for `src/**/*.{test,spec}.ts`) and is preserved.
 
 ```text
-poppi-cli/
+frugl-cli/
 ├── bin/
 │   ├── run.js                 # oclif production entrypoint (replaces src/cli.ts shebang)
 │   └── dev.js                 # oclif tsx-based dev entrypoint
@@ -166,7 +166,7 @@ poppi-cli/
 │   │   ├── client.ts          # native fetch + CLI-version header (FR-032) + timeout
 │   │   ├── schemas.ts         # zod schemas for every response (FR-036 contract)
 │   │   ├── version-gate.ts    # FR-033 — semver compare on 426
-│   │   └── endpoints.ts       # default vs --endpoint vs POPPI_ENDPOINT (FR-030/031)
+│   │   └── endpoints.ts       # default vs --endpoint vs FRUGL_ENDPOINT (FR-030/031)
 │   ├── lib/
 │   │   ├── exit-codes.ts      # FR-037 — frozen exit-code table
 │   │   ├── errors.ts          # typed error classes, each mapped to an exit code

@@ -11,7 +11,7 @@ describe("deriveClaudeProjects", () => {
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(path.join(tmpdir(), "poppi-project-"));
+    home = mkdtempSync(path.join(tmpdir(), "frugl-project-"));
   });
 
   afterEach(() => {

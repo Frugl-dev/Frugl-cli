@@ -11,9 +11,9 @@ import type { SessionIdentity, SessionRef } from "./types.js";
 // The raw native id is preserved on `nativeSessionId` so callers can still group
 // physical files back to one logical session.
 
-// Fixed namespace for poppi-derived session UUIDs (UUIDv5). Never change this —
+// Fixed namespace for frugl-derived session UUIDs (UUIDv5). Never change this —
 // it would re-key every path-derived session.
-const POPPI_NAMESPACE = "6e1f93b2-5a0e-5c3a-9b7e-2f0a8c4d6e10";
+const FRUGL_NAMESPACE = "6e1f93b2-5a0e-5c3a-9b7e-2f0a8c4d6e10";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,7 +31,7 @@ function canonicalize(absolutePath: string): string {
 }
 
 // RFC 4122 UUIDv5 (SHA-1, name-based) over node:crypto — avoids a runtime dep.
-export function uuidv5(name: string, namespace: string = POPPI_NAMESPACE): string {
+export function uuidv5(name: string, namespace: string = FRUGL_NAMESPACE): string {
   const nsBytes = Buffer.from(namespace.replace(/-/g, ""), "hex");
   const hash = createHash("sha1").update(nsBytes).update(Buffer.from(name, "utf8")).digest();
   const bytes = hash.subarray(0, 16);

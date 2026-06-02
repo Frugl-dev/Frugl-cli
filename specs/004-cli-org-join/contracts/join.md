@@ -1,12 +1,12 @@
-# Cloud HTTP Boundary: `POST /api/join` (consumed by `poppi join`)
+# Cloud HTTP Boundary: `POST /api/join` (consumed by `frugl join`)
 
 **Feature**: 004-cli-org-join | **Date**: 2026-05-24 | **Status**: contract surface (FR-036)
 
-This document records what the CLI expects from the cloud's `POST /api/join` endpoint — verbatim consumer expectations against the cloud's `003-org-membership-permissions` spec (`poppi/specs/003-org-membership-permissions/contracts/join.md`). **Any change here MUST be coordinated with the cloud repo per the spec's "Cross-repo context" section.**
+This document records what the CLI expects from the cloud's `POST /api/join` endpoint — verbatim consumer expectations against the cloud's `003-org-membership-permissions` spec (`frugl/specs/003-org-membership-permissions/contracts/join.md`). **Any change here MUST be coordinated with the cloud repo per the spec's "Cross-repo context" section.**
 
-This layers onto the existing cloud HTTP boundary documented in `specs/001-cli-ingest-client/contracts/cloud-api.md`; the common request headers and common response-status semantics from that document apply unchanged (bearer token, `X-Poppi-Client` version header, `426`/`5xx`/network handling). This file records only the `/api/join`-specific shapes and the `/api/join`-specific error → exit-code mapping.
+This layers onto the existing cloud HTTP boundary documented in `specs/001-cli-ingest-client/contracts/cloud-api.md`; the common request headers and common response-status semantics from that document apply unchanged (bearer token, `X-Frugl-Client` version header, `426`/`5xx`/network handling). This file records only the `/api/join`-specific shapes and the `/api/join`-specific error → exit-code mapping.
 
-The endpoint is `POST /api/join` on the resolved endpoint host (default `https://api.poppi.app`; overridable via `--endpoint` / `POPPI_ENDPOINT`, FR-002). The response shapes below are mirrored as `zod` schemas in `src/cloud/schemas.ts`; the CLI runs `Schema.parse()` on every body, and a `ZodError` becomes `GENERIC_FAILURE` (1) — the cross-repo drift sentinel (Principle VI, FR-012, SC-006).
+The endpoint is `POST /api/join` on the resolved endpoint host (default `https://api.frugl.app`; overridable via `--endpoint` / `FRUGL_ENDPOINT`, FR-002). The response shapes below are mirrored as `zod` schemas in `src/cloud/schemas.ts`; the CLI runs `Schema.parse()` on every body, and a `ZodError` becomes `GENERIC_FAILURE` (1) — the cross-repo drift sentinel (Principle VI, FR-012, SC-006).
 
 ---
 
@@ -19,7 +19,7 @@ The endpoint is `POST /api/join` on the resolved endpoint host (default `https:/
 | Header           | Value                                                 |
 | ---------------- | ----------------------------------------------------- |
 | `Authorization`  | `Bearer <token>` from the OS keychain                 |
-| `X-Poppi-Client` | `poppi-cli/<semver>` (enables the `426` version gate) |
+| `X-Frugl-Client` | `frugl-cli/<semver>` (enables the `426` version gate) |
 | `Content-Type`   | `application/json`                                    |
 
 **Body** (FR-011):
@@ -34,7 +34,7 @@ The endpoint is `POST /api/join` on the resolved endpoint host (default `https:/
 
 | Condition                                 | Behaviour                                                        | Exit code                   |
 | ----------------------------------------- | ---------------------------------------------------------------- | --------------------------- |
-| No token in keychain                      | "You're not signed in. Run `poppi login` first…" (FR-008)        | `AUTH_FAILURE` (10)         |
+| No token in keychain                      | "You're not signed in. Run `frugl login` first…" (FR-008)        | `AUTH_FAILURE` (10)         |
 | Keychain unavailable                      | "Secure token storage required" (same class as `upload`, FR-009) | `KEYCHAIN_UNAVAILABLE` (11) |
 | Code fails local alphabet/length (FR-005) | "Invite code contains unexpected characters." / "…wrong length…" | `USAGE` (2)                 |
 | Missing / multiple positional args        | oclif required-/strict-args usage error                          | `USAGE` (2)                 |
@@ -54,7 +54,7 @@ The endpoint is `POST /api/join` on the resolved endpoint host (default `https:/
 
 ```
 ✓ Joined Acme Corp (acme) as member.
-  You can now run `poppi upload` to send sessions to this organization.
+  You can now run `frugl upload` to send sessions to this organization.
 ```
 
 Exit `OK` (0). Under `--json`, emit the `JoinResult` success object (see `command-output.schema.json`).
@@ -68,7 +68,7 @@ The CLI recognises each documented typed error, renders the actionable message (
 | HTTP | `error`             | CLI user-facing message                                                                                                                          | Exit code                   | Retry? |
 | ---- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | ------ |
 | 400  | `validation_failed` | surface the server's `message` (local check passed but server format drifted)                                                                    | `USAGE` (2)                 | no     |
-| 401  | `unauthorized`      | "Your session has expired. Run `poppi login` and try again."                                                                                     | `AUTH_FAILURE` (10)         | no     |
+| 401  | `unauthorized`      | "Your session has expired. Run `frugl login` and try again."                                                                                     | `AUTH_FAILURE` (10)         | no     |
 | 404  | `not_found`         | "Invite code not recognised. Check for typos or ask the admin to confirm the code."                                                              | `JOIN_CODE_REJECTED` (70)   | no     |
 | 409  | `already_member`    | server `message` — "You are already a member of `<Org>`." — **exit 0** (idempotent no-op, R-2 / FR-017)                                          | `OK` (0)                    | no     |
 | 409  | `wrong_org`         | "You are already a member of `<details.current_org_name>`. Leave that organization on the dashboard before joining `<details.target_org_name>`." | `ALREADY_IN_OTHER_ORG` (71) | no     |
@@ -120,7 +120,7 @@ Content-Type: application/json
 ## Output discipline
 
 - On **success**, the human message is on **stdout**; exit 0.
-- On **any error path**, the user-facing message is on **stderr** and stdout is kept empty, so `poppi join <code> && …` chains correctly (FR-020).
+- On **any error path**, the user-facing message is on **stderr** and stdout is kept empty, so `frugl join <code> && …` chains correctly (FR-020).
 - Under `--json`, the single result object is on stdout and diagnostics on stderr (FR-021), matching the `001` FR-040 contract.
 - The plaintext code NEVER appears in stdout/stderr at the default log level, nor in the `--json` object (SC-005 / FR-006). `--debug` may include it, with a docs warning.
 

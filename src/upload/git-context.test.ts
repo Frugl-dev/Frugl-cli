@@ -9,7 +9,7 @@ const SHA = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b";
 let root: string;
 
 beforeEach(() => {
-  root = mkdtempSync(path.join(tmpdir(), "poppi-git-"));
+  root = mkdtempSync(path.join(tmpdir(), "frugl-git-"));
 });
 
 afterEach(() => {

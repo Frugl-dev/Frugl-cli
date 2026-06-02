@@ -8,7 +8,7 @@ describe("provider probes", () => {
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(path.join(tmpdir(), "poppi-probe-"));
+    home = mkdtempSync(path.join(tmpdir(), "frugl-probe-"));
   });
 
   afterEach(() => {

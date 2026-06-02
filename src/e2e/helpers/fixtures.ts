@@ -14,7 +14,7 @@ export interface TestSession {
 }
 
 export async function makeTempDir(): Promise<TempDir> {
-  const dir = path.join(tmpdir(), `poppi-e2e-${randomUUID()}`);
+  const dir = path.join(tmpdir(), `frugl-e2e-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }

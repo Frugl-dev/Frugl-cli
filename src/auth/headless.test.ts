@@ -9,7 +9,7 @@ vi.mock("./token-auth.js", () => ({ resolveHeadlessToken: vi.fn<() => unknown>()
 vi.mock("./session.js", () => ({ loadAuthSession: vi.fn<() => unknown>() }));
 vi.mock("../cloud/client.js", () => ({ CloudClient: vi.fn<() => unknown>() }));
 
-const endpointUrl = "https://poppi.example";
+const endpointUrl = "https://frugl.example";
 const baseOpts = { endpointUrl, endpointExplicit: false };
 
 function mockWhoami(impl: () => unknown) {
@@ -25,15 +25,15 @@ beforeEach(() => {
 
 describe("resolveUploadAuth", () => {
   it("resolves identity from the server for an explicit headless token", async () => {
-    (resolveHeadlessToken as any).mockResolvedValue({ token: "poppi_pat_x", source: "flag" });
+    (resolveHeadlessToken as any).mockResolvedValue({ token: "frugl_pat_x", source: "flag" });
     mockWhoami(async () => ({ user_id: "u1", primary_email: "ci@acme.dev" }));
 
-    const session = await resolveUploadAuth({ ...baseOpts, flagToken: "poppi_pat_x" });
+    const session = await resolveUploadAuth({ ...baseOpts, flagToken: "frugl_pat_x" });
 
     expect(session).toMatchObject({
       userId: "u1",
       email: "ci@acme.dev",
-      token: "poppi_pat_x",
+      token: "frugl_pat_x",
       endpointUrl,
     });
     // Identity came from the server, not a stored session.
@@ -62,13 +62,13 @@ describe("resolveUploadAuth", () => {
   });
 
   it("propagates an auth failure from an invalid/revoked token", async () => {
-    (resolveHeadlessToken as any).mockResolvedValue({ token: "poppi_pat_bad", source: "env" });
+    (resolveHeadlessToken as any).mockResolvedValue({ token: "frugl_pat_bad", source: "env" });
     mockWhoami(async () => {
       throw new AuthError("Authentication failed (401).");
     });
 
     await expect(
-      resolveUploadAuth({ ...baseOpts, env: { POPPI_TOKEN: "poppi_pat_bad" } }),
+      resolveUploadAuth({ ...baseOpts, env: { FRUGL_TOKEN: "frugl_pat_bad" } }),
     ).rejects.toBeInstanceOf(AuthError);
   });
 });

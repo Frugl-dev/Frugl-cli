@@ -12,7 +12,7 @@ import { makeGitRepo, writeGitSession, FIXTURE_SHA } from "../e2e/helpers/git-fi
 const TOKEN = "ghp_PLANTEDinspecttoken1234567890";
 
 describe(
-  "poppi upload — --link-prs --dry-run --inspect audit (US3/SC-004)",
+  "frugl upload — --link-prs --dry-run --inspect audit (US3/SC-004)",
   { timeout: 30_000 },
   () => {
     let server: MockServer;
@@ -56,7 +56,7 @@ describe(
       const outDir = path.join(inspect.dir, "out");
       const { exitCode } = await runCli(
         ["upload", "--link-prs", "--dry-run", "--inspect", outDir, "--endpoint", server.url],
-        { env: { POPPI_HOME_DIR: home.dir } },
+        { env: { FRUGL_HOME_DIR: home.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
       expect(uploadHits).toBe(0); // zero upload-endpoint requests (SC-004)

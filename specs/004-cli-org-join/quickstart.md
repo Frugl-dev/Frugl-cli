@@ -1,10 +1,10 @@
-# Quickstart: poppi-cli org membership (`004-cli-org-join`)
+# Quickstart: frugl-cli org membership (`004-cli-org-join`)
 
 **Feature**: 004-cli-org-join | **Date**: 2026-05-24
 
 This walkthrough is for two audiences:
 
-1. **Contributors** — implementing/iterating on `poppi join` and the org-aware `whoami` / `upload` flows against the sibling `poppi/` Docker stack.
+1. **Contributors** — implementing/iterating on `frugl join` and the org-aware `whoami` / `upload` flows against the sibling `frugl/` Docker stack.
 2. **Verifiers** — confirming the onboarding gate, the typed-error rendering, the idempotent re-join, and the no-plaintext-code-leakage invariant before trusting the command.
 
 It assumes the `001-cli-ingest-client` foundation is already in place (oclif commands, `src/cloud/`, `src/lib/exit-codes.ts`, keychain). For the broader CLI setup, see `specs/001-cli-ingest-client/quickstart.md` — only the org-specific additions are covered here.
@@ -14,20 +14,20 @@ It assumes the `001-cli-ingest-client` foundation is already in place (oclif com
 ## 1. Prerequisites
 
 - Everything from `specs/001-cli-ingest-client/quickstart.md` §1 (Node ≥ 20, pnpm, Docker, a working OS credential store).
-- The cloud stack must include the `003-org-membership-permissions` endpoints (`POST /api/join`, `GET /api/orgs/me`) and the dashboard's invite-code generation. Bring the stack up from the sibling `poppi/` repo:
+- The cloud stack must include the `003-org-membership-permissions` endpoints (`POST /api/join`, `GET /api/orgs/me`) and the dashboard's invite-code generation. Bring the stack up from the sibling `frugl/` repo:
 
 ```bash
-cd ~/Documents/poppi/poppi
+cd ~/Documents/frugl/frugl
 pnpm stack:up      # Supabase + object store + web app, incl. the 003 org endpoints
 ```
 
 The stack listens on `http://localhost:54321`. Point the CLI at it:
 
 ```bash
-export POPPI_ENDPOINT=http://localhost:54321
+export FRUGL_ENDPOINT=http://localhost:54321
 ```
 
-`poppi join` and the org-resolution calls in `whoami`/`upload` honour `--endpoint` and `POPPI_ENDPOINT` exactly like `poppi upload` (FR-002, spec edge case).
+`frugl join` and the org-resolution calls in `whoami`/`upload` honour `--endpoint` and `FRUGL_ENDPOINT` exactly like `frugl upload` (FR-002, spec edge case).
 
 ---
 
@@ -44,20 +44,20 @@ You now have a code to redeem from a _second_ account via the CLI.
 
 ## 3. The join happy path (US1)
 
-In a clean shell, logged in as a _different_ account (run `poppi login` first):
+In a clean shell, logged in as a _different_ account (run `frugl login` first):
 
 ```bash
-poppi login                          # OTP via @inquirer/prompts; token → OS keychain (001)
-poppi join ACME-XKLM-7P3R
+frugl login                          # OTP via @inquirer/prompts; token → OS keychain (001)
+frugl join ACME-XKLM-7P3R
 # ✓ Joined Acme Corp (acme) as member.
-#   You can now run `poppi upload` to send sessions to this organization.
+#   You can now run `frugl upload` to send sessions to this organization.
 echo $?                              # 0
 ```
 
 The CLI normalises the code (uppercase, strip whitespace + separators), validates the base32-Crockford alphabet + length locally, then `POST`s `{ "code": "ACMEXKLM7P3R" }` with the bearer token. Mixed case / extra whitespace / missing hyphens all normalise to the same value (US1 scenario 2):
 
 ```bash
-poppi join "acme xklm7p3r"           # same normalised code, same result
+frugl join "acme xklm7p3r"           # same normalised code, same result
 ```
 
 **Verify server-side** (against the local Supabase):
@@ -76,7 +76,7 @@ SELECT used_count FROM invitations WHERE code_hash = encode(sha256('ACMEXKLM7P3R
 Re-running the same join for an org you already belong to is a no-op success:
 
 ```bash
-poppi join ACME-XKLM-7P3R
+frugl join ACME-XKLM-7P3R
 # You are already a member of Acme Corp.
 echo $?                              # 0  ← exit 0, even though the wire status is 409 already_member
 ```
@@ -87,11 +87,11 @@ This is the one case where a non-2xx status maps to exit 0 (research.md R-2 / FR
 
 ## 5. The auth + typed-error paths (US2 / US3)
 
-**No token (US2)** — on a clean machine with no `poppi` token, zero network requests are made:
+**No token (US2)** — on a clean machine with no `frugl` token, zero network requests are made:
 
 ```bash
-poppi join ANY-VALID-FORMAT-CODE
-# You're not signed in. Run `poppi login` first, then re-run this command.
+frugl join ANY-VALID-FORMAT-CODE
+# You're not signed in. Run `frugl login` first, then re-run this command.
 echo $?                              # 10 (AUTH_FAILURE)
 ```
 
@@ -111,19 +111,19 @@ The `wrong_org` message interpolates the current + target org names from the res
 **Local malformed code** — rejected before any network call:
 
 ```bash
-poppi join 'NOT*A*CODE'
+frugl join 'NOT*A*CODE'
 # Invite code contains unexpected characters.
 echo $?                              # 2 (USAGE)
 ```
 
 ---
 
-## 6. `poppi whoami` org awareness (US4 / SC-007)
+## 6. `frugl whoami` org awareness (US4 / SC-007)
 
 After joining:
 
 ```bash
-poppi whoami
+frugl whoami
 # Signed in as dev@acme.com
 # Organization: Acme Corp (acme) — 7 members
 # Your role: member
@@ -133,33 +133,33 @@ echo $?                              # 0
 A logged-in account that has **not** joined or created an org:
 
 ```bash
-poppi whoami
+frugl whoami
 # Signed in as newdev@example.com
 # Not a member of any organization yet.
-#   Run `poppi join <code>` with an invite from your org admin,
-#   or create an organization at https://poppi.app.
+#   Run `frugl join <code>` with an invite from your org admin,
+#   or create an organization at https://frugl.app.
 echo $?                              # 0  ← no-org is a reported state, not a failure (FR-025)
 ```
 
 Machine-readable:
 
 ```bash
-poppi whoami --json | jq '.organization'
+frugl whoami --json | jq '.organization'
 # { "id": "...", "name": "Acme Corp", "slug": "acme", "member_count": 7, "role": "member" }
 # or: null   (when no Membership)
 ```
 
 ---
 
-## 7. `poppi upload` onboarding gate (US5 / SC-008)
+## 7. `frugl upload` onboarding gate (US5 / SC-008)
 
 A logged-in account with **no** Membership is stopped before any work:
 
 ```bash
-poppi upload
+frugl upload
 # You haven't joined an organization yet, so there's nowhere to upload to.
-#   Run `poppi join <code>` with an invite from your org admin,
-#   or create an organization at https://poppi.app, then re-run `poppi upload`.
+#   Run `frugl join <code>` with an invite from your org admin,
+#   or create an organization at https://frugl.app, then re-run `frugl upload`.
 #
 # No sessions were discovered, anonymized, or transmitted.
 echo $?                              # 12 (ORG_REQUIRED)
@@ -168,7 +168,7 @@ echo $?                              # 12 (ORG_REQUIRED)
 The gate fires for `--dry-run` too (a dry run needs a real destination to be honest, FR-028):
 
 ```bash
-poppi upload --dry-run
+frugl upload --dry-run
 echo $?                              # 12 (ORG_REQUIRED) — no inspection dir written
 ```
 
@@ -176,12 +176,12 @@ echo $?                              # 12 (ORG_REQUIRED) — no inspection dir w
 
 ---
 
-## 8. `poppi upload` names the destination (US6 / SC-009)
+## 8. `frugl upload` names the destination (US6 / SC-009)
 
 For a member of an org, the pre-upload summary names where the batch is going:
 
 ```bash
-poppi upload
+frugl upload
 # Uploading to: Acme Corp (acme) — your role: member
 # Discovered 52 sessions: 47 unchanged (skipping), 3 new, 2 updated. Will upload 5 sessions, ~22 MB redacted.
 # Redaction policy: v0.1. Destination: http://localhost:54321
@@ -191,7 +191,7 @@ poppi upload
 Under `--confirm` / `--yes`, the destination is still emitted (stderr in text mode, the `upload-start` event in `--json`) so non-interactive runs record where the batch went:
 
 ```bash
-poppi upload --confirm --json | jq -c 'select(.event=="upload-start") | .organization'
+frugl upload --confirm --json | jq -c 'select(.event=="upload-start") | .organization'
 # { "id": "...", "slug": "acme" }
 ```
 
@@ -199,7 +199,7 @@ poppi upload --confirm --json | jq -c 'select(.event=="upload-start") | .organiz
 
 ## 9. Verify the trust gate is untouched
 
-`poppi join` processes **no** session data — the anonymizer is out of its scope (FR-023), and the `redaction_policy_version` never appears in the `/api/join` body. The upload org-gate fires **before** anonymization, so it can never weaken the trust gate. Confirm the join request body carries only `{ "code": … }`:
+`frugl join` processes **no** session data — the anonymizer is out of its scope (FR-023), and the `redaction_policy_version` never appears in the `/api/join` body. The upload org-gate fires **before** anonymization, so it can never weaken the trust gate. Confirm the join request body carries only `{ "code": … }`:
 
 ```bash
 # point at a recording mock server and assert the POST /api/join body is exactly {"code":"..."}
@@ -213,7 +213,7 @@ poppi upload --confirm --json | jq -c 'select(.event=="upload-start") | .organiz
 The invite code is secret material. At the default log level it appears only in the request body, never in output:
 
 ```bash
-poppi join ACME-XKLM-7P3R 2>&1 | grep -F 'ACME' && echo "LEAK" || echo "ok — code not echoed"
+frugl join ACME-XKLM-7P3R 2>&1 | grep -F 'ACME' && echo "LEAK" || echo "ok — code not echoed"
 # ok — code not echoed   (the success message names the ORG, not the code)
 ```
 
@@ -226,12 +226,12 @@ poppi join ACME-XKLM-7P3R 2>&1 | grep -F 'ACME' && echo "LEAK" || echo "ok — c
 With the stack up and an admin-generated code in hand, time the full onboarding:
 
 ```bash
-export POPPI_ENDPOINT=http://localhost:54321
+export FRUGL_ENDPOINT=http://localhost:54321
 time (
-  poppi login &&            # → OK (001)
-  poppi join "$CODE" &&     # → ✓ Joined …, exit 0, < 30 s total (SC-001)
-  poppi whoami &&           # → names the org + role, exit 0 (SC-007)
-  poppi upload --confirm    # → names destination, uploads (SC-009)
+  frugl login &&            # → OK (001)
+  frugl join "$CODE" &&     # → ✓ Joined …, exit 0, < 30 s total (SC-001)
+  frugl whoami &&           # → names the org + role, exit 0 (SC-007)
+  frugl upload --confirm    # → names destination, uploads (SC-009)
 )
 ```
 
@@ -243,7 +243,7 @@ All exit codes are documented in `contracts/exit-codes.md` (additions) and `spec
 
 | Concern                                              | Path                                               |
 | ---------------------------------------------------- | -------------------------------------------------- |
-| `poppi join` command                                 | `src/commands/join.ts`                             |
+| `frugl join` command                                 | `src/commands/join.ts`                             |
 | Org-aware `whoami` / `upload`                        | `src/commands/whoami.ts`, `src/commands/upload.ts` |
 | `POST /api/join` transport wrapper                   | `src/cloud/join.ts`                                |
 | `GET /api/orgs/me` transport wrapper                 | `src/cloud/orgs.ts`                                |

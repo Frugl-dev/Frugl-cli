@@ -4,7 +4,7 @@ import {
   orgCreateResponseSchema,
   joinResponseSchema,
 } from "../cloud/schemas.js";
-import { PoppiError } from "../lib/errors.js";
+import { FruglError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 
 export type OrgSetupAction =
@@ -73,7 +73,7 @@ export async function setupOrg(
       if (err.status === 429) {
         const body = err.body as Record<string, unknown>;
         const retry = (body?.details as Record<string, unknown>)?.retry_after_seconds;
-        throw new PoppiError(
+        throw new FruglError(
           `Too many attempts. Try again in ${retry ?? "a few"} seconds.`,
           EXIT.GENERIC_FAILURE,
         );

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://poppi.app/schemas/v1/progress-event.json",
-  "title": "Poppi NDJSON Progress Event (v1)",
-  "description": "One JSON object per line on stdout when 'poppi upload --json' is in effect. FR-039, FR-036 contract surface. Consumers MUST tolerate unknown event types and unknown fields within a known type (forward-compatibility).",
+  "$id": "https://frugl.app/schemas/v1/progress-event.json",
+  "title": "Frugl NDJSON Progress Event (v1)",
+  "description": "One JSON object per line on stdout when 'frugl upload --json' is in effect. FR-039, FR-036 contract surface. Consumers MUST tolerate unknown event types and unknown fields within a known type (forward-compatibility).",
   "type": "object",
   "required": ["event", "seq", "ts"],
   "properties": {
@@ -19,7 +19,7 @@
     "seq": {
       "type": "integer",
       "minimum": 0,
-      "description": "Monotonically increasing within one poppi upload invocation. Recipients may use gaps to detect dropped lines."
+      "description": "Monotonically increasing within one frugl upload invocation. Recipients may use gaps to detect dropped lines."
     },
     "ts": {
       "type": "string",

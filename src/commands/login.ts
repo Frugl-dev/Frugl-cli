@@ -5,7 +5,7 @@ import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
 import { clearAuthSession, saveAuthSession, type AuthSession } from "../auth/session.js";
 import { fetchIdentity } from "../auth/headless.js";
-import { isPoppiError, printPoppiError } from "../lib/errors.js";
+import { isFruglError, printFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import { orgMeResponseSchema, type OrgMeResponse } from "../cloud/schemas.js";
@@ -32,7 +32,7 @@ export default class Login extends Command {
     const mode = resolveOutputMode({ json: flags.json });
     const endpoint = resolveEndpoint({
       flag: flags.endpoint,
-      env: process.env["POPPI_ENDPOINT"],
+      env: process.env["FRUGL_ENDPOINT"],
     });
 
     // Non-interactive: store a pre-issued access token (no OTP).
@@ -110,9 +110,9 @@ export default class Login extends Command {
         return;
       }
 
-      // No org yet — every Poppi account belongs to one. Offer the fork.
+      // No org yet — every Frugl account belongs to one. Offer the fork.
       process.stdout.write(
-        `\n${color.bold("You're new here — every Poppi account belongs to an org.")}\n`,
+        `\n${color.bold("You're new here — every Frugl account belongs to an org.")}\n`,
       );
       process.stdout.write(
         color.dim(
@@ -141,14 +141,14 @@ export default class Login extends Command {
           {
             name: "Log out — wrong account",
             value: "logout",
-            description: "Forget this token; you'll be back at poppi login.",
+            description: "Forget this token; you'll be back at frugl login.",
           },
         ],
       });
 
       if (choice === "later") {
         process.stdout.write(
-          `\n${color.dim("  No problem. Set one up anytime with ")}${color.poppy("poppi org create")}${color.dim(" or ")}${color.poppy("poppi org join <code>")}${color.dim(".")}\n`,
+          `\n${color.dim("  No problem. Set one up anytime with ")}${color.poppy("frugl org create")}${color.dim(" or ")}${color.poppy("frugl org join <code>")}${color.dim(".")}\n`,
         );
         process.stdout.write(color.dim("  Upload stays blocked until then.\n"));
         return;
@@ -157,7 +157,7 @@ export default class Login extends Command {
       if (choice === "logout") {
         await clearAuthSession(endpoint.url);
         process.stdout.write(
-          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.poppy("poppi login")}${color.dim(" to sign in with a different account.")}\n`,
+          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.poppy("frugl login")}${color.dim(" to sign in with a different account.")}\n`,
         );
         return;
       }
@@ -235,11 +235,11 @@ export default class Login extends Command {
         }
       }
     } catch (err) {
-      if (isPoppiError(err)) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err)) {
+        process.exit(printFruglError(err, mode));
       }
       if (err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }
@@ -282,8 +282,8 @@ export default class Login extends Command {
         `${color.ok(`${symbol.tick} Stored access token for ${session.email}`)}  ${color.dim(`(endpoint: ${session.endpointUrl})`)}\n`,
       );
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }
@@ -310,10 +310,10 @@ export default class Login extends Command {
   private printNextSteps(): void {
     process.stdout.write(`\n${color.dim("  Next:")}\n`);
     process.stdout.write(
-      `${color.dim("    ")}${color.poppy("poppi upload --dry-run")}${color.dim("   preview what would be sent")}\n`,
+      `${color.dim("    ")}${color.poppy("frugl upload --dry-run")}${color.dim("   preview what would be sent")}\n`,
     );
     process.stdout.write(
-      `${color.dim("    ")}${color.poppy("poppi upload")}${color.dim("             anonymize + upload your first batch")}\n`,
+      `${color.dim("    ")}${color.poppy("frugl upload")}${color.dim("             anonymize + upload your first batch")}\n`,
     );
   }
 }

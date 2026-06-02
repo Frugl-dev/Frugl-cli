@@ -1,4 +1,4 @@
-# Phase 1 Data Model: poppi-cli PR-link metadata
+# Phase 1 Data Model: frugl-cli PR-link metadata
 
 **Feature**: 005-cli-pr-metadata | **Date**: 2026-05-24
 
@@ -84,7 +84,7 @@ type GitContextResolution =
 
 ### 3. `EffectiveLinkPrs` (NEW — resolved opt-in, FR-001/003)
 
-The resolved boolean opt-in for one `poppi upload` invocation.
+The resolved boolean opt-in for one `frugl upload` invocation.
 
 ```ts
 interface EffectiveLinkPrs {
@@ -166,16 +166,16 @@ interface UploadSummary {
 
 ---
 
-### 7. Persisted config: `PoppiConfig` (NEW — optional, FR-003)
+### 7. Persisted config: `FruglConfig` (NEW — optional, FR-003)
 
 ```ts
-interface PoppiConfig {
+interface FruglConfig {
   schemaVersion: 1;
   linkPrs: boolean; // default false
 }
 ```
 
-Stored via `conf` under a new `poppi-config` namespace in the env-paths state dir (`src/lib/paths.ts`). **Validation**: `zod` schema; schema-version mismatch or missing file → treated as defaults (`linkPrs: false`), never a failure. **Privacy invariant**: holds only the boolean preference — no repository data ever.
+Stored via `conf` under a new `frugl-config` namespace in the env-paths state dir (`src/lib/paths.ts`). **Validation**: `zod` schema; schema-version mismatch or missing file → treated as defaults (`linkPrs: false`), never a failure. **Privacy invariant**: holds only the boolean preference — no repository data ever.
 
 ---
 

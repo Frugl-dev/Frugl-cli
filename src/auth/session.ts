@@ -32,7 +32,7 @@ export async function loadAuthSession(endpointUrl: string): Promise<AuthSession 
 export async function requireAuthSession(endpointUrl: string): Promise<AuthSession> {
   const session = await loadAuthSession(endpointUrl);
   if (!session) {
-    throw new AuthError("Not logged in. Run 'poppi login' to authenticate.");
+    throw new AuthError("Not logged in. Run 'frugl login' to authenticate.");
   }
   return session;
 }

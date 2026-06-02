@@ -8,7 +8,7 @@ describe("detectProviders", () => {
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(path.join(tmpdir(), "poppi-detect-"));
+    home = mkdtempSync(path.join(tmpdir(), "frugl-detect-"));
   });
 
   afterEach(() => {

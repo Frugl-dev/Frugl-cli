@@ -1,22 +1,22 @@
-# `poppi` — the Poppi CLI
+# `frugl` — the Frugl CLI
 
 Public, open-source command-line tool that uploads anonymized AI-coding
-session logs from your machine to **hosted Poppi** for retrospective waste
+session logs from your machine to **hosted Frugl** for retrospective waste
 analysis. The anonymizer runs **locally**, before any byte leaves your
 machine.
 
 ```bash
-npm install -g poppi          # or: npx poppi <command>
-poppi login                   # email one-time code; token stored in OS keychain
+npm install -g frugl          # or: npx frugl <command>
+frugl login                   # email one-time code; token stored in OS keychain
                               #   first-time accounts are prompted to create or join an org
-poppi whoami                  # show signed-in identity + active org and role
-poppi org                     # show your active org (alias: poppi org ls)
-poppi org create              # start a new org (you become the owner)
-poppi org join <code>         # accept an invite code from a teammate
-poppi upload --dry-run        # discover + anonymize; transmit zero bytes
-poppi upload --dry-run --inspect ./out   # also write redacted output to ./out
-poppi upload --confirm        # upload anonymized sessions to the cloud
-poppi logout                  # invalidate session, forget token
+frugl whoami                  # show signed-in identity + active org and role
+frugl org                     # show your active org (alias: frugl org ls)
+frugl org create              # start a new org (you become the owner)
+frugl org join <code>         # accept an invite code from a teammate
+frugl upload --dry-run        # discover + anonymize; transmit zero bytes
+frugl upload --dry-run --inspect ./out   # also write redacted output to ./out
+frugl upload --confirm        # upload anonymized sessions to the cloud
+frugl logout                  # invalidate session, forget token
 ```
 
 For the full contributor and verifier walk-through (including how to run the
@@ -26,7 +26,7 @@ yourself with planted secrets), see
 
 ## Guided upload
 
-In an interactive terminal, `poppi upload` walks you through what it found
+In an interactive terminal, `frugl upload` walks you through what it found
 before sending anything:
 
 1. **Providers** — it detects which AI assistants have sessions on this machine
@@ -43,19 +43,19 @@ projects automatically.
 
 ## Organizations
 
-Every Poppi account belongs to exactly one org — the team whose AI retros you
-share. A brand-new account is prompted right after `poppi login` to **create**
+Every Frugl account belongs to exactly one org — the team whose AI retros you
+share. A brand-new account is prompted right after `frugl login` to **create**
 an org (you become the owner) or **join** an existing one with an invite code.
-Until you do, `poppi upload` is blocked.
+Until you do, `frugl upload` is blocked.
 
 ```bash
-poppi org                     # show your active org, role, and member count
-poppi org create --name "Acme Corp"   # non-interactive create (slug auto-derived)
-poppi org join pop_inv_…      # redeem an invite code from a teammate
+frugl org                     # show your active org, role, and member count
+frugl org create --name "Acme Corp"   # non-interactive create (slug auto-derived)
+frugl org join pop_inv_…      # redeem an invite code from a teammate
 ```
 
 Invite codes come from a teammate (org owners/admins generate them on the
-dashboard); accept one with `poppi org join <code>`.
+dashboard); accept one with `frugl org join <code>`.
 
 ## Why open source?
 
@@ -68,11 +68,11 @@ removed (SC-001).
 ## Sibling repos
 
 This is one of three repos that make up the cloud product
-(`~/Documents/poppi/` on the maintainer's machine):
+(`~/Documents/frugl/` on the maintainer's machine):
 
-- `poppi/` (private) — fullstack web app + processing pipelines.
-- `poppi-cli/` (this repo, public) — the CLI.
-- `poppi-site/` (public) — the marketing site.
+- `frugl/` (private) — fullstack web app + processing pipelines.
+- `frugl-cli/` (this repo, public) — the CLI.
+- `frugl-site/` (public) — the marketing site.
 
 ## Stack
 
@@ -96,15 +96,15 @@ pnpm dev <command>      # tsx-driven oclif dev entrypoint
 Point the CLI at a local dev stack:
 
 ```bash
-POPPI_ENDPOINT=http://localhost:54321 pnpm dev login
+FRUGL_ENDPOINT=http://localhost:54321 pnpm dev login
 ```
 
 The local stack itself (Supabase + MinIO) is brought up from the
-`poppi/` repo via `pnpm stack:up`.
+`frugl/` repo via `pnpm stack:up`.
 
 ## Governance
 
 This repo inherits the constitution at
-`../poppi/.specify/memory/constitution.md`. Anonymization specifically is
+`../frugl/.specify/memory/constitution.md`. Anonymization specifically is
 governed by Principle VI ("Fail-Closed Anonymization, IaC Source-of-Truth,
 Honest Failures").

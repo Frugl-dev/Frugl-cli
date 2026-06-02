@@ -14,7 +14,7 @@ coverage
 
 # Local artifacts (not source)
 .playwright-mcp
-poppi-inspect
+frugl-inspect
 # stray debug screenshots
 dashboard-view-report.png
 login-page.png

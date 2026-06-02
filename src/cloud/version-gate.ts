@@ -17,7 +17,7 @@ export function checkVersionGate(cliVersion: string, responseBody: unknown): voi
 
 export function formatVersionGateMessage(currentVersion: string, requiredVersion: string): string {
   return [
-    `poppi-cli ${currentVersion} is below the minimum supported version ${requiredVersion}.`,
-    `Upgrade with:  npm install -g poppi@latest`,
+    `frugl-cli ${currentVersion} is below the minimum supported version ${requiredVersion}.`,
+    `Upgrade with:  npm install -g frugl@latest`,
   ].join("\n");
 }

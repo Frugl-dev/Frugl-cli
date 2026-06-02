@@ -1,4 +1,4 @@
-# Specification Quality Checklist: poppi-cli PR-link metadata — opt-in per-session git context
+# Specification Quality Checklist: frugl-cli PR-link metadata — opt-in per-session git context
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-24
@@ -47,5 +47,5 @@
 
 ## Notes
 
-- Producer side of cloud `poppi/specs/005-intelligence-post-processing` FR-024. The cloud consumer (GitHub OAuth + PR matching) is deferred on the cloud roadmap; this CLI ships the producer as forward-compat. Any change to the `gitContext` shape requires a coordinated cross-repo bump (FR-012).
+- Producer side of cloud `frugl/specs/005-intelligence-post-processing` FR-024. The cloud consumer (GitHub OAuth + PR matching) is deferred on the cloud roadmap; this CLI ships the producer as forward-compat. Any change to the `gitContext` shape requires a coordinated cross-repo bump (FR-012).
 - All items currently pass.

@@ -25,5 +25,5 @@ export async function selectProviders(
     checked: d.descriptor.supported,
     disabled: d.descriptor.supported ? false : "(not yet supported)",
   }));
-  return checkbox({ message: "Which providers should Poppi upload?", choices });
+  return checkbox({ message: "Which providers should Frugl upload?", choices });
 }

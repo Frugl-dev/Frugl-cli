@@ -11,7 +11,7 @@ import {
 } from "../cloud/schemas.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { isPoppiError, printPoppiError } from "../lib/errors.js";
+import { isFruglError, printFruglError } from "../lib/errors.js";
 import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
 import { bar, color, symbol } from "../lib/theme.js";
 
@@ -68,7 +68,7 @@ export default class Recommendations extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Recommendations);
     const mode = resolveOutputMode({ json: flags.json });
-    const endpoint = resolveEndpoint({ flag: flags.endpoint, env: process.env["POPPI_ENDPOINT"] });
+    const endpoint = resolveEndpoint({ flag: flags.endpoint, env: process.env["FRUGL_ENDPOINT"] });
 
     try {
       const session = await loadAuthSession(endpoint.url);
@@ -89,8 +89,8 @@ export default class Recommendations extends Command {
       if (flags.dismiss) return await this.dismiss(client, flags.dismiss, mode, flags.yes);
       return await this.list(client, flags.status, mode);
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }
@@ -104,7 +104,7 @@ export default class Recommendations extends Command {
     } else {
       process.stderr.write(`${color.err(`${symbol.cross} Not logged in.`)} `);
       process.stderr.write(
-        `${color.dim("Run ")}${color.poppy("poppi login")}${color.dim(" first.")}\n`,
+        `${color.dim("Run ")}${color.poppy("frugl login")}${color.dim(" first.")}\n`,
       );
     }
   }
@@ -164,7 +164,7 @@ export default class Recommendations extends Command {
     const top = recs[0];
     if (top) {
       process.stdout.write(
-        `${color.dim("Fix the top one: ")}${color.poppy(`poppi recs --fix ${top.id} | claude`)}\n`,
+        `${color.dim("Fix the top one: ")}${color.poppy(`frugl recs --fix ${top.id} | claude`)}\n`,
       );
     }
   }
@@ -174,14 +174,14 @@ export default class Recommendations extends Command {
     const dot = color.mute("·");
     process.stdout.write(`${color.dim("No recommendations right now.")}\n\n`);
     process.stdout.write(
-      `  ${color.dim("Either you're caught up, or Poppi hasn't analyzed a recent retro yet.")}\n\n`,
+      `  ${color.dim("Either you're caught up, or Frugl hasn't analyzed a recent retro yet.")}\n\n`,
     );
     process.stdout.write(
-      `  ${dot} New here? ${color.underline("poppi upload")}` +
+      `  ${dot} New here? ${color.underline("frugl upload")}` +
         ` — recommendations land after your first retro.\n`,
     );
     process.stdout.write(
-      `  ${dot} Snoozed some? ${color.underline("poppi recs --status dismissed")} to see them.\n`,
+      `  ${dot} Snoozed some? ${color.underline("frugl recs --status dismissed")} to see them.\n`,
     );
   }
 

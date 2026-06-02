@@ -1,8 +1,8 @@
 import envPaths from "env-paths";
 
-const RESUME_NAMESPACE = "poppi-resume-state";
-const LEDGER_NAMESPACE = "poppi-ledger";
-const CONFIG_NAMESPACE = "poppi-config";
+const RESUME_NAMESPACE = "frugl-resume-state";
+const LEDGER_NAMESPACE = "frugl-ledger";
+const CONFIG_NAMESPACE = "frugl-config";
 
 const resumePaths = envPaths(RESUME_NAMESPACE, { suffix: "" });
 const ledgerPaths = envPaths(LEDGER_NAMESPACE, { suffix: "" });

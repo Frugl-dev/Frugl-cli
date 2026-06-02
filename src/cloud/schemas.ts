@@ -122,7 +122,7 @@ export const joinResponseSchema = z
   .passthrough();
 export type JoinResponse = z.infer<typeof joinResponseSchema>;
 
-// Cost-saving recommendations (poppi/ spec 023). The CLI lists + ranks them and
+// Cost-saving recommendations (frugl/ spec 023). The CLI lists + ranks them and
 // can emit a fix prompt or mark one applied/dismissed.
 export const recommendationImpactSchema = z
   .object({

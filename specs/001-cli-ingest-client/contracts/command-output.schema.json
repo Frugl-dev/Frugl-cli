@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://poppi.app/schemas/v1/command-output.json",
-  "title": "Poppi Command Output (v1)",
-  "description": "Single structured JSON object emitted on stdout by 'login', 'logout', 'whoami' under --json (FR-040). Also describes the final manifest-summary object that is the LAST stdout line of 'poppi upload' (FR-038/039). FR-036 contract surface.",
+  "$id": "https://frugl.app/schemas/v1/command-output.json",
+  "title": "Frugl Command Output (v1)",
+  "description": "Single structured JSON object emitted on stdout by 'login', 'logout', 'whoami' under --json (FR-040). Also describes the final manifest-summary object that is the LAST stdout line of 'frugl upload' (FR-038/039). FR-036 contract surface.",
   "oneOf": [
     { "$ref": "#/$defs/LoginResult" },
     { "$ref": "#/$defs/LogoutResult" },
@@ -57,7 +57,7 @@
     },
     "UploadFinalSummary": {
       "type": "object",
-      "description": "The LAST line on stdout for 'poppi upload'. Present in BOTH text and --json modes (FR-038).",
+      "description": "The LAST line on stdout for 'frugl upload'. Present in BOTH text and --json modes (FR-038).",
       "required": [
         "command",
         "ok",

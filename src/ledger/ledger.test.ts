@@ -21,7 +21,7 @@ describe("Ledger", () => {
   let prevAppData: string | undefined;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-ledger-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-ledger-"));
     prevHome = process.env["XDG_DATA_HOME"];
     prevAppData = process.env["APPDATA"];
     process.env["XDG_DATA_HOME"] = tempHome;

@@ -10,7 +10,7 @@ const TOKEN = "ghp_PLANTEDSECRETtoken1234567890";
 let root: string;
 
 beforeEach(() => {
-  root = mkdtempSync(path.join(tmpdir(), "poppi-git-cred-"));
+  root = mkdtempSync(path.join(tmpdir(), "frugl-git-cred-"));
 });
 
 afterEach(() => {

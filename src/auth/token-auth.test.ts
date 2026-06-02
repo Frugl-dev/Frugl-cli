@@ -6,7 +6,7 @@ vi.mock("./session.js", () => ({
   loadAuthSession: vi.fn<() => unknown>(),
 }));
 
-const endpointUrl = "https://poppi.example";
+const endpointUrl = "https://frugl.example";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -18,17 +18,17 @@ describe("resolveHeadlessToken", () => {
     const resolved = await resolveHeadlessToken({
       flagToken: "flag-token",
       endpointUrl,
-      env: { POPPI_TOKEN: "env-token" },
+      env: { FRUGL_TOKEN: "env-token" },
     });
     expect(resolved).toEqual({ token: "flag-token", source: "flag" });
     expect(loadAuthSession).not.toHaveBeenCalled();
   });
 
-  it("uses POPPI_TOKEN when no flag is given", async () => {
+  it("uses FRUGL_TOKEN when no flag is given", async () => {
     (loadAuthSession as any).mockResolvedValue({ token: "session-token" });
     const resolved = await resolveHeadlessToken({
       endpointUrl,
-      env: { POPPI_TOKEN: "env-token" },
+      env: { FRUGL_TOKEN: "env-token" },
     });
     expect(resolved).toEqual({ token: "env-token", source: "env" });
     expect(loadAuthSession).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ describe("resolveHeadlessToken", () => {
     const resolved = await resolveHeadlessToken({
       flagToken: "   ",
       endpointUrl,
-      env: { POPPI_TOKEN: "  " },
+      env: { FRUGL_TOKEN: "  " },
     });
     expect(resolved).toEqual({ token: "session-token", source: "session" });
   });

@@ -7,7 +7,7 @@ import { UsageError } from "../lib/errors.js";
 import type { DetectedProvider, ProjectGroup } from "../sources/providers.js";
 import type { Selection } from "../select/selection.js";
 
-export const UPLOAD_CONFIG_FILENAME = "poppi.config.json";
+export const UPLOAD_CONFIG_FILENAME = "frugl.config.json";
 
 const objectStrict = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
 
@@ -40,7 +40,7 @@ function expandTilde(p: string, home: string): string {
   return p;
 }
 
-// Walks from cwd up to (and including) home looking for poppi.config.json.
+// Walks from cwd up to (and including) home looking for frugl.config.json.
 function findNearestConfig(cwd: string, home: string): string | null {
   let dir = path.resolve(cwd);
   for (;;) {

@@ -78,7 +78,7 @@ Every task carries a `per FR-NNN`/`per SC-NNN`/`per data-model`/`per contracts/`
 
 ### F3 (INFO - no change) - optional persisted-config command surface (`config set`) is illustrative
 
-- **Where**: `quickstart.md` Section 7 shows `poppi config set linkPrs true`.
+- **Where**: `quickstart.md` Section 7 shows `frugl config set linkPrs true`.
 - **Assessment**: FR-003 says the CLI **MAY** persist the opt-in and requires it be discoverable; it does not mandate a `config` subcommand. `quickstart.md` Section 7 and `tasks.md` T004 both hedge the exact surface ("exact surface per implementation"). This is consistent with the spec's MAY and does not over-commit. No fix; flagged so implementers know the command name is not contractually fixed.
 
 ---
@@ -88,7 +88,7 @@ Every task carries a `per FR-NNN`/`per SC-NNN`/`per data-model`/`per contracts/`
 - **Privacy posture coherent across artifacts**: spec crux -> plan Constitution Check VI deep-dive -> research R-4/R-6/R-7 -> data-model invariants (fail-closed, hard-gate, no-churn) -> contracts (credential-/path-free) -> tasks (T008/T012/T026 lock them). The "opt-in + fail-closed + auditable" triad is stated identically everywhere.
 - **No-ledger-churn (FR-011/SC-007) is structurally guaranteed, not just tested**: `data-model.md` Section 5 and `contracts/manifest-gitcontext.md` Section 4 both anchor it to `001`'s `contentHash = redactedHashHex` (which excludes git context); `tasks.md` T002/T016 keep `cwd`/`gitContext` out of `records`/payload; T026 asserts it. Verified against the real `src/ledger/classify.ts` (compares `result.redactedHashHex` to `existing.contentHash`) and `src/anonymize` input (`parsed.records` only).
 - **Additive manifest extension is genuine**: the schema fragment adds an optional `gitContext` property and keeps `additionalProperties:false`; `manifest-gitcontext.md` Section 2 explains the additive-merge mechanism; SC-006 backward-compat test (T013) enforces it. Consistent with `001` FR-036 and the `001` `progress-event` forward-compat note.
-- **`cwd`/`gitBranch` derivation is grounded in reality**: research R-1 / data-model Section 4 / tasks T002 assume Claude Code JSONL records carry `cwd` and `gitBranch`; this was confirmed against a live `~/.claude/projects/**/*.jsonl` record (`cwd=/Users/.../poppi-cli`, `gitBranch=main`). The plan does not depend on instrumentation that doesn't exist.
+- **`cwd`/`gitBranch` derivation is grounded in reality**: research R-1 / data-model Section 4 / tasks T002 assume Claude Code JSONL records carry `cwd` and `gitBranch`; this was confirmed against a live `~/.claude/projects/**/*.jsonl` record (`cwd=/Users/.../frugl-cli`, `gitBranch=main`). The plan does not depend on instrumentation that doesn't exist.
 - **Cloud contract alignment**: the `gitContext` shape (host + owner/name + branch + commit) is exactly what cloud `005` FR-024 consumes ("branch, commit SHA, or explicit PR reference ... supplied at upload time by the CLI"); the "no PR metadata -> excluded from denominator" degradation matches cloud `005` Edge Cases / FR-028; the reserved `pr_id` storage key is correctly described as cloud-owned and deferred.
 - **No new exit code**: spec Assumptions, plan Constraints, and tasks T024/T028 all assert this consistently; no task adds to the `001`/`004` exit-code table.
 - **Read-only / no-hooks guarantee**: research R-2 (read `.git/` files, never spawn `git`) is reflected in data-model Section 2 (resolver never throws) and tasks T006; consistent with FR-004 and the spec Edge Case "must not trigger side effects."
