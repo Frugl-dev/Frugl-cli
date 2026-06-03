@@ -1,8 +1,8 @@
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
-import { requireAuthSession, type AuthSession } from "../auth/session.js";
+import { type Endpoint } from "../cloud/endpoints.js";
+import { type AuthSession } from "../auth/session.js";
 import { orgMeResponseSchema } from "../cloud/schemas.js";
-import { getCliVersion } from "../lib/cli-version.js";
+import { buildCommandContext } from "../lib/command-context.js";
 
 export interface OrgRuntime {
   client: CloudClient;
@@ -10,20 +10,15 @@ export interface OrgRuntime {
   endpoint: Endpoint;
 }
 
-// Resolve endpoint + require a stored session + build an authed client. Throws
-// AuthError (→ exit 10) when not logged in, matching whoami/upload.
+// Thin alias over buildCommandContext's "require" path: resolve endpoint +
+// require a stored session + build an authed client. Throws AuthError (→ exit
+// 10) when not logged in. The endpoint resolution, CLI-version lookup, and
+// endpointExplicit rule now live in command-context.ts (one place).
 export async function authedClient(endpointFlag: string | undefined): Promise<OrgRuntime> {
-  const endpoint = resolveEndpoint({
-    flag: endpointFlag,
-    env: process.env["FRUGL_ENDPOINT"],
-  });
-  const session = await requireAuthSession(endpoint.url);
-  const client = new CloudClient({
-    endpointUrl: endpoint.url,
-    cliVersion: getCliVersion(),
-    token: session.token,
-    endpointExplicit: endpoint.resolvedFrom !== "default",
-  });
+  const { client, session, endpoint } = await buildCommandContext(
+    { endpoint: endpointFlag },
+    { auth: "require" },
+  );
   return { client, session, endpoint };
 }
 

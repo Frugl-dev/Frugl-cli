@@ -1,17 +1,13 @@
-import { Command, Flags } from "@oclif/core";
-import { CloudHttpError } from "../../cloud/client.js";
-import { isFruglError, printFruglError } from "../../lib/errors.js";
+import { Command } from "@oclif/core";
 import { resolveOutputMode } from "../../lib/output-mode.js";
+import { COMMON_FLAGS, handleCommandError } from "../../lib/command-context.js";
 import { authedClient } from "../../org/runtime.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class OrgInvites extends Command {
   static override description = "How to accept an invite to an org.";
 
-  static override flags = {
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
-  };
+  static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {
     const { flags } = await this.parse(OrgInvites);
@@ -41,10 +37,7 @@ export default class OrgInvites extends Command {
       );
       process.stdout.write(`    ${color.poppy("frugl org join <code>")}\n`);
     } catch (err) {
-      if (isFruglError(err) || err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 }

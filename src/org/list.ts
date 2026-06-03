@@ -1,7 +1,6 @@
-import { CloudHttpError } from "../cloud/client.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { isFruglError, printFruglError } from "../lib/errors.js";
 import { resolveOutputMode, type OutputModeFlags } from "../lib/output-mode.js";
+import { handleCommandError } from "../lib/command-context.js";
 import { authedClient, fetchOrgContext } from "./runtime.js";
 import { renderNoOrg, renderOrgTable } from "./render.js";
 
@@ -59,9 +58,6 @@ export async function runOrgList(flags: OrgListFlags): Promise<never> {
     );
     process.exit(EXIT.OK);
   } catch (err) {
-    if (isFruglError(err) || err instanceof CloudHttpError) {
-      process.exit(printFruglError(err, mode));
-    }
-    throw err;
+    handleCommandError(err, mode);
   }
 }

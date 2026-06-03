@@ -1,18 +1,15 @@
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
-import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint } from "../cloud/endpoints.js";
-import { loadAuthSession } from "../auth/session.js";
+import { CloudClient } from "../cloud/client.js";
 import {
   recommendationApplyResponseSchema,
   recommendationDismissResponseSchema,
   recommendationsListResponseSchema,
   type RecommendationItem,
 } from "../cloud/schemas.js";
-import { getCliVersion } from "../lib/cli-version.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { isFruglError, printFruglError } from "../lib/errors.js";
-import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
+import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
+import { type OutputMode } from "../lib/output-mode.js";
 import { bar, color, symbol } from "../lib/theme.js";
 
 const STATUSES = ["open", "applied", "dismissed", "resolved", "all"] as const;
@@ -52,8 +49,7 @@ export default class Recommendations extends Command {
   static override aliases = ["recs"];
 
   static override flags = {
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    ...COMMON_FLAGS,
     status: Flags.string({
       description: "Filter by status",
       options: [...STATUSES],
@@ -67,32 +63,20 @@ export default class Recommendations extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Recommendations);
-    const mode = resolveOutputMode({ json: flags.json });
-    const endpoint = resolveEndpoint({ flag: flags.endpoint, env: process.env["FRUGL_ENDPOINT"] });
+    const { mode, client, session } = await buildCommandContext(flags, { auth: "optional" });
 
     try {
-      const session = await loadAuthSession(endpoint.url);
       if (!session) {
         this.notLoggedIn(mode);
         process.exit(EXIT.AUTH_FAILURE);
       }
-
-      const client = new CloudClient({
-        endpointUrl: endpoint.url,
-        cliVersion: getCliVersion(),
-        token: session.token,
-        endpointExplicit: endpoint.resolvedFrom !== "default",
-      });
 
       if (flags.fix) return await this.printFix(client, flags.fix, mode);
       if (flags.apply) return await this.apply(client, flags.apply, mode, flags.yes);
       if (flags.dismiss) return await this.dismiss(client, flags.dismiss, mode, flags.yes);
       return await this.list(client, flags.status, mode);
     } catch (err) {
-      if (isFruglError(err) || err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 

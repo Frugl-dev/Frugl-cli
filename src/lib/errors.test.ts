@@ -1,5 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { AuthError, exitCodeName, printFruglError } from "./errors.js";
+import {
+  AnonymizationError,
+  AuthError,
+  EndpointError,
+  type FruglError,
+  InspectDirError,
+  KeychainError,
+  NetworkError,
+  NoSessionsError,
+  UsageError,
+  VersionGateError,
+  exitCodeName,
+  printFruglError,
+} from "./errors.js";
 import { EXIT } from "./exit-codes.js";
 
 const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -10,6 +23,43 @@ describe("exitCodeName", () => {
     expect(exitCodeName(EXIT.AUTH_FAILURE)).toBe("AUTH_FAILURE");
     expect(exitCodeName(EXIT.ANONYMIZATION_FAILURE)).toBe("ANONYMIZATION_FAILURE");
     expect(exitCodeName(999)).toBeUndefined();
+  });
+});
+
+// FR-037 frozen contract guard, independent of any dispatch helper: pin the full
+// EXIT map and assert every FruglError subclass carries its declared code so a
+// regression in either the map or a subclass trips here.
+describe("EXIT frozen contract (FR-037)", () => {
+  it("pins the full code map", () => {
+    expect(EXIT).toEqual({
+      OK: 0,
+      GENERIC_FAILURE: 1,
+      USAGE: 2,
+      AUTH_FAILURE: 10,
+      KEYCHAIN_UNAVAILABLE: 11,
+      NO_SESSIONS_FOUND: 20,
+      ANONYMIZATION_FAILURE: 30,
+      NETWORK_FAILURE: 40,
+      ENDPOINT_UNREACHABLE: 41,
+      VERSION_GATE_FAILURE: 50,
+      INSPECT_DIR_EXISTS: 60,
+    });
+  });
+
+  const subclasses: Array<[FruglError, number]> = [
+    [new AuthError("x"), EXIT.AUTH_FAILURE],
+    [new KeychainError("x"), EXIT.KEYCHAIN_UNAVAILABLE],
+    [new NoSessionsError("x"), EXIT.NO_SESSIONS_FOUND],
+    [new AnonymizationError("x"), EXIT.ANONYMIZATION_FAILURE],
+    [new NetworkError("x"), EXIT.NETWORK_FAILURE],
+    [new EndpointError("x"), EXIT.ENDPOINT_UNREACHABLE],
+    [new VersionGateError("1.0.0", "2.0.0"), EXIT.VERSION_GATE_FAILURE],
+    [new InspectDirError("x"), EXIT.INSPECT_DIR_EXISTS],
+    [new UsageError("x"), EXIT.USAGE],
+  ];
+
+  it.each(subclasses)("%o carries its declared exit code", (err, code) => {
+    expect(err.exitCode).toBe(code);
   });
 });
 
