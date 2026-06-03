@@ -107,6 +107,16 @@ export function getProvider(id: string): ProviderDescriptor | undefined {
   return PROVIDERS.find((p) => p.id === id);
 }
 
+// The parser registry is *derived* from PROVIDERS rather than maintained as a
+// second hand-written list, so a provider can never appear in one without the
+// other. `getSourceByKind` maps a discovered SessionRef back to the Source that
+// knows how to parse it.
+export const SOURCES: readonly Source[] = PROVIDERS.flatMap((p) => (p.source ? [p.source] : []));
+
+export function getSourceByKind(kind: string): Source | undefined {
+  return SOURCES.find((s) => s.kind === kind);
+}
+
 // Probes every provider concurrently and returns only those present, preserving
 // registry order. A non-ENOENT probe failure propagates (honest failure, FR-019).
 export async function detectProviders(opts?: ProbeOptions): Promise<DetectedProvider[]> {

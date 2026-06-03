@@ -1,47 +1,22 @@
-import { z } from "zod";
-import { AuthError } from "../lib/errors.js";
-import { deleteToken, getToken, setToken } from "./keychain.js";
+import { defaultSessionStore, type AuthSession } from "./session-store.js";
 
-const authSessionSchema = z.object({
-  email: z.string().email(),
-  userId: z.string().min(1),
-  token: z.string().min(1),
-  endpointUrl: z.string().url(),
-  loggedInAt: z.string().datetime(),
-});
-
-export type AuthSession = z.infer<typeof authSessionSchema>;
+// Stable function facade over the process-wide SessionStore. The schema,
+// keychain keying, and corruption semantics now live in session-store.ts (the
+// deep module); these wrappers keep the existing call sites unchanged.
+export type { AuthSession } from "./session-store.js";
 
 export async function saveAuthSession(session: AuthSession): Promise<void> {
-  const account = accountFor(session.endpointUrl);
-  await setToken(account, JSON.stringify(session));
+  return defaultSessionStore.save(session);
 }
 
 export async function loadAuthSession(endpointUrl: string): Promise<AuthSession | null> {
-  const account = accountFor(endpointUrl);
-  const raw = await getToken(account);
-  if (!raw) return null;
-  try {
-    const parsed = authSessionSchema.parse(JSON.parse(raw));
-    return parsed;
-  } catch {
-    return null;
-  }
+  return defaultSessionStore.loadOrNull(endpointUrl);
 }
 
 export async function requireAuthSession(endpointUrl: string): Promise<AuthSession> {
-  const session = await loadAuthSession(endpointUrl);
-  if (!session) {
-    throw new AuthError("Not logged in. Run 'frugl login' to authenticate.");
-  }
-  return session;
+  return defaultSessionStore.require(endpointUrl);
 }
 
 export async function clearAuthSession(endpointUrl: string): Promise<void> {
-  const account = accountFor(endpointUrl);
-  await deleteToken(account);
-}
-
-function accountFor(endpointUrl: string): string {
-  return endpointUrl;
+  return defaultSessionStore.clear(endpointUrl);
 }

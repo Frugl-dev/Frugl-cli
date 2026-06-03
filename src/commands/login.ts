@@ -9,7 +9,8 @@ import { isFruglError, printFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import { orgMeResponseSchema, type OrgMeResponse } from "../cloud/schemas.js";
-import { setupOrg, type OrgSetupAction, type OrgSetupResult } from "../org/setup.js";
+import type { OrgSetupAction, OrgSetupResult } from "../org/setup.js";
+import { runOrgSetupFlow } from "../org/flow.js";
 import { deriveSlug } from "../org/slug.js";
 import { color, symbol } from "../lib/theme.js";
 
@@ -178,62 +179,43 @@ export default class Login extends Command {
         orgAction = { action: "join", code: inviteCode.trim() };
       }
 
-      // Retry loop for slug conflicts and invalid/expired invite codes.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        // eslint-disable-next-line no-await-in-loop
-        const result = await setupOrg(client, orgAction);
-
-        if (
-          result.status === "already-setup" ||
-          result.status === "created" ||
-          result.status === "joined"
-        ) {
-          this.printSetupSuccess(result);
-          this.printNextSteps();
-          return;
-        }
-
-        if (result.status === "slug-taken") {
+      // The flow drives setup + slug-conflict / bad-code retries; each handler
+      // reprompts for the field that failed. (This section is text-only — JSON
+      // mode returned above before reaching the org fork.)
+      const promptInviteCode = async (): Promise<string> => {
+        const inviteCode = await input({
+          message: "Invite code:",
+          validate: (v) => v.trim().length > 0 || "Enter an invite code",
+        });
+        return inviteCode.trim();
+      };
+      const result = await runOrgSetupFlow(client, orgAction, {
+        onSlugTaken: async (suggestion) => {
           process.stderr.write(
-            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${result.suggestion}\n`)}`,
+            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}\n`)}`,
           );
-          // eslint-disable-next-line no-await-in-loop
-          const name = await input({
+          return input({
             message: "Organization name (try a different one):",
             validate: (v) =>
               (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
           });
-          orgAction = { action: "create", name, slug: deriveSlug(name) };
-          continue;
-        }
-
-        if (result.status === "invalid-code") {
+        },
+        onInvalidCode: async () => {
           process.stderr.write(
             `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}\n`,
           );
-          // eslint-disable-next-line no-await-in-loop
-          const inviteCode = await input({
-            message: "Invite code:",
-            validate: (v) => v.trim().length > 0 || "Enter an invite code",
-          });
-          orgAction = { action: "join", code: inviteCode.trim() };
-          continue;
-        }
-
-        if (result.status === "expired-code") {
+          return promptInviteCode();
+        },
+        onExpiredCode: async () => {
           process.stderr.write(
             `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}\n`,
           );
-          // eslint-disable-next-line no-await-in-loop
-          const inviteCode = await input({
-            message: "Invite code:",
-            validate: (v) => v.trim().length > 0 || "Enter an invite code",
-          });
-          orgAction = { action: "join", code: inviteCode.trim() };
-          continue;
-        }
-      }
+          return promptInviteCode();
+        },
+      });
+      this.printSetupSuccess(result);
+      this.printNextSteps();
+      return;
     } catch (err) {
       if (isFruglError(err)) {
         process.exit(printFruglError(err, mode));

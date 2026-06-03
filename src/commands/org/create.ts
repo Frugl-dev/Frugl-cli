@@ -4,7 +4,8 @@ import { CloudHttpError } from "../../cloud/client.js";
 import { isFruglError, printFruglError, UsageError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient } from "../../org/runtime.js";
-import { setupOrg, type OrgSetupAction } from "../../org/setup.js";
+import type { OrgSetupAction } from "../../org/setup.js";
+import { runOrgSetupFlow } from "../../org/flow.js";
 import { deriveSlug } from "../../org/slug.js";
 import { color, symbol } from "../../lib/theme.js";
 
@@ -28,58 +29,54 @@ export default class OrgCreate extends Command {
 
       const { client } = await authedClient(flags.endpoint);
 
-      let name = flags.name ?? (await this.promptName("Org name"));
-      let action: OrgSetupAction = { action: "create", name, slug: deriveSlug(name) };
+      const name = flags.name ?? (await this.promptName("Org name"));
+      const action: OrgSetupAction = { action: "create", name, slug: deriveSlug(name) };
 
-      // Retry on slug conflicts; in JSON mode a conflict is a hard failure.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        // eslint-disable-next-line no-await-in-loop
-        const result = await setupOrg(client, action);
-
-        if (result.status === "created" || result.status === "already-setup") {
-          if (mode === "json") {
-            process.stdout.write(
-              `${JSON.stringify({
-                command: "org create",
-                ok: true,
-                slug: result.slug,
-                name: result.orgName,
-                outcome: result.status === "created" ? "created" : "existing",
-              })}\n`,
-            );
-            return;
-          }
-          if (result.status === "already-setup") {
-            process.stdout.write(
-              `${color.ok(`${symbol.tick} You're already in ${result.orgName}`)}  ${color.dim(`(${result.slug}).`)}\n`,
-            );
-          } else {
-            process.stdout.write(
-              `${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(result.slug)}${color.dim(".")}\n`,
-            );
-          }
-          return;
-        }
-
-        if (result.status === "slug-taken") {
+      // The flow drives create + slug-conflict retries; we only supply the
+      // reprompt (text) / hard-fail (JSON) behaviour for a taken slug. A
+      // create intent can never yield a join outcome.
+      const result = await runOrgSetupFlow(client, action, {
+        onSlugTaken: async (suggestion) => {
           if (mode === "json") {
             throw new UsageError(
-              `Slug is taken. Try a different name (suggestion: ${result.suggestion}).`,
+              `Slug is taken. Try a different name (suggestion: ${suggestion}).`,
             );
           }
           process.stderr.write(
-            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${result.suggestion}`)}\n`,
+            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}\n`,
           );
-          // eslint-disable-next-line no-await-in-loop
-          name = await this.promptName("Org name (try a different one)");
-          action = { action: "create", name, slug: deriveSlug(name) };
-          continue;
-        }
+          return this.promptName("Org name (try a different one)");
+        },
+        onInvalidCode: () => {
+          throw new UsageError("Unexpected org-create result: invalid-code");
+        },
+        onExpiredCode: () => {
+          throw new UsageError("Unexpected org-create result: expired-code");
+        },
+      });
 
-        // setupOrg only returns join-related statuses for join intents.
-        throw new UsageError(`Unexpected org-create result: ${result.status}`);
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({
+            command: "org create",
+            ok: true,
+            slug: result.slug,
+            name: result.orgName,
+            outcome: result.status === "created" ? "created" : "existing",
+          })}\n`,
+        );
+        return;
       }
+      if (result.status === "already-setup") {
+        process.stdout.write(
+          `${color.ok(`${symbol.tick} You're already in ${result.orgName}`)}  ${color.dim(`(${result.slug}).`)}\n`,
+        );
+      } else {
+        process.stdout.write(
+          `${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(result.slug)}${color.dim(".")}\n`,
+        );
+      }
+      return;
     } catch (err) {
       if (isFruglError(err) || err instanceof CloudHttpError) {
         process.exit(printFruglError(err, mode));
