@@ -31,12 +31,12 @@ import { resolveEffectiveLinkPrs, type EffectiveLinkPrs } from "../upload/link-p
 import {
   detectProviders,
   getProvider,
+  getSourceByKind,
   type DetectedProvider,
   type ProjectGroup,
 } from "../sources/providers.js";
 import { applySelection, isInteractive, selectProjects, selectProviders } from "../select/index.js";
 import type { Selection } from "../select/selection.js";
-import { SOURCES } from "../sources/registry.js";
 import type { Source, SessionRef } from "../sources/types.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
@@ -219,7 +219,7 @@ export default class Upload extends Command {
       // Group refs by source for per-source pipeline
       const refsBySource = new Map<Source, SessionRef[]>();
       for (const ref of refs) {
-        const source = SOURCES.find((s) => s.kind === ref.sourceKind);
+        const source = getSourceByKind(ref.sourceKind);
         if (!source) continue;
         const existing = refsBySource.get(source) ?? [];
         existing.push(ref);
