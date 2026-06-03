@@ -9,6 +9,11 @@ import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import type { OrgSetupAction } from "../org/setup.js";
 import { runOrgSetupFlow } from "../org/flow.js";
+import {
+  makeOrgSetupPrompts,
+  renderOrgSetupResult,
+  type OrgSetupPresentation,
+} from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
 
 export default class Setup extends Command {
@@ -93,7 +98,9 @@ export default class Setup extends Command {
       }
 
       // The flow handles slug conflicts and bad codes; each handler reprompts
-      // for the field that failed, then the flow retries.
+      // for the field that failed, then the flow retries. setup reprompts in
+      // both modes (it has no pre-flow JSON guard), so the prompts are built in
+      // text mode regardless of the output mode used for rendering.
       const promptCode = async (): Promise<string> => {
         const code = await input({
           message: "Invite code:",
@@ -101,29 +108,50 @@ export default class Setup extends Command {
         });
         return code.trim();
       };
-      const result = await runOrgSetupFlow(client, orgAction, {
-        onSlugTaken: async (suggestion) => {
-          process.stderr.write(
-            `frugl: That slug is already taken. Suggested alternative: ${suggestion}\n`,
-          );
-          return input({
-            message: "Organization name (try a different one):",
-            validate: (v) =>
-              (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-          });
+      const promptName = (): Promise<string> =>
+        input({
+          message: "Organization name (try a different one):",
+          validate: (v) =>
+            (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+        });
+      const email = session.email;
+      const label = (outcome: "existing" | "created" | "joined"): string =>
+        outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
+      const spec: OrgSetupPresentation = {
+        command: "setup",
+        reprompt: { name: promptName, code: promptCode },
+        messages: {
+          slugTaken: (suggestion) => ({
+            warn: `frugl: That slug is already taken. Suggested alternative: ${suggestion}`,
+            abort: `frugl: That slug is already taken. Suggested alternative: ${suggestion}`,
+          }),
+          invalidCode: {
+            warn: "frugl: Invite code not found. Check the code and try again.",
+            abort: "frugl: Invite code not found. Check the code and try again.",
+          },
+          expiredCode: {
+            warn: "frugl: That invite code has expired or been used up.",
+            abort: "frugl: That invite code has expired or been used up.",
+          },
         },
-        onInvalidCode: async () => {
-          process.stderr.write("frugl: Invite code not found. Check the code and try again.\n");
-          return promptCode();
+        render: {
+          text: (r) => {
+            const outcome = r.status === "already-setup" ? "existing" : r.status;
+            return `Setup complete · ${email} · ${label(outcome)}: ${r.orgName}\n`;
+          },
+          json: (r) => ({
+            command: "setup",
+            ok: true,
+            email,
+            orgName: r.orgName,
+            slug: r.slug,
+            outcome: r.status === "already-setup" ? "existing" : r.status,
+          }),
         },
-        onExpiredCode: async () => {
-          process.stderr.write("frugl: That invite code has expired or been used up.\n");
-          return promptCode();
-        },
-      });
+      };
 
-      const outcome = result.status === "already-setup" ? "existing" : result.status;
-      this.emit_success(mode, session.email, result.orgName, result.slug, outcome);
+      const result = await runOrgSetupFlow(client, orgAction, makeOrgSetupPrompts(spec, "text"));
+      renderOrgSetupResult(result, spec, mode);
       return;
     } catch (err) {
       if (isFruglError(err)) {
@@ -135,24 +163,6 @@ export default class Setup extends Command {
         process.exit(1);
       }
       throw err;
-    }
-  }
-
-  private emit_success(
-    mode: "text" | "json",
-    email: string,
-    orgName: string,
-    slug: string,
-    outcome: "existing" | "created" | "joined",
-  ): void {
-    if (mode === "json") {
-      process.stdout.write(
-        `${JSON.stringify({ command: "setup", ok: true, email, orgName, slug, outcome })}\n`,
-      );
-    } else {
-      const label =
-        outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
-      process.stdout.write(`Setup complete · ${email} · ${label}: ${orgName}\n`);
     }
   }
 }
