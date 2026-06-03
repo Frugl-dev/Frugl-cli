@@ -27,6 +27,7 @@ import {
 } from "../upload/upload-output.js";
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
+import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
 import { extractWorktreePath } from "../sources/claude-code/project.js";
 import {
@@ -146,6 +147,7 @@ export default class Upload extends Command {
         token: session.token,
         endpointExplicit: endpoint.resolvedFrom !== "default",
       });
+      const cloud = new HttpCloudAdapter(client);
 
       // `--report`: explain the in-flight manifest's failures and exit — no
       // discovery, no upload. Reads the resume store (keyed by endpoint + user),
@@ -399,7 +401,7 @@ export default class Upload extends Command {
         let pipelineResult;
         try {
           pipelineResult = await runUploadPipeline({
-            client,
+            cloud,
             jobs,
             ledger,
             resumeStore,
@@ -419,7 +421,7 @@ export default class Upload extends Command {
             }
             resumeStore.clear();
             pipelineResult = await runUploadPipeline({
-              client,
+              cloud,
               jobs,
               ledger,
               resumeStore,
