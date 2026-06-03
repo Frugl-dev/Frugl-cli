@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { Ledger } from "../ledger/ledger.js";
 import { ResumeStore } from "./resume.js";
 import { runUploadPipeline, type SessionUploadJob } from "./pipeline.js";
-import { buildReport } from "./report.js";
+import { buildReport } from "./upload-output.js";
 import type { ProgressReporter } from "./progress.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
 
