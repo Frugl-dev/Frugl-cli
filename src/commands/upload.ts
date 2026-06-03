@@ -7,7 +7,8 @@ import { color, symbol } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
-import { resolveUploadAuth } from "../auth/headless.js";
+import { AuthService } from "../auth/auth-service.js";
+import { cloudIdentityClient } from "../auth/identity-client.js";
 import {
   classifyAll,
   bucketize,
@@ -130,11 +131,15 @@ export default class Upload extends Command {
       );
       const concurrency = flags.concurrency ?? uploadConfig?.upload?.concurrency ?? 4;
 
-      const session = await resolveUploadAuth({
+      const auth = new AuthService({
         endpointUrl: endpoint.url,
-        endpointExplicit: endpoint.resolvedFrom !== "default",
-        flagToken: flags.token,
+        identity: cloudIdentityClient({
+          endpointUrl: endpoint.url,
+          endpointExplicit: endpoint.resolvedFrom !== "default",
+          cliVersion: getCliVersion(),
+        }),
       });
+      const session = await auth.resolveRequestAuth({ flagToken: flags.token });
       const client = new CloudClient({
         endpointUrl: endpoint.url,
         cliVersion: getCliVersion(),

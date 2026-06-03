@@ -119,3 +119,36 @@ describe("SessionStore.resolveToken precedence", () => {
     expect(await store.resolveToken({ endpointUrl })).toBeNull();
   });
 });
+
+describe("SessionStore.resolveAuth", () => {
+  it("returns the token AND originating session for a session-sourced token (one read)", async () => {
+    const store = makeStore({ seed: { [endpointUrl]: JSON.stringify(session) } });
+    expect(await store.resolveAuth({ endpointUrl })).toEqual({
+      token: "tok_123",
+      source: "session",
+      session,
+    });
+  });
+
+  it("returns a flag/env token with no session attached (identity resolved elsewhere)", async () => {
+    const store = makeStore({
+      seed: { [endpointUrl]: JSON.stringify(session) },
+      env: { FRUGL_TOKEN: "env-token" },
+    });
+    expect(await store.resolveAuth({ flagToken: "flag-token", endpointUrl })).toEqual({
+      token: "flag-token",
+      source: "flag",
+      session: null,
+    });
+    expect(await store.resolveAuth({ endpointUrl })).toEqual({
+      token: "env-token",
+      source: "env",
+      session: null,
+    });
+  });
+
+  it("returns null when no credential is available anywhere", async () => {
+    const store = makeStore();
+    expect(await store.resolveAuth({ endpointUrl })).toBeNull();
+  });
+});

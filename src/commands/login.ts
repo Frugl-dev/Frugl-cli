@@ -2,9 +2,9 @@ import { Command, Flags } from "@oclif/core";
 import { input, password, select } from "@inquirer/prompts";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
-import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
-import { clearAuthSession, saveAuthSession, type AuthSession } from "../auth/session.js";
-import { fetchIdentity } from "../auth/headless.js";
+import { AuthService } from "../auth/auth-service.js";
+import { cloudIdentityClient } from "../auth/identity-client.js";
+import { clearAuthSession } from "../auth/session.js";
 import { isFruglError, printFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
@@ -42,10 +42,21 @@ export default class Login extends Command {
       return;
     }
 
+    const endpointExplicit = endpoint.resolvedFrom !== "default";
+    const auth = new AuthService({
+      endpointUrl: endpoint.url,
+      identity: cloudIdentityClient({
+        endpointUrl: endpoint.url,
+        endpointExplicit,
+        cliVersion: getCliVersion(),
+      }),
+    });
+    // Login keeps its own CloudClient for the post-login /api/orgs/me + org
+    // setup flow; org setup is out of AuthService's scope.
     const client = new CloudClient({
       endpointUrl: endpoint.url,
       cliVersion: getCliVersion(),
-      endpointExplicit: endpoint.resolvedFrom !== "default",
+      endpointExplicit,
     });
 
     let email = flags.email;
@@ -57,14 +68,13 @@ export default class Login extends Command {
             /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Enter a valid email address",
         });
       }
-      await requestOtp(client, email);
+      await auth.startLogin(email);
       const code = await password({
         message: "6-digit code from email:",
         mask: "*",
         validate: (value) => /^\d{6}$/.test(value) || "Code must be 6 digits",
       });
-      const session = await verifyOtp(client, email, code);
-      await saveAuthSession(session);
+      const session = await auth.completeLogin(email, code);
       client.setToken(session.token);
 
       // Check whether the account already has an org.
@@ -233,19 +243,15 @@ export default class Login extends Command {
     mode: ReturnType<typeof resolveOutputMode>,
   ): Promise<void> {
     try {
-      const identity = await fetchIdentity(
-        endpoint.url,
-        endpoint.resolvedFrom !== "default",
-        token,
-      );
-      const session: AuthSession = {
-        email: identity.primary_email,
-        userId: identity.user_id,
-        token,
+      const auth = new AuthService({
         endpointUrl: endpoint.url,
-        loggedInAt: new Date().toISOString(),
-      };
-      await saveAuthSession(session);
+        identity: cloudIdentityClient({
+          endpointUrl: endpoint.url,
+          endpointExplicit: endpoint.resolvedFrom !== "default",
+          cliVersion: getCliVersion(),
+        }),
+      });
+      const session = await auth.loginWithToken(token);
 
       if (mode === "json") {
         process.stdout.write(
