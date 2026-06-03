@@ -7,7 +7,8 @@ import { loadAuthSession, saveAuthSession } from "../auth/session.js";
 import { isFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
-import { setupOrg } from "../org/setup.js";
+import type { OrgSetupAction } from "../org/setup.js";
+import { runOrgSetupFlow } from "../org/flow.js";
 import { deriveSlug } from "../org/slug.js";
 
 export default class Setup extends Command {
@@ -58,8 +59,8 @@ export default class Setup extends Command {
       }
       client.setToken(session.token);
 
-      // Step 2: Org setup — interactive loop handles slug conflicts and bad codes.
-      let orgAction: Parameters<typeof setupOrg>[1];
+      // Step 2: Org setup — the flow handles slug conflicts and bad codes.
+      let orgAction: OrgSetupAction;
 
       if (flags["invite-code"]) {
         orgAction = { action: "join", code: flags["invite-code"] };
@@ -91,62 +92,39 @@ export default class Setup extends Command {
         }
       }
 
-      // Retry loop: slug conflicts and invalid codes prompt the user to try again.
-      // Each iteration awaits user input, so sequential awaits are intentional here.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        // eslint-disable-next-line no-await-in-loop
-        const result = await setupOrg(client, orgAction);
-
-        if (result.status === "already-setup") {
-          this.emit_success(mode, session.email, result.orgName, result.slug, "existing");
-          return;
-        }
-        if (result.status === "created") {
-          this.emit_success(mode, session.email, result.orgName, result.slug, "created");
-          return;
-        }
-        if (result.status === "joined") {
-          this.emit_success(mode, session.email, result.orgName, result.slug, "joined");
-          return;
-        }
-
-        if (result.status === "slug-taken") {
+      // The flow handles slug conflicts and bad codes; each handler reprompts
+      // for the field that failed, then the flow retries.
+      const promptCode = async (): Promise<string> => {
+        const code = await input({
+          message: "Invite code:",
+          validate: (v) => v.trim().length > 0 || "Enter an invite code",
+        });
+        return code.trim();
+      };
+      const result = await runOrgSetupFlow(client, orgAction, {
+        onSlugTaken: async (suggestion) => {
           process.stderr.write(
-            `frugl: That slug is already taken. Suggested alternative: ${result.suggestion}\n`,
+            `frugl: That slug is already taken. Suggested alternative: ${suggestion}\n`,
           );
-          // eslint-disable-next-line no-await-in-loop
-          const name = await input({
+          return input({
             message: "Organization name (try a different one):",
             validate: (v) =>
               (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
           });
-          orgAction = { action: "create", name, slug: deriveSlug(name) };
-          continue;
-        }
-
-        if (result.status === "invalid-code") {
+        },
+        onInvalidCode: async () => {
           process.stderr.write("frugl: Invite code not found. Check the code and try again.\n");
-          // eslint-disable-next-line no-await-in-loop
-          const code = await input({
-            message: "Invite code:",
-            validate: (v) => v.trim().length > 0 || "Enter an invite code",
-          });
-          orgAction = { action: "join", code: code.trim() };
-          continue;
-        }
-
-        if (result.status === "expired-code") {
+          return promptCode();
+        },
+        onExpiredCode: async () => {
           process.stderr.write("frugl: That invite code has expired or been used up.\n");
-          // eslint-disable-next-line no-await-in-loop
-          const code = await input({
-            message: "Invite code:",
-            validate: (v) => v.trim().length > 0 || "Enter an invite code",
-          });
-          orgAction = { action: "join", code: code.trim() };
-          continue;
-        }
-      }
+          return promptCode();
+        },
+      });
+
+      const outcome = result.status === "already-setup" ? "existing" : result.status;
+      this.emit_success(mode, session.email, result.orgName, result.slug, outcome);
+      return;
     } catch (err) {
       if (isFruglError(err)) {
         process.stderr.write(`frugl: ${err.message}\n`);

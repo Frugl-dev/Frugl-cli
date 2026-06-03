@@ -4,7 +4,8 @@ import { CloudHttpError } from "../../cloud/client.js";
 import { isFruglError, printFruglError, UsageError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient } from "../../org/runtime.js";
-import { setupOrg, type OrgSetupAction } from "../../org/setup.js";
+import type { OrgSetupAction } from "../../org/setup.js";
+import { runOrgSetupFlow } from "../../org/flow.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class OrgJoin extends Command {
@@ -30,53 +31,47 @@ export default class OrgJoin extends Command {
 
       const { client } = await authedClient(flags.endpoint);
 
-      let code = args.code ?? (await this.promptCode());
-      let action: OrgSetupAction = { action: "join", code };
+      const code = args.code ?? (await this.promptCode());
+      const action: OrgSetupAction = { action: "join", code };
 
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        // eslint-disable-next-line no-await-in-loop
-        const result = await setupOrg(client, action);
-
-        if (result.status === "joined" || result.status === "already-setup") {
-          if (mode === "json") {
-            process.stdout.write(
-              `${JSON.stringify({
-                command: "org join",
-                ok: true,
-                slug: result.slug,
-                name: result.orgName,
-                outcome: result.status === "joined" ? "joined" : "existing",
-              })}\n`,
-            );
-            return;
-          }
-          if (result.status === "already-setup") {
-            process.stdout.write(
-              `${color.ok(`${symbol.tick} You're already in ${result.orgName}`)}  ${color.dim(`(${result.slug}).`)}\n`,
-            );
-          } else {
-            process.stdout.write(
-              `${color.ok(`${symbol.tick} Joined ${result.slug}`)}  ${color.dim("as member.")}\n`,
-            );
-            process.stdout.write(
-              `${color.dim("  Next: ")}${color.poppy("frugl upload --dry-run")}\n`,
-            );
-          }
-          return;
-        }
-
-        const problem =
-          result.status === "expired-code"
-            ? "That invite code has expired or been used up."
-            : "Invite code not found. Check the code and try again.";
-
+      // The flow drives join + bad-code retries; a join intent can never yield
+      // a slug-taken outcome.
+      const repromptOn = (problem: string) => async () => {
         if (mode === "json") throw new UsageError(problem);
         process.stderr.write(`${color.warn(`${symbol.warn} ${problem}`)}\n`);
-        // eslint-disable-next-line no-await-in-loop
-        code = await this.promptCode();
-        action = { action: "join", code };
+        return this.promptCode();
+      };
+      const result = await runOrgSetupFlow(client, action, {
+        onSlugTaken: () => {
+          throw new UsageError("Unexpected org-join result: slug-taken");
+        },
+        onInvalidCode: repromptOn("Invite code not found. Check the code and try again."),
+        onExpiredCode: repromptOn("That invite code has expired or been used up."),
+      });
+
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({
+            command: "org join",
+            ok: true,
+            slug: result.slug,
+            name: result.orgName,
+            outcome: result.status === "joined" ? "joined" : "existing",
+          })}\n`,
+        );
+        return;
       }
+      if (result.status === "already-setup") {
+        process.stdout.write(
+          `${color.ok(`${symbol.tick} You're already in ${result.orgName}`)}  ${color.dim(`(${result.slug}).`)}\n`,
+        );
+      } else {
+        process.stdout.write(
+          `${color.ok(`${symbol.tick} Joined ${result.slug}`)}  ${color.dim("as member.")}\n`,
+        );
+        process.stdout.write(`${color.dim("  Next: ")}${color.poppy("frugl upload --dry-run")}\n`);
+      }
+      return;
     } catch (err) {
       if (isFruglError(err) || err instanceof CloudHttpError) {
         process.exit(printFruglError(err, mode));
