@@ -1,16 +1,11 @@
 import type { RedactionCategory } from "../policy.js";
-import type { PseudonymTable } from "../pseudonyms.js";
-
-export interface EmailRedactionContext {
-  ownerEmail: string;
-  pseudonyms: PseudonymTable;
-}
+import type { Rule, RuleContext } from "./types.js";
 
 const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 
 export function redactEmails(
   input: string,
-  ctx: EmailRedactionContext,
+  ctx: RuleContext,
 ): { output: string; counts: Partial<Record<RedactionCategory, number>> } {
   const counts: Partial<Record<RedactionCategory, number>> = {};
   const lowerOwner = ctx.ownerEmail.toLowerCase();
@@ -21,3 +16,9 @@ export function redactEmails(
   });
   return { output, counts };
 }
+
+export const emailsRule: Rule = {
+  id: "emails",
+  categories: ["third-party-email"],
+  apply: (input, ctx) => redactEmails(input, ctx),
+};

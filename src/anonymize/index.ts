@@ -2,13 +2,12 @@ import { createHash } from "node:crypto";
 import { AnonymizationError } from "../lib/errors.js";
 import { POLICY_VERSION, REDACTION_CATEGORIES, type RedactionCategory } from "./policy.js";
 import { PseudonymTable } from "./pseudonyms.js";
-import { redactClaudePaths } from "./rules/claude-paths.js";
-import { redactEmails } from "./rules/emails.js";
-import { redactEntropy } from "./rules/entropy.js";
-import { redactSecrets } from "./rules/secrets.js";
+import { RULES } from "./rules/registry.js";
+import type { RuleContext } from "./rules/types.js";
 
 export { POLICY_VERSION, type RedactionCategory } from "./policy.js";
 export { PseudonymTable } from "./pseudonyms.js";
+export type { Rule, RuleContext, RuleResult } from "./rules/types.js";
 
 export interface AnonymizeOptions {
   uploadId: string;
@@ -48,44 +47,35 @@ function mergeCounts(
   }
 }
 
+// Generic apply loop: drive the registry in its declared order, merging every
+// rule's counts through the single merge path. Order is RULES order — never
+// sorted or filtered here. A rule throwing propagates out of this loop and is
+// caught by anonymize()'s fail-closed envelope, aborting the whole payload.
 function redactString(
   value: string,
-  ctx: {
-    counts: Record<RedactionCategory, number>;
-    pseudonyms: PseudonymTable;
-    ownerEmail: string;
-    homeDir?: string;
-  },
+  ctx: RuleContext,
+  counts: Record<RedactionCategory, number>,
 ): string {
   let current = value;
-  const secrets = redactSecrets(current);
-  mergeCounts(ctx.counts, secrets.counts);
-  current = secrets.output;
-  const paths = redactClaudePaths(current, {
-    pseudonyms: ctx.pseudonyms,
-    ...(ctx.homeDir !== undefined ? { homeDir: ctx.homeDir } : {}),
-  });
-  mergeCounts(ctx.counts, paths.counts);
-  current = paths.output;
-  const emails = redactEmails(current, {
-    ownerEmail: ctx.ownerEmail,
-    pseudonyms: ctx.pseudonyms,
-  });
-  mergeCounts(ctx.counts, emails.counts);
-  current = emails.output;
-  const entropy = redactEntropy(current);
-  mergeCounts(ctx.counts, entropy.counts);
-  current = entropy.output;
+  for (const rule of RULES) {
+    const { output, counts: ruleCounts } = rule.apply(current, ctx);
+    mergeCounts(counts, ruleCounts);
+    current = output;
+  }
   return current;
 }
 
-function walk(value: unknown, ctx: Parameters<typeof redactString>[1]): unknown {
-  if (typeof value === "string") return redactString(value, ctx);
-  if (Array.isArray(value)) return value.map((item) => walk(item, ctx));
+function walk(
+  value: unknown,
+  ctx: RuleContext,
+  counts: Record<RedactionCategory, number>,
+): unknown {
+  if (typeof value === "string") return redactString(value, ctx, counts);
+  if (Array.isArray(value)) return value.map((item) => walk(item, ctx, counts));
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value)) {
-      out[key] = walk(val, ctx);
+      out[key] = walk(val, ctx, counts);
     }
     return out;
   }
@@ -101,14 +91,14 @@ export function anonymize(input: unknown, opts: AnonymizeOptions): Anonymization
   }
   const pseudonyms = opts.pseudonyms ?? new PseudonymTable(opts.uploadId);
   const counts = emptyCounts();
+  const ctx: RuleContext = {
+    pseudonyms,
+    ownerEmail: opts.ownerEmail,
+    ...(opts.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
+  };
   let payload: unknown;
   try {
-    payload = walk(input, {
-      counts,
-      pseudonyms,
-      ownerEmail: opts.ownerEmail,
-      ...(opts.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
-    });
+    payload = walk(input, ctx, counts);
   } catch (err) {
     throw new AnonymizationError(
       `Anonymization failed: ${err instanceof Error ? err.message : String(err)}`,

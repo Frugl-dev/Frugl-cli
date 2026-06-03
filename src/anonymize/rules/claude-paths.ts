@@ -1,18 +1,13 @@
 import { homedir } from "node:os";
 import { sep as PATH_SEP } from "node:path";
 import type { RedactionCategory } from "../policy.js";
-import type { PseudonymTable } from "../pseudonyms.js";
-
-export interface PathRedactionContext {
-  pseudonyms: PseudonymTable;
-  homeDir?: string;
-}
+import type { Rule, RuleContext } from "./types.js";
 
 const PROJECTS_SEGMENT = ".claude/projects/";
 
 export function redactClaudePaths(
   input: string,
-  ctx: PathRedactionContext,
+  ctx: RuleContext,
 ): { output: string; counts: Partial<Record<RedactionCategory, number>> } {
   const counts: Partial<Record<RedactionCategory, number>> = {};
   const home = ctx.homeDir ?? homedir();
@@ -32,7 +27,7 @@ export function redactClaudePaths(
 
 function replaceProjectSegments(
   rest: string,
-  ctx: PathRedactionContext,
+  ctx: RuleContext,
   counts: Partial<Record<RedactionCategory, number>>,
 ): string {
   const idx = rest.indexOf(PROJECTS_SEGMENT);
@@ -50,3 +45,9 @@ function replaceProjectSegments(
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+export const claudePathsRule: Rule = {
+  id: "claude-paths",
+  categories: ["home-path", "project-name"],
+  apply: (input, ctx) => redactClaudePaths(input, ctx),
+};

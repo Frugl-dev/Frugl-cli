@@ -1,4 +1,5 @@
 import type { RedactionCategory } from "../policy.js";
+import type { Rule } from "./types.js";
 
 const MIN_LENGTH = 20;
 const MIN_ENTROPY_BITS_PER_CHAR = 4.5;
@@ -37,3 +38,9 @@ export function redactEntropy(input: string): {
   });
   return { output, counts };
 }
+
+export const entropyRule: Rule = {
+  id: "entropy",
+  categories: ["entropy-fallback"],
+  apply: (input) => redactEntropy(input),
+};

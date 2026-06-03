@@ -1,4 +1,5 @@
 import type { RedactionCategory } from "../policy.js";
+import type { Rule } from "./types.js";
 
 export interface SecretRedaction {
   category: RedactionCategory;
@@ -67,3 +68,17 @@ export function redactSecrets(input: string): {
   });
   return { output, counts };
 }
+
+export const secretsRule: Rule = {
+  id: "secrets",
+  categories: [
+    "anthropic-key",
+    "openai-key",
+    "aws-key",
+    "gcp-key",
+    "github-token",
+    "slack-webhook",
+    "env-line",
+  ],
+  apply: (input) => redactSecrets(input),
+};
