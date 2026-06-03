@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { discoverClaudeSessions } from "./discover.js";
+import { claude } from "../descriptor.js";
+import { discover } from "../walker.js";
 import { writeTestSessions } from "../../e2e/helpers/fixtures.js";
 import { decodeProjectPath, deriveClaudeProjects, extractWorktreePath } from "./project.js";
 import type { SessionRef } from "../types.js";
+
+const discoverClaudeSessions = (opts: { homeDir: string }) => discover(claude, opts);
 
 describe("deriveClaudeProjects", () => {
   let home: string;

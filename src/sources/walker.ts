@@ -1,0 +1,108 @@
+import { access, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+import { glob } from "tinyglobby";
+import type { ProviderDescriptor, ExtractContext } from "./descriptor.js";
+import { resolveIdentity } from "./identity.js";
+import { parseNdjson } from "./ndjson.js";
+import type { ParsedSession, SessionIdentity, SessionRef, Source } from "./types.js";
+
+interface HomeOptions {
+  homeDir?: string;
+}
+
+function home(opts?: HomeOptions): string {
+  return opts?.homeDir ?? homedir();
+}
+
+// Returns true if the path exists, false only when it is genuinely absent. Any
+// other error (e.g. EACCES) is surfaced rather than swallowed (FR-019).
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await access(target);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+}
+
+// A provider is "installed" iff its probe path exists under home.
+export function probe(d: ProviderDescriptor, opts?: HomeOptions): Promise<boolean> {
+  return pathExists(path.join(home(opts), ...d.layout.probeSegments));
+}
+
+// The single filesystem walk: glob → stat → SessionRef. Directories and vanished
+// files are skipped; a missing root yields [].
+export async function discover(d: ProviderDescriptor, opts?: HomeOptions): Promise<SessionRef[]> {
+  const root = path.join(home(opts), ...d.layout.rootSegments);
+  const files = await glob(d.layout.globs, { cwd: root, absolute: true, dot: false }).catch(
+    () => [],
+  );
+  const refs: SessionRef[] = [];
+  for (const file of files) {
+    const stats = await stat(file).catch(() => null);
+    if (!stats || !stats.isFile()) continue;
+    refs.push({
+      sourceKind: d.sourceKind,
+      absolutePath: path.resolve(file),
+      byteSizeOnDisk: stats.size,
+      mtimeMs: stats.mtimeMs,
+    });
+  }
+  return refs;
+}
+
+// The single decode dispatch. NDJSON tolerates malformed lines via `_raw`;
+// json-array yields [] for a non-array or malformed file. This is the path that
+// unifies gemini with the other providers.
+function decode(d: ProviderDescriptor, text: string): unknown[] {
+  if (d.format.kind === "ndjson") return parseNdjson(text);
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function contextFor(ref: SessionRef, records: unknown[]): ExtractContext {
+  return { ref, records, firstRecord: records[0] ?? null };
+}
+
+// The single identity/metadata assembly, written once.
+export function deriveIdentity(d: ProviderDescriptor, ctx: ExtractContext): SessionIdentity {
+  return resolveIdentity({
+    ref: ctx.ref,
+    nativeId: d.extractNativeId(ctx),
+    allowNativeReuse: d.allowNativeReuse ? d.allowNativeReuse(ctx) : true,
+  });
+}
+
+export async function parse(d: ProviderDescriptor, ref: SessionRef): Promise<ParsedSession> {
+  const text = await readFile(ref.absolutePath, "utf8");
+  const records = decode(d, text);
+  const ctx = contextFor(ref, records);
+  const identity = deriveIdentity(d, ctx);
+  const metadata = d.extractMetadata ? d.extractMetadata(ctx) : {};
+  return {
+    sourceKind: d.sourceKind,
+    ref,
+    identity,
+    records,
+    ...(metadata.cwd !== undefined ? { cwd: metadata.cwd } : {}),
+    ...(metadata.recordedBranch !== undefined ? { recordedBranch: metadata.recordedBranch } : {}),
+  };
+}
+
+// Adapts a descriptor to the existing public `Source` interface so every
+// downstream consumer (getSourceByKind, the upload pipeline) is unchanged.
+export function toSource(d: ProviderDescriptor): Source {
+  return {
+    kind: d.sourceKind,
+    formatVersion: d.formatVersion,
+    discover: (opts) => discover(d, opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
+    parse: (ref) => parse(d, ref),
+    deriveIdentity: (ref, parsed) => deriveIdentity(d, contextFor(ref, parsed.records)),
+  };
+}
