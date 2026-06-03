@@ -25,7 +25,7 @@ describe("discoverCodexSessions", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-codex-discover-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-codex-discover-"));
   });
 
   afterEach(() => {
@@ -146,7 +146,7 @@ describe("parseCodexSession", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-codex-parse-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-codex-parse-"));
   });
 
   afterEach(() => {

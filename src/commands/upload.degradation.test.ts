@@ -13,7 +13,7 @@ interface ManifestSession {
   git_context?: unknown;
 }
 
-describe("poppi upload — best-effort degradation (US4/SC-005)", { timeout: 30_000 }, () => {
+describe("frugl upload — best-effort degradation (US4/SC-005)", { timeout: 30_000 }, () => {
   let server: MockServer;
   let home: TempDir;
   let repo: TempDir;
@@ -60,7 +60,7 @@ describe("poppi upload — best-effort degradation (US4/SC-005)", { timeout: 30_
 
     const { exitCode } = await runCli(
       ["upload", "--confirm", "--link-prs", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK); // never fatal (no new exit code)
 
@@ -77,7 +77,7 @@ describe("poppi upload — best-effort degradation (US4/SC-005)", { timeout: 30_
 
     const { exitCode, stderr } = await runCli(
       ["upload", "--confirm", "--link-prs", "--endpoint", server.url],
-      { env: { POPPI_HOME_DIR: home.dir } },
+      { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
     const notices = stderr.match(/no sessions had resolvable git context/g) ?? [];
@@ -88,7 +88,7 @@ describe("poppi upload — best-effort degradation (US4/SC-005)", { timeout: 30_
 });
 
 describe(
-  "poppi upload — absent new provider sources (multi-provider degradation)",
+  "frugl upload — absent new provider sources (multi-provider degradation)",
   { timeout: 30_000 },
   () => {
     let server: MockServer;
@@ -112,7 +112,7 @@ describe(
       await writeTestSessions(home.dir, 1, "claude-only-proj");
 
       const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: { POPPI_HOME_DIR: home.dir },
+        env: { FRUGL_HOME_DIR: home.dir },
       });
       expect(exitCode).toBe(EXIT.OK);
     });
@@ -120,7 +120,7 @@ describe(
     it("exits NO_SESSIONS_FOUND when all source dirs are absent", async () => {
       // Empty home: no .claude, no .cursor, no .codex, no .gemini.
       const { exitCode, stderr } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: { POPPI_HOME_DIR: home.dir },
+        env: { FRUGL_HOME_DIR: home.dir },
       });
       expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
       expect(stderr).toMatch(/no sessions found/i);

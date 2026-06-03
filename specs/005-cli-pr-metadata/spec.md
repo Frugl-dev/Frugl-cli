@@ -1,4 +1,4 @@
-# Feature Specification: poppi-cli PR-link metadata — opt-in per-session git context at upload time
+# Feature Specification: frugl-cli PR-link metadata — opt-in per-session git context at upload time
 
 **Feature Branch**: `005-cli-pr-metadata`
 
@@ -10,13 +10,13 @@
 
 ## Cross-repo context _(informational)_
 
-This spec is the **producer side** of the cloud feature [`poppi/specs/005-intelligence-post-processing/spec.md`](../../../poppi/specs/005-intelligence-post-processing/spec.md), specifically its GitHub / pull-request story (US5) and FR-024:
+This spec is the **producer side** of the cloud feature [`frugl/specs/005-intelligence-post-processing/spec.md`](../../../frugl/specs/005-intelligence-post-processing/spec.md), specifically its GitHub / pull-request story (US5) and FR-024:
 
 > **FR-024** (cloud 005): "The system MUST link sessions to pull requests using metadata supplied **at upload time by the CLI** (e.g. branch, commit SHA, or explicit PR reference); it MUST NOT parse session content to infer PR associations."
 
 The cloud spec records the producer contract as a dependency owned by this repo:
 
-> (cloud 005 Assumptions) "PR linking depends on the CLI attaching PR/branch/commit metadata at upload time; **defining that CLI metadata contract is a dependency tracked in the `poppi-cli/` repo, consumed here.**"
+> (cloud 005 Assumptions) "PR linking depends on the CLI attaching PR/branch/commit metadata at upload time; **defining that CLI metadata contract is a dependency tracked in the `frugl-cli/` repo, consumed here.**"
 
 This spec **defines** that contract. The cloud stores the association as an additive `pr_id` reserved key in `parsed_artifacts.summary` (cloud 005 Assumptions) and computes org merge rate from sessions linked to merged vs. closed-without-merge PRs (cloud FR-028). A session that carries **no** PR-linking metadata simply never appears in a PR's linked-session list and is excluded from the merge-rate denominator (cloud 005 Edge Cases) — so the metadata is, by design, **optional and best-effort per session**.
 
@@ -36,15 +36,15 @@ Therefore, attaching real repository coordinates so the cloud can match a real G
 
 ### User Story 1 — Opt in to link uploaded sessions to their pull requests (Priority: P1)
 
-A developer wants their team's dashboard to show how much AI spend went into each shipped PR. They run `poppi upload --link-prs`. For each session in the upload batch, the CLI determines the git repository the session was worked in (from the session's recorded working directory), reads the repository's remote identity, branch, and current commit — read-only — and attaches that git context to the session's manifest entry. The pre-upload summary shows which repositories and how many sessions will carry git context. After upload, once the team connects GitHub on the dashboard, those sessions become linkable to their pull requests.
+A developer wants their team's dashboard to show how much AI spend went into each shipped PR. They run `frugl upload --link-prs`. For each session in the upload batch, the CLI determines the git repository the session was worked in (from the session's recorded working directory), reads the repository's remote identity, branch, and current commit — read-only — and attaches that git context to the session's manifest entry. The pre-upload summary shows which repositories and how many sessions will carry git context. After upload, once the team connects GitHub on the dashboard, those sessions become linkable to their pull requests.
 
 **Why this priority**: This is the entire reason the feature exists — it is the CLI half of the cloud's headline "did this AI spend ship as a merged PR?" waste lever (cloud 005 US5 / FR-028). Without the CLI attaching the metadata, the cloud's merge-rate and cost-to-merge surfaces have nothing to join on.
 
-**Independent Test**: With a sample session whose recorded working directory is a clean git checkout of a repo with a GitHub `origin` remote on a feature branch, running `poppi upload --link-prs` against the local stack produces a manifest in which that session's entry carries git context with the correct repository `owner/name`, branch, and a 40-hex commit SHA. A session uploaded **without** `--link-prs` carries no git context.
+**Independent Test**: With a sample session whose recorded working directory is a clean git checkout of a repo with a GitHub `origin` remote on a feature branch, running `frugl upload --link-prs` against the local stack produces a manifest in which that session's entry carries git context with the correct repository `owner/name`, branch, and a 40-hex commit SHA. A session uploaded **without** `--link-prs` carries no git context.
 
 **Acceptance Scenarios**:
 
-1. **Given** `--link-prs` is set and a session whose working directory resolves to a git repository with a remote, **When** `poppi upload` runs, **Then** that session's manifest entry includes a git-context object with the repository identity (host + `owner/name`), the branch, and the current commit SHA.
+1. **Given** `--link-prs` is set and a session whose working directory resolves to a git repository with a remote, **When** `frugl upload` runs, **Then** that session's manifest entry includes a git-context object with the repository identity (host + `owner/name`), the branch, and the current commit SHA.
 2. **Given** `--link-prs` is set, **When** the pre-upload summary renders, **Then** it states how many of the to-be-uploaded sessions will carry git context and names the distinct repositories involved (e.g., "Git context: 4 of 5 sessions, repos: acme/widgets, acme/api").
 3. **Given** a repository `origin` remote URL that embeds credentials (e.g. a token in `https://x-access-token:TOKEN@github.com/acme/widgets.git`), **When** the CLI records the repository identity, **Then** the recorded value contains only host + `owner/name` — the credentials/token are stripped and never recorded, summarised, inspected, or transmitted.
 4. **Given** the role/identity context is unchanged, **When** git context is attached, **Then** it is attached as manifest metadata alongside (not inside) the anonymized session payload, so it does not alter the redacted-payload content hash the incremental ledger keys on.
@@ -53,15 +53,15 @@ A developer wants their team's dashboard to show how much AI spend went into eac
 
 ### User Story 2 — Default is off: nothing git-related leaves the machine unless explicitly enabled (Priority: P1)
 
-A privacy-conscious developer runs `poppi upload` as usual, without any new flag. The CLI behaves exactly as it does today: it discovers, anonymizes, and uploads sessions, and transmits **zero** git/repository/branch/commit metadata. If they look at the pre-upload summary, it confirms that PR linking is off.
+A privacy-conscious developer runs `frugl upload` as usual, without any new flag. The CLI behaves exactly as it does today: it discovers, anonymizes, and uploads sessions, and transmits **zero** git/repository/branch/commit metadata. If they look at the pre-upload summary, it confirms that PR linking is off.
 
 **Why this priority**: This feature intentionally transmits identifying repository data that the anonymizer otherwise redacts. The only way that is acceptable in a trust-gate product is if it is strictly opt-in and the default path is provably unchanged. If a user could leak repo identity without asking for it, the product's privacy story breaks.
 
-**Independent Test**: Running `poppi upload` (no `--link-prs`) against a mock server that records every request body shows that no manifest entry contains any git-context field, and no repository remote was read from disk (verified by pointing the working directory at a git repo and asserting the metadata is still absent).
+**Independent Test**: Running `frugl upload` (no `--link-prs`) against a mock server that records every request body shows that no manifest entry contains any git-context field, and no repository remote was read from disk (verified by pointing the working directory at a git repo and asserting the metadata is still absent).
 
 **Acceptance Scenarios**:
 
-1. **Given** `--link-prs` is NOT set, **When** `poppi upload` runs, **Then** no manifest entry contains git context, and the CLI performs no read of any repository's remote, branch, or commit.
+1. **Given** `--link-prs` is NOT set, **When** `frugl upload` runs, **Then** no manifest entry contains git context, and the CLI performs no read of any repository's remote, branch, or commit.
 2. **Given** `--link-prs` is NOT set, **When** the pre-upload summary renders, **Then** it states "PR linking: off" (or omits the git-context line entirely) so the user is never misled into thinking repo data is being sent.
 3. **Given** a session whose working directory is a git repository, **When** uploaded without `--link-prs`, **Then** the absence of git context is identical to a session worked outside any repository — the default path does not distinguish them.
 
@@ -69,11 +69,11 @@ A privacy-conscious developer runs `poppi upload` as usual, without any new flag
 
 ### User Story 3 — Audit the exact git metadata before any byte is sent (Priority: P1)
 
-Before trusting the feature, a security-conscious developer runs `poppi upload --link-prs --dry-run --inspect`. The CLI computes the git context for every selected session and writes it into the inspection output alongside the redacted payload, transmitting nothing. The developer can read, per session, exactly which repository, branch, and commit will be reported, and confirm no embedded credentials, no absolute paths, and no unexpected repositories are present.
+Before trusting the feature, a security-conscious developer runs `frugl upload --link-prs --dry-run --inspect`. The CLI computes the git context for every selected session and writes it into the inspection output alongside the redacted payload, transmitting nothing. The developer can read, per session, exactly which repository, branch, and commit will be reported, and confirm no embedded credentials, no absolute paths, and no unexpected repositories are present.
 
 **Why this priority**: This is the same trust contract as `001` User Story 2, extended to the new metadata. Because git context is the one thing the CLI sends that is _not_ run through the redactor, the ability to inspect it before sending is what keeps the feature honest. If a user cannot see the repo/branch/commit values before they leave the machine, opt-in is not meaningful consent.
 
-**Independent Test**: For a batch of sessions across two repositories, `poppi upload --link-prs --dry-run --inspect` writes an inspection artifact in which every git-context value that would be transmitted appears in human-readable form, transmits zero bytes to the network, and a textual search of the inspection output for a planted credential token in a repo remote URL returns zero hits.
+**Independent Test**: For a batch of sessions across two repositories, `frugl upload --link-prs --dry-run --inspect` writes an inspection artifact in which every git-context value that would be transmitted appears in human-readable form, transmits zero bytes to the network, and a textual search of the inspection output for a planted credential token in a repo remote URL returns zero hits.
 
 **Acceptance Scenarios**:
 
@@ -85,11 +85,11 @@ Before trusting the feature, a security-conscious developer runs `poppi upload -
 
 ### User Story 4 — Best-effort: sessions without resolvable git context degrade gracefully (Priority: P2)
 
-A developer runs `poppi upload --link-prs` over a month of sessions, some worked in git repositories and some not (scratch directories, a repo since deleted, a detached-HEAD checkout, a repo with no remote). The CLI attaches git context where it can and silently omits it where it cannot — no session is dropped, no error is raised, and the batch completes normally. Sessions without git context simply will not link to a PR later.
+A developer runs `frugl upload --link-prs` over a month of sessions, some worked in git repositories and some not (scratch directories, a repo since deleted, a detached-HEAD checkout, a repo with no remote). The CLI attaches git context where it can and silently omits it where it cannot — no session is dropped, no error is raised, and the batch completes normally. Sessions without git context simply will not link to a PR later.
 
 **Why this priority**: Real session histories are messy. If `--link-prs` aborted or warned loudly on every session that is not a pristine git checkout with a remote, the feature would be unusable over a real backlog. Graceful degradation matches the cloud's own contract that a session with no PR metadata is excluded from PR views rather than treated as an error (cloud 005 Edge Cases).
 
-**Independent Test**: A batch containing (a) a clean repo with a remote, (b) a directory that is not a git repo, (c) a repo with no remote configured, and (d) a working directory that no longer exists on disk, run with `poppi upload --link-prs`, completes successfully; only (a) carries git context; (b)/(c)/(d) carry none; the exit code is success.
+**Independent Test**: A batch containing (a) a clean repo with a remote, (b) a directory that is not a git repo, (c) a repo with no remote configured, and (d) a working directory that no longer exists on disk, run with `frugl upload --link-prs`, completes successfully; only (a) carries git context; (b)/(c)/(d) carry none; the exit code is success.
 
 **Acceptance Scenarios**:
 
@@ -120,7 +120,7 @@ A developer runs `poppi upload --link-prs` over a month of sessions, some worked
 
 #### Opt-in surface
 
-- **FR-001**: `poppi upload` MUST accept a `--link-prs` flag that is **off by default**. Git context is captured and attached only when the flag (or its documented persisted-config equivalent) is active. With the flag absent, `poppi upload` behaviour is byte-for-byte unchanged from `001-cli-ingest-client`.
+- **FR-001**: `frugl upload` MUST accept a `--link-prs` flag that is **off by default**. Git context is captured and attached only when the flag (or its documented persisted-config equivalent) is active. With the flag absent, `frugl upload` behaviour is byte-for-byte unchanged from `001-cli-ingest-client`.
 - **FR-002**: When `--link-prs` is NOT active, the CLI MUST NOT read any repository's remote, branch, or commit, MUST NOT attach any git-context field to any manifest entry, and MUST NOT emit git/repo information in any output.
 - **FR-003**: The CLI MAY support persisting the opt-in as a local configuration setting so the user need not pass `--link-prs` on every run; when both are present the explicit flag wins. The persisted setting MUST default to off and MUST be discoverable (surfaced in `--help` and in the pre-upload summary's "PR linking: on/off" line).
 
@@ -137,11 +137,11 @@ A developer runs `poppi upload --link-prs` over a month of sessions, some worked
 
 - **FR-010**: When git context is resolved for a session, the CLI MUST attach it to that session's manifest entry as an optional, additive `gitContext` object carrying at minimum: repository identity (host + `owner/name`), branch (optional), and commit SHA. This extends the `001-cli-ingest-client` manifest schema (`contracts/manifest.schema.json`, `ManifestEntry`) strictly additively — no existing field is renamed, removed, or made required — consistent with `001` FR-036 (additive changes are non-breaking).
 - **FR-011**: Git context MUST be attached as manifest **metadata**, separate from the anonymized session payload. It MUST NOT be included in the bytes that are run through the anonymizer or PUT as the session payload, and therefore MUST NOT change the redacted-payload content hash the incremental ledger keys on (`001` FR-006c) — so enabling or disabling `--link-prs` does not by itself reclassify an otherwise-unchanged session.
-- **FR-012**: The git-context fields MUST be a stable public contract (per `001` FR-036). The cloud consumes them per `poppi/specs/005` FR-024; any non-additive change requires the coordinated cross-repo bump process.
+- **FR-012**: The git-context fields MUST be a stable public contract (per `001` FR-036). The cloud consumes them per `frugl/specs/005` FR-024; any non-additive change requires the coordinated cross-repo bump process.
 
 #### Trust gate: visibility and auditability
 
-- **FR-013**: When `--link-prs` is active, the `poppi upload` pre-upload summary (`001` FR-020) MUST state that PR linking is on, report how many of the to-be-uploaded sessions will carry git context, and name the distinct repositories involved — so the user sees, before confirming, which repository identities will leave the machine.
+- **FR-013**: When `--link-prs` is active, the `frugl upload` pre-upload summary (`001` FR-020) MUST state that PR linking is on, report how many of the to-be-uploaded sessions will carry git context, and name the distinct repositories involved — so the user sees, before confirming, which repository identities will leave the machine.
 - **FR-014**: When `--link-prs --dry-run --inspect` is used, the CLI MUST write the exact per-session git context that would be transmitted into the inspection output, transmit zero bytes (`001` FR-018), and present the git context distinctly from the redacted payload so the user can tell intentionally-sent-in-clear metadata apart from anonymized content.
 - **FR-015**: No credential, token, or absolute filesystem path may appear in the attached git context, the pre-upload summary, or the inspection output. Repository identity is host + `owner/name` only; the absolute working-directory path used to locate the repo MUST NOT be transmitted or written to inspection output.
 
@@ -179,8 +179,8 @@ A developer runs `poppi upload --link-prs` over a month of sessions, some worked
 
 ## Out of Scope (for this spec)
 
-- **Cloud-side PR matching, GitHub OAuth, merge-rate, and cost-to-merge** — owned by `poppi/specs/005-intelligence-post-processing` and its later plan.
-- **Retroactive backfill** of git context onto sessions already uploaded — a `poppi link-prs --backfill`-style command (which would need to re-touch already-acknowledged sessions) is an explicit follow-up.
+- **Cloud-side PR matching, GitHub OAuth, merge-rate, and cost-to-merge** — owned by `frugl/specs/005-intelligence-post-processing` and its later plan.
+- **Retroactive backfill** of git context onto sessions already uploaded — a `frugl link-prs --backfill`-style command (which would need to re-touch already-acknowledged sessions) is an explicit follow-up.
 - **Explicit per-invocation PR pinning / manual override** (e.g. `--pr <number>` to force a session→PR association) — v1 derives repo/branch/commit automatically; manual overrides are follow-up.
 - **Transmitting per-commit lists, diffs, changed-file paths, or any repository content** — only the forge-agnostic coordinate (host + `owner/name` + branch + HEAD commit) is sent.
 - **Inferring PR associations by parsing session content** — explicitly forbidden by cloud 005 FR-024; the CLI derives context only from the repository, never from the (anonymized) session text.

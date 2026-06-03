@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { CloudHttpError } from "../../cloud/client.js";
-import { isPoppiError, printPoppiError } from "../../lib/errors.js";
+import { isFruglError, printFruglError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient } from "../../org/runtime.js";
 import { color, symbol } from "../../lib/theme.js";
@@ -29,7 +29,7 @@ export default class OrgInvites extends Command {
             ok: true,
             email: session.email,
             invites: null,
-            note: "invite listing is not available; accept by code with `poppi org join <code>`",
+            note: "invite listing is not available; accept by code with `frugl org join <code>`",
           })}\n`,
         );
         return;
@@ -39,10 +39,10 @@ export default class OrgInvites extends Command {
       process.stdout.write(
         `${color.dim(`  Ask a teammate for an invite code (sent to ${session.email}), then run:`)}\n`,
       );
-      process.stdout.write(`    ${color.poppy("poppi org join <code>")}\n`);
+      process.stdout.write(`    ${color.poppy("frugl org join <code>")}\n`);
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }

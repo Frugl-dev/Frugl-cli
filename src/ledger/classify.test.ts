@@ -39,7 +39,7 @@ describe("classify", () => {
   let prevHome: string | undefined;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-classify-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-classify-"));
     prevHome = process.env["XDG_DATA_HOME"];
     process.env["XDG_DATA_HOME"] = tempHome;
   });

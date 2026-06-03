@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://poppi.app/schemas/v1/manifest.json",
-  "title": "Poppi Upload Manifest (v1)",
+  "$id": "https://frugl.app/schemas/v1/manifest.json",
+  "title": "Frugl Upload Manifest (v1)",
   "description": "Per-batch upload manifest. CLI sends this on POST /uploads; cloud returns it (with manifestId) and the same shape appears in the CLI's final-summary JSON on stdout. FR-036 contract surface.",
   "type": "object",
   "required": [

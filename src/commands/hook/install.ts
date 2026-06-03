@@ -3,12 +3,12 @@ import { installHook, type HookScope } from "../../hook/claude-code.js";
 import { resolveHeadlessToken } from "../../auth/token-auth.js";
 import { resolveEndpoint } from "../../cloud/endpoints.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
-import { isPoppiError, printPoppiError } from "../../lib/errors.js";
+import { isFruglError, printFruglError } from "../../lib/errors.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class HookInstall extends Command {
   static override description =
-    "Install a Claude Code hook that runs a headless Poppi upload when a session ends.";
+    "Install a Claude Code hook that runs a headless Frugl upload when a session ends.";
 
   static override flags = {
     global: Flags.boolean({
@@ -27,7 +27,7 @@ export default class HookInstall extends Command {
 
       // Warn (don't fail) when no headless token is configured — the hook would
       // otherwise fail when it fires.
-      const endpoint = resolveEndpoint({ env: process.env["POPPI_ENDPOINT"] });
+      const endpoint = resolveEndpoint({ env: process.env["FRUGL_ENDPOINT"] });
       const tokenConfigured = (await resolveHeadlessToken({ endpointUrl: endpoint.url })) !== null;
 
       if (mode === "json") {
@@ -51,12 +51,12 @@ export default class HookInstall extends Command {
       if (!tokenConfigured) {
         process.stderr.write(
           `${color.warn(`${symbol.warn} No access token configured.`)} ${color.dim(
-            "Set POPPI_TOKEN or run 'poppi login --token <code>', or the hook will fail when it runs.",
+            "Set FRUGL_TOKEN or run 'frugl login --token <code>', or the hook will fail when it runs.",
           )}\n`,
         );
       }
     } catch (err) {
-      if (isPoppiError(err)) process.exit(printPoppiError(err, mode));
+      if (isFruglError(err)) process.exit(printFruglError(err, mode));
       throw err;
     }
   }

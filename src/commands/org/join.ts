@@ -1,7 +1,7 @@
 import { Args, Command, Flags } from "@oclif/core";
 import { input } from "@inquirer/prompts";
 import { CloudHttpError } from "../../cloud/client.js";
-import { isPoppiError, printPoppiError, UsageError } from "../../lib/errors.js";
+import { isFruglError, printFruglError, UsageError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient } from "../../org/runtime.js";
 import { setupOrg, type OrgSetupAction } from "../../org/setup.js";
@@ -60,7 +60,7 @@ export default class OrgJoin extends Command {
               `${color.ok(`${symbol.tick} Joined ${result.slug}`)}  ${color.dim("as member.")}\n`,
             );
             process.stdout.write(
-              `${color.dim("  Next: ")}${color.poppy("poppi upload --dry-run")}\n`,
+              `${color.dim("  Next: ")}${color.poppy("frugl upload --dry-run")}\n`,
             );
           }
           return;
@@ -78,8 +78,8 @@ export default class OrgJoin extends Command {
         action = { action: "join", code };
       }
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }

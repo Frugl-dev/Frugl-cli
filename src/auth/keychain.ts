@@ -1,7 +1,7 @@
 import { Entry } from "@napi-rs/keyring";
 import { KeychainError } from "../lib/errors.js";
 
-export const SERVICE = "poppi";
+export const SERVICE = "frugl";
 
 function entry(account: string): Entry {
   try {

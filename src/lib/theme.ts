@@ -1,4 +1,4 @@
-// Central terminal theme for poppi's human-readable output.
+// Central terminal theme for frugl's human-readable output.
 //
 // All color goes through picocolors, which auto-disables when stdout is not a
 // TTY or NO_COLOR is set — so piped/CI output and --json stay plain text.

@@ -12,7 +12,7 @@ import { makeTempDir, writeTestSessions, type TempDir } from "./helpers/fixtures
 // All spawned CLI processes run against tsx bin/dev.js so the TypeScript
 // source is executed directly without a build step.
 
-describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
+describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
   // ---------------------------------------------------------------------------
   // Usage errors – no auth, no server needed
   // ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("→ exit 20 and names the searched directory", async () => {
       const { exitCode, stderr } = await runCli(["upload", "--confirm", "--endpoint", endpoint], {
-        env: { POPPI_HOME_DIR: tmp.dir },
+        env: { FRUGL_HOME_DIR: tmp.dir },
       });
       expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
       expect(stderr).toMatch(/no sessions/i);
@@ -113,7 +113,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("→ exit 41", async () => {
       const { exitCode, stderr } = await runCli(["upload", "--confirm", "--endpoint", endpoint], {
-        env: { POPPI_HOME_DIR: tmp.dir },
+        env: { FRUGL_HOME_DIR: tmp.dir },
       });
       expect(exitCode).toBe(EXIT.ENDPOINT_UNREACHABLE);
       expect(stderr).toMatch(/unreachable/i);
@@ -143,7 +143,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const inspectDir = path.join(tmp.dir, "inspect-out");
       const { exitCode, stdout } = await runCli(
         ["upload", "--dry-run", "--json", "--inspect", inspectDir, "--endpoint", endpoint],
-        { env: { POPPI_HOME_DIR: tmp.dir } },
+        { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
       // Final JSON on stdout has dryRun:true
@@ -160,7 +160,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       await mkdir(existingDir);
       const { exitCode, stderr } = await runCli(
         ["upload", "--dry-run", "--inspect", existingDir, "--endpoint", endpoint],
-        { env: { POPPI_HOME_DIR: tmp.dir } },
+        { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.INSPECT_DIR_EXISTS);
       expect(stderr).toMatch(/already exists/i);
@@ -171,7 +171,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       await mkdir(existingDir);
       const { exitCode } = await runCli(
         ["upload", "--dry-run", "--inspect", existingDir, "--force", "--endpoint", endpoint],
-        { env: { POPPI_HOME_DIR: tmp.dir } },
+        { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
     });
@@ -203,7 +203,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const { exitCode, stdout } = await runCli(
         ["upload", "--confirm", "--json", "--endpoint", server.url],
         {
-          env: { POPPI_HOME_DIR: tmp.dir },
+          env: { FRUGL_HOME_DIR: tmp.dir },
         },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -237,7 +237,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     });
 
     it("first run uploads; second run reports no new or updated sessions", async () => {
-      const env = { POPPI_HOME_DIR: tmp.dir };
+      const env = { FRUGL_HOME_DIR: tmp.dir };
       const first = await runCli(["upload", "--confirm", "--json", "--endpoint", server.url], {
         env,
       });
@@ -279,7 +279,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("uploads only N sessions when --limit N is passed", async () => {
       const { exitCode, stdout } = await runCli(
         ["upload", "--confirm", "--limit", "2", "--json", "--endpoint", server.url],
-        { env: { POPPI_HOME_DIR: tmp.dir } },
+        { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
@@ -314,7 +314,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("→ exit 50 and upgrade message names required version", async () => {
       const { exitCode, stderr } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
-        env: { POPPI_HOME_DIR: tmp.dir },
+        env: { FRUGL_HOME_DIR: tmp.dir },
       });
       expect(exitCode).toBe(EXIT.VERSION_GATE_FAILURE);
       expect(stderr).toMatch(/99\.0\.0/);
@@ -341,7 +341,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
         expect(exitCode).toBe(EXIT.OK);
         const result = JSON.parse(stdout.trim());
         expect(result.ok).toBe(true);
-        expect(result.email).toBe("tester@poppi-e2e.example");
+        expect(result.email).toBe("tester@frugl-e2e.example");
         expect(result.command).toBe("whoami");
       });
 
@@ -373,7 +373,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       it("emits JSON with dryRun:true as the last stdout line", async () => {
         const { exitCode, stdout } = await runCli(
           ["upload", "--dry-run", "--json", "--endpoint", endpoint],
-          { env: { POPPI_HOME_DIR: tmp.dir } },
+          { env: { FRUGL_HOME_DIR: tmp.dir } },
         );
         expect(exitCode).toBe(EXIT.OK);
         // All stdout lines must be valid JSON (NDJSON mode)
@@ -425,7 +425,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       requestCount = 0;
       const { exitCode, stdout } = await runCli(
         ["upload", "--dry-run", "--json", "--endpoint", recordingEndpoint],
-        { env: { POPPI_HOME_DIR: tmp.dir } },
+        { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
@@ -455,12 +455,12 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       await server.close();
     });
 
-    const env = () => ({ POPPI_HOME_DIR: tmp.dir });
+    const env = () => ({ FRUGL_HOME_DIR: tmp.dir });
 
     it("step 1: whoami prints stored identity", async () => {
       const { exitCode, stdout } = await runCli(["whoami", "--endpoint", server.url]);
       expect(exitCode).toBe(EXIT.OK);
-      expect(stdout).toContain("tester@poppi-e2e.example");
+      expect(stdout).toContain("tester@frugl-e2e.example");
     });
 
     it("step 2: dry-run + inspect writes dir, exit 0, no network", async () => {
@@ -552,7 +552,7 @@ describe("poppi CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const { exitCode, stdout } = await runCli(
         ["upload", "--confirm", "--json", "--endpoint", server.url],
         {
-          env: { POPPI_HOME_DIR: tmp.dir },
+          env: { FRUGL_HOME_DIR: tmp.dir },
           timeoutMs: 70_000,
         },
       );

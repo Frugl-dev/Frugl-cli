@@ -61,7 +61,7 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("poppi recommendations", () => {
+describe("frugl recommendations", () => {
   it("lists recommendations ranked, preserving server order (JSON)", async () => {
     callMock.mockResolvedValue({
       recommendations: [
@@ -133,7 +133,7 @@ describe("poppi recommendations", () => {
     expect(stdout).toContain("Estimated total");
     expect(stdout).toContain("~$520.40/mo");
     // top-item fix CTA
-    expect(stdout).toContain("poppi recs --fix r1 | claude");
+    expect(stdout).toContain("frugl recs --fix r1 | claude");
   });
 
   it("renders the impact view for --status applied (baseline / realized / measuring)", async () => {
@@ -187,8 +187,8 @@ describe("poppi recommendations", () => {
     callMock.mockResolvedValue({ recommendations: [] });
     await Recommendations.run([]);
     expect(stdout).toContain("No recommendations right now.");
-    expect(stdout).toContain("poppi upload");
-    expect(stdout).toContain("poppi recs --status dismissed");
+    expect(stdout).toContain("frugl upload");
+    expect(stdout).toContain("frugl recs --status dismissed");
   });
 
   it("fails closed when not logged in (no API calls)", async () => {

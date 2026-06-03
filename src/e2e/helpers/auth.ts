@@ -1,7 +1,7 @@
 import { Entry } from "@napi-rs/keyring";
 import type { AuthSession } from "../../auth/session.js";
 
-const SERVICE = "poppi";
+const SERVICE = "frugl";
 
 export function injectAuth(session: AuthSession): void {
   new Entry(SERVICE, session.endpointUrl).setPassword(JSON.stringify(session));
@@ -17,7 +17,7 @@ export function clearAuth(endpointUrl: string): void {
 
 export function makeTestSession(endpointUrl: string): AuthSession {
   return {
-    email: "tester@poppi-e2e.example",
+    email: "tester@frugl-e2e.example",
     userId: "user-e2e-test",
     token: "tok-e2e-test",
     endpointUrl,

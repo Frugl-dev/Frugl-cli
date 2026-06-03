@@ -2,8 +2,8 @@ import { loadAuthSession } from "./session.js";
 
 // Resolves the credential for a non-interactive (headless) run. Precedence:
 //   1. --token flag        (explicit, one-off override)
-//   2. POPPI_TOKEN env var  (the natural CI / secret-store mechanism)
-//   3. stored keychain session token (developer who ran `poppi login`)
+//   2. FRUGL_TOKEN env var  (the natural CI / secret-store mechanism)
+//   3. stored keychain session token (developer who ran `frugl login`)
 // When a token is resolved in a non-interactive context, the caller MUST use it
 // and MUST NOT fall back to interactive OTP login.
 
@@ -29,7 +29,7 @@ export async function resolveHeadlessToken(
   const flag = opts.flagToken?.trim();
   if (flag) return { token: flag, source: "flag" };
 
-  const envToken = env.POPPI_TOKEN?.trim();
+  const envToken = env.FRUGL_TOKEN?.trim();
   if (envToken) return { token: envToken, source: "env" };
 
   const session = await loadAuthSession(opts.endpointUrl);

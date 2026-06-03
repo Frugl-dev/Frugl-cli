@@ -4,7 +4,7 @@ import { resolveOutputMode } from "../../lib/output-mode.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class HookStatus extends Command {
-  static override description = "Report whether the Poppi upload hook is installed in Claude Code.";
+  static override description = "Report whether the Frugl upload hook is installed in Claude Code.";
 
   static override flags = {
     global: Flags.boolean({
@@ -28,8 +28,8 @@ export default class HookStatus extends Command {
     }
     process.stdout.write(
       installed
-        ? `${color.ok(`${symbol.tick} Poppi hook installed`)}  ${color.dim(`(${scope}: ${file})`)}\n`
-        : `${color.dim(`No Poppi hook installed (${scope}: ${file}).`)}\n`,
+        ? `${color.ok(`${symbol.tick} Frugl hook installed`)}  ${color.dim(`(${scope}: ${file})`)}\n`
+        : `${color.dim(`No Frugl hook installed (${scope}: ${file}).`)}\n`,
     );
   }
 }

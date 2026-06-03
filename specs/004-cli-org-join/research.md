@@ -1,4 +1,4 @@
-# Phase 0 Research: poppi-cli org membership (`004-cli-org-join`)
+# Phase 0 Research: frugl-cli org membership (`004-cli-org-join`)
 
 **Feature**: 004-cli-org-join | **Date**: 2026-05-24
 
@@ -14,7 +14,7 @@ There are **no open `NEEDS CLARIFICATION` markers** in Technical Context.
 
 ## R-1: Reuse the `001` HTTP client unchanged for both new endpoints
 
-**Decision**: `POST /api/join` and `GET /api/orgs/me` are issued through the existing `src/cloud/client.ts` (Node native `fetch`, `001` R-3) with no changes to the client itself. Two thin wrappers — `src/cloud/join.ts` (`redeemCode`) and `src/cloud/orgs.ts` (`getOrgContext`) — build the request, call the client, and `zod`-parse the response via `src/cloud/schemas.ts`. The CLI-version header (`X-Poppi-Client`, `001` FR-032) is attached automatically by the client, so the version gate (`426`) applies to both calls for free.
+**Decision**: `POST /api/join` and `GET /api/orgs/me` are issued through the existing `src/cloud/client.ts` (Node native `fetch`, `001` R-3) with no changes to the client itself. Two thin wrappers — `src/cloud/join.ts` (`redeemCode`) and `src/cloud/orgs.ts` (`getOrgContext`) — build the request, call the client, and `zod`-parse the response via `src/cloud/schemas.ts`. The CLI-version header (`X-Frugl-Client`, `001` FR-032) is attached automatically by the client, so the version gate (`426`) applies to both calls for free.
 
 **Rationale**:
 
@@ -35,8 +35,8 @@ There are **no open `NEEDS CLARIFICATION` markers** in Technical Context.
 
 **Rationale**:
 
-- FR-017 / US1 scenario 4 are explicit: re-running `poppi join <code>` for an org you already belong to is an idempotent no-op from the user's perspective. The user asked "put me in this org"; they are in this org; the goal is satisfied.
-- Treating it as a failure would break `poppi join <code> && poppi upload` chains for the common "I forgot I already joined" case.
+- FR-017 / US1 scenario 4 are explicit: re-running `frugl join <code>` for an org you already belong to is an idempotent no-op from the user's perspective. The user asked "put me in this org"; they are in this org; the goal is satisfied.
+- Treating it as a failure would break `frugl join <code> && frugl upload` chains for the common "I forgot I already joined" case.
 - The org name for the message comes from the `already_member` response body. Per cloud `join.md` the success body carries `{ org: { id, name, slug } }`; the `already_member` error body follows the cloud's standard error shape `{ error, message, details }`. The CLI prints the server's `message` verbatim (which already names the org) rather than re-deriving it — see R-5.
 
 **Alternatives considered**:
@@ -75,7 +75,7 @@ There are **no open `NEEDS CLARIFICATION` markers** in Technical Context.
 | ---- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | 200  | —                   | "✓ Joined `<name>` (`<slug>`) as `<role>`." + next-step line                                                                      | `OK` (0)                    |
 | 400  | `validation_failed` | surface the server's `message` (format drifted past local check)                                                                  | `USAGE` (2)                 |
-| 401  | `unauthorized`      | "Your session has expired. Run `poppi login` and try again."                                                                      | `AUTH_FAILURE` (10)         |
+| 401  | `unauthorized`      | "Your session has expired. Run `frugl login` and try again."                                                                      | `AUTH_FAILURE` (10)         |
 | 404  | `not_found`         | "Invite code not recognised. Check for typos or ask the admin to confirm the code."                                               | `JOIN_CODE_REJECTED` (70)   |
 | 409  | `already_member`    | server `message` ("You are already a member of `<Org>`.") — **exit 0** (R-2)                                                      | `OK` (0)                    |
 | 409  | `wrong_org`         | "You are already a member of `<details.current_org_name>`. Leave that organization … before joining `<details.target_org_name>`." | `ALREADY_IN_OTHER_ORG` (71) |
@@ -171,7 +171,7 @@ resolve endpoint → load auth token
 
 **Alternatives considered**:
 
-- _A dedicated `MEMBERSHIP_REVOKED` exit code_ — rejected: the CLI cannot distinguish "token expired" from "membership revoked" from a `401`/`403` alone, and the remediation ("check your access, run `poppi login` if needed, re-run") is the same. `AUTH_FAILURE` is the honest, already-contracted code.
+- _A dedicated `MEMBERSHIP_REVOKED` exit code_ — rejected: the CLI cannot distinguish "token expired" from "membership revoked" from a `401`/`403` alone, and the remediation ("check your access, run `frugl login` if needed, re-run") is the same. `AUTH_FAILURE` is the honest, already-contracted code.
 
 ---
 
@@ -220,7 +220,7 @@ Crockford-specific normalization detail: the canonical Crockford decode treats `
 
 ## R-11: The plaintext code is a secret — never logged at default level (SC-005)
 
-**Decision**: The normalized and raw code values are treated as secret material. They appear in the `POST /api/join` request body and nowhere else at the default log level. Success/error messages name the **org**, never echo the code. Only an explicit `--debug` path may include the code, and the help text + docs warn that debug output can contain secrets (FR-006). A unit test runs `poppi join <code>` at default level and asserts the captured stdout+stderr does not contain the code (SC-005).
+**Decision**: The normalized and raw code values are treated as secret material. They appear in the `POST /api/join` request body and nowhere else at the default log level. Success/error messages name the **org**, never echo the code. Only an explicit `--debug` path may include the code, and the help text + docs warn that debug output can contain secrets (FR-006). A unit test runs `frugl join <code>` at default level and asserts the captured stdout+stderr does not contain the code (SC-005).
 
 **Rationale**:
 
@@ -235,7 +235,7 @@ Crockford-specific normalization detail: the canonical Crockford decode treats `
 
 ## R-12: `--json` extensions are strictly additive to the `001` contract
 
-**Decision**: `poppi join --json` emits a single `JoinResult` object (success: `{ command: "join", ok: true, org, membership }`; error: `{ command: "join", ok: false, error, message }`) on stdout, matching the `001` FR-040 uniform machine contract. `poppi whoami --json` gains an additive `organization` field (the org object or `null`) on its existing `WhoamiResultOk` (FR-026). The `upload-start` NDJSON event gains an additive `organization: { id, slug }` (FR-030). No existing `001` field is renamed or removed; consumers tolerant of unknown fields (per the `001` progress-event schema's forward-compatibility note) are unaffected.
+**Decision**: `frugl join --json` emits a single `JoinResult` object (success: `{ command: "join", ok: true, org, membership }`; error: `{ command: "join", ok: false, error, message }`) on stdout, matching the `001` FR-040 uniform machine contract. `frugl whoami --json` gains an additive `organization` field (the org object or `null`) on its existing `WhoamiResultOk` (FR-026). The `upload-start` NDJSON event gains an additive `organization: { id, slug }` (FR-030). No existing `001` field is renamed or removed; consumers tolerant of unknown fields (per the `001` progress-event schema's forward-compatibility note) are unaffected.
 
 **Rationale**:
 

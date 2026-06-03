@@ -23,7 +23,7 @@ describe("discoverCursorSessions", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-cursor-discover-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-cursor-discover-"));
   });
 
   afterEach(() => {
@@ -147,7 +147,7 @@ describe("parseCursorSession", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(path.join(tmpdir(), "poppi-cursor-parse-"));
+    tempHome = mkdtempSync(path.join(tmpdir(), "frugl-cursor-parse-"));
   });
 
   afterEach(() => {

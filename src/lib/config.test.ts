@@ -7,14 +7,14 @@ import { getLinkPrs, setLinkPrs, readConfig } from "./config.js";
 let dir: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), "poppi-config-"));
+  dir = mkdtempSync(path.join(tmpdir(), "frugl-config-"));
 });
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe("poppi-config (linkPrs)", () => {
+describe("frugl-config (linkPrs)", () => {
   it("defaults to linkPrs:false on a fresh store", () => {
     expect(getLinkPrs({ cwd: dir })).toBe(false);
     expect(readConfig({ cwd: dir })).toEqual({ schemaVersion: 1, linkPrs: false });
@@ -30,7 +30,7 @@ describe("poppi-config (linkPrs)", () => {
   it("treats a schema-version mismatch as defaults, not an error", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
-      path.join(dir, "poppi-config.json"),
+      path.join(dir, "frugl-config.json"),
       JSON.stringify({ data: { schemaVersion: 999, linkPrs: true } }),
     );
     // Unknown schema version → fall back to defaults (linkPrs:false), no throw.

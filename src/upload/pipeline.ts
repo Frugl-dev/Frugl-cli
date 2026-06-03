@@ -8,7 +8,7 @@ import {
   completeUploadResponseSchema,
 } from "../cloud/schemas.js";
 import { withRetry } from "../lib/retry.js";
-import { NetworkError, PoppiError, StaleResumeError } from "../lib/errors.js";
+import { NetworkError, FruglError, StaleResumeError } from "../lib/errors.js";
 import { classifyFailure } from "./failure-reasons.js";
 import { EXIT } from "../lib/exit-codes.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
@@ -68,7 +68,7 @@ export async function rawFileHash(filePath: string): Promise<string> {
 
 export async function runUploadPipeline(opts: PipelineOptions): Promise<PipelineResult> {
   if (opts.jobs.length === 0) {
-    throw new PoppiError("No sessions to upload", EXIT.GENERIC_FAILURE);
+    throw new FruglError("No sessions to upload", EXIT.GENERIC_FAILURE);
   }
 
   const existing = opts.resumeStore.load();
@@ -178,7 +178,7 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
             throw err;
           }
           // Isolate the failure: reset to pending so a re-run retries only this
-          // session, and persist the classified reason so `poppi upload --report`
+          // session, and persist the classified reason so `frugl upload --report`
           // can explain the cause and remedy.
           const failure = classifyFailure(err);
           opts.resumeStore.updateEntry(entry.sessionId, (e) => ({
@@ -202,7 +202,7 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
 
   if (failures.length > 0) {
     throw new NetworkError(
-      `Upload incomplete: ${failures.length} session(s) failed after retries. Re-run 'poppi upload' to resume.`,
+      `Upload incomplete: ${failures.length} session(s) failed after retries. Re-run 'frugl upload' to resume.`,
     );
   }
 
@@ -293,8 +293,8 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
       err.body !== null &&
       (err.body as Record<string, unknown>).error === "org_required"
     ) {
-      throw new PoppiError(
-        "Your account has no organization. Run 'poppi setup' to finish setup.",
+      throw new FruglError(
+        "Your account has no organization. Run 'frugl setup' to finish setup.",
         EXIT.GENERIC_FAILURE,
       );
     }
@@ -324,7 +324,7 @@ function reconcileExistingManifest(state: ResumeState, jobs: SessionUploadJob[])
   const known = new Set(state.manifest.entries.map((e) => e.sessionId));
   for (const job of jobs) {
     if (!known.has(job.sessionId)) {
-      throw new PoppiError(
+      throw new FruglError(
         `Resume state references unknown manifest ${state.manifest.manifestId}; session ${job.sessionId} is not part of the in-flight manifest.`,
         EXIT.GENERIC_FAILURE,
       );

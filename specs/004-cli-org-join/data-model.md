@@ -1,10 +1,10 @@
-# Phase 1 Data Model: poppi-cli org membership (`004-cli-org-join`)
+# Phase 1 Data Model: frugl-cli org membership (`004-cli-org-join`)
 
 **Feature**: 004-cli-org-join | **Date**: 2026-05-24
 
-Entities the CLI manipulates internally for `poppi join` and the org-aware `whoami` / `upload` flows. Public contract shapes (what the CLI emits on stdout/stderr or sends to the cloud) live in `contracts/`; this file is the **internal** model and the `--json` result shapes.
+Entities the CLI manipulates internally for `frugl join` and the org-aware `whoami` / `upload` flows. Public contract shapes (what the CLI emits on stdout/stderr or sends to the cloud) live in `contracts/`; this file is the **internal** model and the `--json` result shapes.
 
-This feature deliberately adds **no persistent local state** (spec Assumptions → "No new persistent local state"): nothing here is written to the OS keychain, the `poppi-ledger` `conf` namespace, or the `poppi-resume-state` `conf` namespace. Every entity below is **ephemeral** — constructed during a single command invocation and discarded when it returns. The cloud-owned entities (Organization, Membership, Invitation) are referenced but never redefined here; the cloud's `003` data-model is authoritative for them.
+This feature deliberately adds **no persistent local state** (spec Assumptions → "No new persistent local state"): nothing here is written to the OS keychain, the `frugl-ledger` `conf` namespace, or the `frugl-resume-state` `conf` namespace. Every entity below is **ephemeral** — constructed during a single command invocation and discarded when it returns. The cloud-owned entities (Organization, Membership, Invitation) are referenced but never redefined here; the cloud's `003` data-model is authoritative for them.
 
 The `001` data-model entities (`AuthSession`, `Endpoint`, `ExitCode`, `CommandResult`, `ProgressEvent`, the upload pipeline entities) are reused unchanged; this document records only the **delta**.
 
@@ -26,7 +26,7 @@ These are owned and defined by cloud spec `003-org-membership-permissions`. The 
 
 ### 1. `InviteCode`
 
-The transient redemption material supplied as the `poppi join` positional argument. Lives only for the duration of the command; never persisted, never logged at default level (R-11 / FR-006).
+The transient redemption material supplied as the `frugl join` positional argument. Lives only for the duration of the command; never persisted, never logged at default level (R-11 / FR-006).
 
 | Field        | Type     | Source                  | Notes                                                                              |
 | ------------ | -------- | ----------------------- | ---------------------------------------------------------------------------------- |
@@ -111,9 +111,9 @@ A `401` is thrown as `AuthError` from the wrapper (shared `001` behaviour); only
 
 ---
 
-### 4. `JoinResult` (`--json` output for `poppi join`)
+### 4. `JoinResult` (`--json` output for `frugl join`)
 
-Structured form of the single stdout JSON object emitted by `poppi join --json` (FR-021). Public contract — see `contracts/command-output.schema.json`. Slots into the `001` FR-040 uniform machine contract alongside `login`/`logout`/`whoami`.
+Structured form of the single stdout JSON object emitted by `frugl join --json` (FR-021). Public contract — see `contracts/command-output.schema.json`. Slots into the `001` FR-040 uniform machine contract alongside `login`/`logout`/`whoami`.
 
 ```ts
 type JoinResult =
@@ -145,9 +145,9 @@ type JoinResult =
 
 ---
 
-### 5. Extension to `WhoamiResultOk` (`--json` output for `poppi whoami`)
+### 5. Extension to `WhoamiResultOk` (`--json` output for `frugl whoami`)
 
-`poppi whoami --json` extends its existing `001` `WhoamiResultOk` object with one **additive** field (FR-026 / R-12). No existing field is renamed or removed.
+`frugl whoami --json` extends its existing `001` `WhoamiResultOk` object with one **additive** field (FR-026 / R-12). No existing field is renamed or removed.
 
 ```ts
 // 001 WhoamiResultOk, with the additive field:
@@ -168,7 +168,7 @@ type JoinResult =
 
 ---
 
-### 6. Extension to the `upload-start` progress event (`--json` output for `poppi upload`)
+### 6. Extension to the `upload-start` progress event (`--json` output for `frugl upload`)
 
 The `001` `upload-start` NDJSON event gains one **additive** field (FR-030 / R-12). The `001` progress-event schema's forward-compatibility note already requires consumers to tolerate unknown fields, so this is backward-compatible.
 
@@ -201,7 +201,7 @@ Four additions to the `001` frozen `EXIT` table (`src/lib/exit-codes.ts`). Publi
 // additions to the 001 EXIT constant:
 export const EXIT = {
   // ... all 001 codes unchanged (OK=0 … INSPECT_DIR_EXISTS=60) ...
-  ORG_REQUIRED: 12, // authenticated but no Membership; emitted by `poppi upload` only (FR-028)
+  ORG_REQUIRED: 12, // authenticated but no Membership; emitted by `frugl upload` only (FR-028)
   JOIN_CODE_REJECTED: 70, // not_found / expired / revoked / exhausted (FR-016)
   ALREADY_IN_OTHER_ORG: 71, // wrong_org one-org-per-user conflict (FR-018)
   RATE_LIMITED: 72, // redemption rate-limit tripped, 429 (FR-014)
@@ -235,7 +235,7 @@ Reused unchanged from `001`: `AuthError` (10, for `401`), `VersionGateError` (50
 | `GET /api/orgs/me` success + `409 org_required`      | `zod` runtime validation        | `src/cloud/schemas.ts`  |
 | Invite-code alphabet + length (pre-network)          | pure functions                  | `src/join/validate.ts`  |
 | Invite-code normalization (pre-network)              | pure functions                  | `src/join/normalize.ts` |
-| `poppi join` positional-arg shape (required, single) | oclif args system + strict-args | `src/commands/join.ts`  |
+| `frugl join` positional-arg shape (required, single) | oclif args system + strict-args | `src/commands/join.ts`  |
 
 All schema mismatches surface as honest failures with a stable exit code (`GENERIC_FAILURE`); never silently coerced (Principle VI / FR-012).
 
@@ -244,7 +244,7 @@ All schema mismatches surface as honest failures with a stable exit code (`GENER
 ## Relationships
 
 ```
-poppi join <code>
+frugl join <code>
   InviteCode.raw ──normalize()──> InviteCode.normalized ──validate()──┐
                                           (USAGE if invalid, no network)
                                                                        ▼
@@ -254,7 +254,7 @@ poppi join <code>
                                                           ▼                       ▼
                                               JoinResult (--json)         message + exit code (R-4)
 
-poppi whoami / poppi upload (org-aware)
+frugl whoami / frugl upload (org-aware)
   getOrgContext() ──GET /api/orgs/me──> OrgContext { kind: "member" | "none" }
         │
         ├── whoami:  member → report org+role (exit 0) | none → "no org yet" (exit 0)

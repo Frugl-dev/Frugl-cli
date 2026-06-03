@@ -2,7 +2,7 @@ import { EXIT, type ExitCode } from "./exit-codes.js";
 import type { OutputMode } from "./output-mode.js";
 import { color } from "./theme.js";
 
-export class PoppiError extends Error {
+export class FruglError extends Error {
   readonly exitCode: ExitCode;
   constructor(message: string, exitCode: ExitCode) {
     super(message);
@@ -11,42 +11,42 @@ export class PoppiError extends Error {
   }
 }
 
-export class AuthError extends PoppiError {
+export class AuthError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.AUTH_FAILURE);
   }
 }
 
-export class KeychainError extends PoppiError {
+export class KeychainError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.KEYCHAIN_UNAVAILABLE);
   }
 }
 
-export class AnonymizationError extends PoppiError {
+export class AnonymizationError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.ANONYMIZATION_FAILURE);
   }
 }
 
-export class NetworkError extends PoppiError {
+export class NetworkError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.NETWORK_FAILURE);
   }
 }
 
-export class EndpointError extends PoppiError {
+export class EndpointError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.ENDPOINT_UNREACHABLE);
   }
 }
 
-export class VersionGateError extends PoppiError {
+export class VersionGateError extends FruglError {
   readonly currentVersion: string;
   readonly requiredVersion: string;
   constructor(currentVersion: string, requiredVersion: string) {
     super(
-      `poppi-cli ${currentVersion} is below the minimum supported version ${requiredVersion}. Run: npm install -g poppi@latest`,
+      `frugl-cli ${currentVersion} is below the minimum supported version ${requiredVersion}. Run: npm install -g frugl@latest`,
       EXIT.VERSION_GATE_FAILURE,
     );
     this.currentVersion = currentVersion;
@@ -54,26 +54,26 @@ export class VersionGateError extends PoppiError {
   }
 }
 
-export class NoSessionsError extends PoppiError {
+export class NoSessionsError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.NO_SESSIONS_FOUND);
   }
 }
 
-export class InspectDirError extends PoppiError {
+export class InspectDirError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.INSPECT_DIR_EXISTS);
   }
 }
 
-export class UsageError extends PoppiError {
+export class UsageError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.USAGE);
   }
 }
 
-export function isPoppiError(value: unknown): value is PoppiError {
-  return value instanceof PoppiError;
+export function isFruglError(value: unknown): value is FruglError {
+  return value instanceof FruglError;
 }
 
 // Reverse-lookup the symbolic name for a stable exit code (e.g. 10 → AUTH_FAILURE).
@@ -85,14 +85,14 @@ export function exitCodeName(code: number): string | undefined {
   return EXIT_NAME[code];
 }
 
-// Render an error to stderr in poppi's house style and return the exit code to
-// use. PoppiErrors get a `poppi: <message>` line plus, in text mode, a dim
+// Render an error to stderr in frugl's house style and return the exit code to
+// use. FruglErrors get a `frugl: <message>` line plus, in text mode, a dim
 // `Exit code N (NAME)` footer matching the design's error screens. Anything
 // else is reported as a generic failure. Never colorizes structured data —
 // picocolors auto-disables on non-TTY/NO_COLOR so piped output stays plain.
-export function printPoppiError(err: unknown, mode: OutputMode = "text"): ExitCode {
-  if (isPoppiError(err)) {
-    process.stderr.write(`${color.err(`poppi: ${err.message}`)}\n`);
+export function printFruglError(err: unknown, mode: OutputMode = "text"): ExitCode {
+  if (isFruglError(err)) {
+    process.stderr.write(`${color.err(`frugl: ${err.message}`)}\n`);
     if (mode === "text") {
       const name = exitCodeName(err.exitCode);
       process.stderr.write(
@@ -102,7 +102,7 @@ export function printPoppiError(err: unknown, mode: OutputMode = "text"): ExitCo
     return err.exitCode;
   }
   const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`${color.err(`poppi: ${message}`)}\n`);
+  process.stderr.write(`${color.err(`frugl: ${message}`)}\n`);
   return EXIT.GENERIC_FAILURE;
 }
 

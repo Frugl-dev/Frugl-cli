@@ -1,6 +1,6 @@
 import { Args, Command, Flags } from "@oclif/core";
 import { CloudHttpError } from "../../cloud/client.js";
-import { isPoppiError, printPoppiError } from "../../lib/errors.js";
+import { isFruglError, printFruglError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient, fetchOrgContext } from "../../org/runtime.js";
 import { renderNoOrg } from "../../org/render.js";
@@ -64,12 +64,12 @@ export default class OrgUse extends Command {
         ),
       );
       process.stdout.write(
-        `${color.dim("  To move to another org, join it with ")}${color.poppy("poppi org join <code>")}${color.dim(".")}\n`,
+        `${color.dim("  To move to another org, join it with ")}${color.poppy("frugl org join <code>")}${color.dim(".")}\n`,
       );
       process.exit(0);
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }

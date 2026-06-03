@@ -1,10 +1,10 @@
 {
-  "name": "poppi",
+  "name": "frugl",
   "version": "0.1.0",
-  "description": "Upload anonymized AI-coding session logs to hosted Poppi.",
+  "description": "Upload anonymized AI-coding session logs to hosted Frugl.",
   "license": "MIT",
   "bin": {
-    "poppi": "./bin/run.js"
+    "frugl": "./bin/run.js"
   },
   "files": [
     "bin",
@@ -60,9 +60,9 @@
     "test"
   ],
   "oclif": {
-    "bin": "poppi",
+    "bin": "frugl",
     "commands": "./src/commands",
-    "dirname": "poppi",
+    "dirname": "frugl",
     "topicSeparator": " "
   },
   "engines": {

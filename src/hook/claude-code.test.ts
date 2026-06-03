@@ -7,7 +7,7 @@ import { UsageError } from "../lib/errors.js";
 
 const tmpDirs: string[] = [];
 function makeTmp(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "poppi-hook-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "frugl-hook-"));
   tmpDirs.push(dir);
   return dir;
 }
@@ -28,7 +28,7 @@ describe("claude-code hook install/uninstall", () => {
     const groups = settings.hooks.SessionEnd;
     expect(groups).toHaveLength(1);
     expect(groups[0].hooks[0]).toMatchObject({ type: "command" });
-    expect(groups[0].hooks[0].command).toMatch(/poppi upload/);
+    expect(groups[0].hooks[0].command).toMatch(/frugl upload/);
     expect(isInstalled("project", { cwd })).toBe(true);
   });
 
@@ -65,7 +65,7 @@ describe("claude-code hook install/uninstall", () => {
       g.hooks.map((h: any) => h.command),
     );
     expect(commands).toContain("echo other");
-    expect(commands.some((c: string) => /poppi upload/.test(c))).toBe(true);
+    expect(commands.some((c: string) => /frugl upload/.test(c))).toBe(true);
   });
 
   it("uninstall removes only the managed entry and leaves others intact", () => {

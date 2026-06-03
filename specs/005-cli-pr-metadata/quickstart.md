@@ -1,4 +1,4 @@
-# Quickstart: poppi-cli PR-link metadata (`--link-prs`)
+# Quickstart: frugl-cli PR-link metadata (`--link-prs`)
 
 **Feature**: 005-cli-pr-metadata | **Date**: 2026-05-24
 
@@ -9,7 +9,7 @@ This walkthrough is for **trust-gate verifiers** and **contributors**. It proves
 3. **Auditable before send** — `--link-prs --dry-run --inspect` shows the exact metadata and transmits zero bytes (SC-004).
 4. **Credentials never leak** — a token embedded in a remote URL appears nowhere in the manifest, summary, or inspection output (SC-003).
 
-Prerequisites are the same as `001` (`specs/001-cli-ingest-client/quickstart.md`): Node ≥ 20, pnpm, the local Docker stack from the sibling `poppi/` repo, and a working OS keychain. Bring up the stack and `pnpm dev login` exactly as in `001` §4–5 before the steps below.
+Prerequisites are the same as `001` (`specs/001-cli-ingest-client/quickstart.md`): Node ≥ 20, pnpm, the local Docker stack from the sibling `frugl/` repo, and a working OS keychain. Bring up the stack and `pnpm dev login` exactly as in `001` §4–5 before the steps below.
 
 ---
 
@@ -18,8 +18,8 @@ Prerequisites are the same as `001` (`specs/001-cli-ingest-client/quickstart.md`
 Run a normal upload, with **no** new flag, from inside a git repository:
 
 ```bash
-cd ~/Documents/poppi/poppi-cli         # a real git checkout with a GitHub origin
-export POPPI_ENDPOINT=http://localhost:54321
+cd ~/Documents/frugl/frugl-cli         # a real git checkout with a GitHub origin
+export FRUGL_ENDPOINT=http://localhost:54321
 
 pnpm dev upload --dry-run --inspect ./out-default
 ```
@@ -56,7 +56,7 @@ Expected, for a session worked in this repo on branch `005-cli-pr-metadata`:
 ```jsonc
 {
   "<sessionId>": {
-    "repository": { "host": "github.com", "owner": "<you>", "name": "poppi-cli" },
+    "repository": { "host": "github.com", "owner": "<you>", "name": "frugl-cli" },
     "branch": "005-cli-pr-metadata",
     "commitSha": "…40-hex HEAD…",
   },

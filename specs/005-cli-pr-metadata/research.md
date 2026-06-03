@@ -1,4 +1,4 @@
-# Phase 0 Research: poppi-cli PR-link metadata
+# Phase 0 Research: frugl-cli PR-link metadata
 
 **Feature**: 005-cli-pr-metadata | **Date**: 2026-05-24
 
@@ -17,12 +17,12 @@ Each entry follows the **Decision / Rationale / Alternatives considered** format
 **Rationale**:
 
 - It is the **session's own** working directory at work time, which is exactly what the spec's User Story 1 and FR-004 require ("from the session's recorded working directory") — not the CLI's `process.cwd()` at upload time, which is usually unrelated.
-- Confirmed against live data: a real `~/.claude/projects/**/*.jsonl` record carries `"cwd": "/Users/.../poppi-cli"` and `"gitBranch": "main"`. The fields exist today; no new source instrumentation is needed.
+- Confirmed against live data: a real `~/.claude/projects/**/*.jsonl` record carries `"cwd": "/Users/.../frugl-cli"` and `"gitBranch": "main"`. The fields exist today; no new source instrumentation is needed.
 - `gitBranch` directly satisfies FR-006's "prefer the branch the session itself recorded at work time when the source provides it" — we record the session's branch even if the repo has since moved to another branch at upload time.
 
 **Alternatives considered**:
 
-- _Use `process.cwd()` at upload time_ — rejected: that is the directory the user ran `poppi upload` from, almost never the session's repo; it would mislabel every session in a batch with one repo.
+- _Use `process.cwd()` at upload time_ — rejected: that is the directory the user ran `frugl upload` from, almost never the session's repo; it would mislabel every session in a batch with one repo.
 - _Re-derive the repo from the JSONL file's path under `~/.claude/projects/`_ — rejected: that path is a slug of the _project directory name_, lossy and not a real filesystem path; the recorded `cwd` is authoritative.
 - _Require the branch from the live repo only_ — rejected: violates FR-006's preference for the work-time branch and would mislabel sessions whose repo has since switched branches.
 
@@ -49,7 +49,7 @@ Each entry follows the **Decision / Rationale / Alternatives considered** format
 
 ## R-3: Repository-root resolution from a subdirectory `cwd` (spec Edge Cases)
 
-**Decision**: Ascend from the resolved absolute `cwd` toward the filesystem root, at each level testing for a `.git` entry (directory or gitdir-pointer file). The first level that has one is the repository root. Stop at the filesystem root; if none is found, the session is "not in a repo" → no context. Memoise the `cwd → repoRoot|null` result per distinct `cwd` within one `poppi upload` invocation.
+**Decision**: Ascend from the resolved absolute `cwd` toward the filesystem root, at each level testing for a `.git` entry (directory or gitdir-pointer file). The first level that has one is the repository root. Stop at the filesystem root; if none is found, the session is "not in a repo" → no context. Memoise the `cwd → repoRoot|null` result per distinct `cwd` within one `frugl upload` invocation.
 
 **Rationale**:
 
@@ -127,7 +127,7 @@ If the URL does not parse into a clean `host` + non-empty `owner` + non-empty `n
 
 ## R-7: Opt-in surface — `--link-prs` flag plus optional persisted config (FR-001, FR-002, FR-003)
 
-**Decision**: Add a boolean `--link-prs` flag to `poppi upload`, **default false**. Resolve the effective opt-in as: explicit `--link-prs` flag (if present) wins; otherwise the persisted `linkPrs` config value (FR-003); otherwise `false`. The persisted setting lives in a new `conf`-backed `poppi-config` namespace (default `linkPrs: false`) and is surfaced in `--help` and in the pre-upload summary's "PR linking: on/off" line. When the effective opt-in is **off**, the code path that resolves git context is never entered — no `cwd` is read, no `.git` is touched, no git field is attached or emitted (FR-002, the hard default-off guarantee).
+**Decision**: Add a boolean `--link-prs` flag to `frugl upload`, **default false**. Resolve the effective opt-in as: explicit `--link-prs` flag (if present) wins; otherwise the persisted `linkPrs` config value (FR-003); otherwise `false`. The persisted setting lives in a new `conf`-backed `frugl-config` namespace (default `linkPrs: false`) and is surfaced in `--help` and in the pre-upload summary's "PR linking: on/off" line. When the effective opt-in is **off**, the code path that resolves git context is never entered — no `cwd` is read, no `.git` is touched, no git field is attached or emitted (FR-002, the hard default-off guarantee).
 
 **Rationale**:
 
@@ -139,7 +139,7 @@ If the URL does not parse into a clean `host` + non-empty `owner` + non-empty `n
 
 - _Default-on with an opt-out flag_ — rejected: directly contradicts the feature's reason for existing (repo identity is normally redacted; sending it requires consent). FR-001 mandates default-off.
 - _Flag only, no persisted config_ — acceptable but FR-003 explicitly permits the persisted equivalent for ergonomics over a backlog; we include it as an opt-in convenience that itself defaults to off.
-- _An env var (e.g. `POPPI_LINK_PRS`)_ — out of scope; the spec names only the flag and the persisted config. Not foreclosed for a later spec.
+- _An env var (e.g. `FRUGL_LINK_PRS`)_ — out of scope; the spec names only the flag and the persisted config. Not foreclosed for a later spec.
 
 ---
 

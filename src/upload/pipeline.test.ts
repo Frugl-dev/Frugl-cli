@@ -98,7 +98,7 @@ describe("upload pipeline", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(path.join(tmpdir(), "poppi-pipeline-"));
+    tempDir = mkdtempSync(path.join(tmpdir(), "frugl-pipeline-"));
   });
 
   afterEach(() => {

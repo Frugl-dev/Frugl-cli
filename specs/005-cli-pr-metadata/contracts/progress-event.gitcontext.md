@@ -2,7 +2,7 @@
 
 **Feature**: 005-cli-pr-metadata | **Date**: 2026-05-24
 
-This documents the **strictly additive** extensions to the `001-cli-ingest-client` machine-readable output contracts (`progress-event.schema.json` and the `UploadFinalSummary` in `command-output.schema.json`) required by FR-016. All additions are optional and present only when `poppi upload --link-prs` was active. `001` consumers are required to tolerate unknown fields (`progress-event.schema.json` forward-compatibility note), so these additions are non-breaking by `001`'s own rules. Per FR-012 / `001` FR-036 these are stable public contract surface.
+This documents the **strictly additive** extensions to the `001-cli-ingest-client` machine-readable output contracts (`progress-event.schema.json` and the `UploadFinalSummary` in `command-output.schema.json`) required by FR-016. All additions are optional and present only when `frugl upload --link-prs` was active. `001` consumers are required to tolerate unknown fields (`progress-event.schema.json` forward-compatibility note), so these additions are non-breaking by `001`'s own rules. Per FR-012 / `001` FR-036 these are stable public contract surface.
 
 ---
 
@@ -18,7 +18,7 @@ The `001` `upload-start` event gains one OPTIONAL object, `gitContext`, summaris
   "manifestId": "up_…",
   "expectedSessionCount": 5,
   "redactionPolicyVersion": "v0.1",
-  "endpoint": "https://api.poppi.app",
+  "endpoint": "https://api.frugl.app",
   "gitContext": {
     // ← OPTIONAL, ADDITIVE (FR-016)
     "active": true,
@@ -51,8 +51,8 @@ The `001` `UploadFinalSummary` (`command-output.schema.json` → `$defs.UploadFi
   "expectedSessionCount": 5,
   "redactionPolicyVersion": "v0.1",
   "sourceKind": "claude-code",
-  "endpoint": "https://api.poppi.app",
-  "dashboardUrl": "https://app.poppi.app/u/…",
+  "endpoint": "https://api.frugl.app",
+  "dashboardUrl": "https://app.frugl.app/u/…",
   "classification": { "discovered": 12, "unchanged": 7, "new": 4, "updated": 1 },
   "limited": { "active": false },
   "gitContext": {

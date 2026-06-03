@@ -1,4 +1,4 @@
-# Phase 1 Data Model: poppi-cli v1
+# Phase 1 Data Model: frugl-cli v1
 
 **Feature**: 001-cli-ingest-client | **Date**: 2026-05-23
 
@@ -170,7 +170,7 @@ interface Ledger {
 }
 ```
 
-Stored via `conf` under namespace `poppi-ledger`, keyed at the file level by `(endpoint URL, userId)` (the conf instance is keyed; entries within are flat by sessionId).
+Stored via `conf` under namespace `frugl-ledger`, keyed at the file level by `(endpoint URL, userId)` (the conf instance is keyed; entries within are flat by sessionId).
 
 **Validation**: zod schema in `src/ledger/ledger.ts`. Schema-version mismatch on read = treated as ledger loss per FR-006f (not a failure).
 
@@ -256,7 +256,7 @@ interface ResumeState {
 }
 ```
 
-Stored via `conf` under namespace `poppi-resume-state`. **Cleared** when the cloud's completion endpoint returns OK for this manifest (FR-028).
+Stored via `conf` under namespace `frugl-resume-state`. **Cleared** when the cloud's completion endpoint returns OK for this manifest (FR-028).
 
 **Validation**: zod schema. Schema-version mismatch on read = treated as no resume state (start fresh; the user will see normal "begin a fresh upload" UX).
 
@@ -313,7 +313,7 @@ type ProgressEvent =
     };
 ```
 
-**Invariant**: `seq` is monotonically increasing within one `poppi upload` invocation, starting at 0. Recipients can use it to detect gaps in piped processing.
+**Invariant**: `seq` is monotonically increasing within one `frugl upload` invocation, starting at 0. Recipients can use it to detect gaps in piped processing.
 
 ---
 

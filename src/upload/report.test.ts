@@ -27,7 +27,7 @@ function state(entries: ManifestEntryState[]): ResumeState {
       redactionPolicyVersion: "v0.1",
       sourceKind: "claude-code",
       expectedSessionCount: entries.length,
-      endpointUrl: "https://poppi.dev",
+      endpointUrl: "https://frugl.dev",
       userId: "user-1",
       entries,
     },
@@ -106,7 +106,7 @@ describe("formatReportHuman", () => {
     expect(out).toContain("1 uploaded   1 failed   0 skipped   of 2");
     expect(out).toContain("✗ conflict   1 session   already uploaded (HTTP 409)");
     expect(out).toContain("→ Safe to ignore");
-    expect(out).toContain("1 failed session queued as pending. Resume: poppi upload");
+    expect(out).toContain("1 failed session queued as pending. Resume: frugl upload");
   });
 
   it("reports a clean state when nothing failed or skipped", () => {

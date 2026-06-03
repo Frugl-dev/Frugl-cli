@@ -1,4 +1,4 @@
-# Phase 0 Research: poppi-cli v1
+# Phase 0 Research: frugl-cli v1
 
 **Feature**: 001-cli-ingest-client | **Date**: 2026-05-23
 
@@ -149,7 +149,7 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Alternatives considered**:
 
-- _Embed `supabase-js`_ — rejected: oversized, couples CLI to the SDK's idea of session refresh (which we don't want; we want explicit "re-run `poppi login`" per FR per the spec's expired-token edge case).
+- _Embed `supabase-js`_ — rejected: oversized, couples CLI to the SDK's idea of session refresh (which we don't want; we want explicit "re-run `frugl login`" per FR per the spec's expired-token edge case).
 - _Use Supabase's REST-only API directly_ — rejected: same as above, slightly thinner; still ties CLI to one vendor surface. Going through the cloud's own Astro endpoints is the published contract per the cloud spec.
 
 ---
@@ -158,8 +158,8 @@ This document records the remaining implementation choices the spec explicitly d
 
 **Decision**: Two separate `conf` instances under the OS-appropriate state directory (via `env-paths`):
 
-- `poppi-resume-state` — in-flight upload identifier, expected session count, per-session ack status, per-session content hash recorded at first-run anonymization. Cleared on FR-028 completion call.
-- `poppi-ledger` — keyed by `(endpoint URL, authenticated user ID)`; persists `{sessionId → {contentHash, lastUploadedAt, manifestId}}` across all uploads. Never cleared on completion.
+- `frugl-resume-state` — in-flight upload identifier, expected session count, per-session ack status, per-session content hash recorded at first-run anonymization. Cleared on FR-028 completion call.
+- `frugl-ledger` — keyed by `(endpoint URL, authenticated user ID)`; persists `{sessionId → {contentHash, lastUploadedAt, manifestId}}` across all uploads. Never cleared on completion.
 
 **Rationale**:
 
@@ -237,7 +237,7 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 ## R-13: Endpoint resolution (FR-030/031)
 
-**Decision**: Endpoint URL resolved in this fixed precedence: `--endpoint <url>` flag > `POPPI_ENDPOINT` env var > default `https://api.poppi.app`. Resolved value is logged to stderr (in text mode) and emitted in the structured command output (in `--json` mode). The CLI does NOT silently fall back to the default when an explicit endpoint is unreachable (per spec edge case "User passes `--endpoint` pointing at an unreachable host").
+**Decision**: Endpoint URL resolved in this fixed precedence: `--endpoint <url>` flag > `FRUGL_ENDPOINT` env var > default `https://api.frugl.app`. Resolved value is logged to stderr (in text mode) and emitted in the structured command output (in `--json` mode). The CLI does NOT silently fall back to the default when an explicit endpoint is unreachable (per spec edge case "User passes `--endpoint` pointing at an unreachable host").
 
 **Rationale**:
 
@@ -254,7 +254,7 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 ## R-14: Where the local Docker stack URL points
 
-**Decision**: Document the local-stack endpoint as `http://localhost:54321` in `quickstart.md` and `.env.example`, matching the default Supabase local-development port used by the sibling `poppi/` repo. The CLI itself hardcodes nothing about this URL; users opt in via `POPPI_ENDPOINT=http://localhost:54321` or `--endpoint`.
+**Decision**: Document the local-stack endpoint as `http://localhost:54321` in `quickstart.md` and `.env.example`, matching the default Supabase local-development port used by the sibling `frugl/` repo. The CLI itself hardcodes nothing about this URL; users opt in via `FRUGL_ENDPOINT=http://localhost:54321` or `--endpoint`.
 
 **Rationale**: Already encoded in `.env.example` and the existing README. Keeps a single source of truth (the cloud repo's docker-compose definition).
 
@@ -281,7 +281,7 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 ## R-16: Pseudonym table lifetime (FR-016)
 
-**Decision**: One `PseudonymTable` instance per `poppi upload` invocation. Lives in memory only. Seeded with the upload identifier so pseudonyms are deterministic within a run (useful for `--dry-run --inspect` reproducibility within a single invocation) but non-correlatable across runs (per FR-016: per-upload stable, NOT per-occurrence and NOT per-CLI-install).
+**Decision**: One `PseudonymTable` instance per `frugl upload` invocation. Lives in memory only. Seeded with the upload identifier so pseudonyms are deterministic within a run (useful for `--dry-run --inspect` reproducibility within a single invocation) but non-correlatable across runs (per FR-016: per-upload stable, NOT per-occurrence and NOT per-CLI-install).
 
 **Rationale**: Spec is explicit. This entry just notes the implementation: HMAC-SHA-256 keyed by the upload identifier, truncated to a human-tractable length, prefixed by category (`proj_xxx`, `user_xxx`) so the dashboard can render category-aware labels.
 
@@ -293,7 +293,7 @@ Recorded in the manifest as `identityDerivation: "path-hash"`. Canonicalization 
 
 **Decision**: Delete `src/commands/delete.ts` from the scaffold during Phase 2. Account- and upload-deletion is deferred to follow-up spec `002-delete` (per spec.md Assumptions). The v1 surface lists exactly `login`, `logout`, `whoami`, `upload`.
 
-**Rationale**: Shipping the stub command means `poppi --help` advertises a feature that always errors. That's a worse user experience than not advertising it at all, and the constitution's "Honest failures" discipline frowns on it.
+**Rationale**: Shipping the stub command means `frugl --help` advertises a feature that always errors. That's a worse user experience than not advertising it at all, and the constitution's "Honest failures" discipline frowns on it.
 
 **Alternatives considered**: _Keep stub for discoverability_ — rejected.
 

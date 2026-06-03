@@ -5,7 +5,7 @@ import { loadAuthSession } from "../auth/session.js";
 import { orgMeResponseSchema } from "../cloud/schemas.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { isPoppiError, printPoppiError } from "../lib/errors.js";
+import { isFruglError, printFruglError } from "../lib/errors.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import { color, symbol } from "../lib/theme.js";
 
@@ -35,7 +35,7 @@ export default class Whoami extends Command {
     const mode = resolveOutputMode({ json: flags.json });
     const endpoint = resolveEndpoint({
       flag: flags.endpoint,
-      env: process.env["POPPI_ENDPOINT"],
+      env: process.env["FRUGL_ENDPOINT"],
     });
 
     try {
@@ -48,7 +48,7 @@ export default class Whoami extends Command {
         } else {
           process.stderr.write(`${color.err(`${symbol.cross} Not logged in.`)} `);
           process.stderr.write(
-            `${color.dim("Run ")}${color.poppy("poppi login")}${color.dim(" first.")}\n`,
+            `${color.dim("Run ")}${color.poppy("frugl login")}${color.dim(" first.")}\n`,
           );
         }
         process.exit(EXIT.AUTH_FAILURE);
@@ -98,7 +98,7 @@ export default class Whoami extends Command {
       );
       if (org === "none") {
         process.stdout.write(
-          `${color.dim("             Set one up: ")}${color.poppy("poppi org create")}${color.dim(" or ")}${color.poppy("poppi org join <code>")}\n`,
+          `${color.dim("             Set one up: ")}${color.poppy("frugl org create")}${color.dim(" or ")}${color.poppy("frugl org join <code>")}\n`,
         );
       } else {
         process.stdout.write(
@@ -106,8 +106,8 @@ export default class Whoami extends Command {
         );
       }
     } catch (err) {
-      if (isPoppiError(err) || err instanceof CloudHttpError) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err) || err instanceof CloudHttpError) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }

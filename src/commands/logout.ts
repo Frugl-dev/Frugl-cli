@@ -5,7 +5,7 @@ import { resolveEndpoint } from "../cloud/endpoints.js";
 import { clearAuthSession, loadAuthSession } from "../auth/session.js";
 import { logoutResponseSchema } from "../cloud/schemas.js";
 import { getCliVersion } from "../lib/cli-version.js";
-import { isPoppiError, printPoppiError } from "../lib/errors.js";
+import { isFruglError, printFruglError } from "../lib/errors.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import { color, symbol } from "../lib/theme.js";
 
@@ -22,7 +22,7 @@ export default class Logout extends Command {
     const mode = resolveOutputMode({ json: flags.json });
     const endpoint = resolveEndpoint({
       flag: flags.endpoint,
-      env: process.env["POPPI_ENDPOINT"],
+      env: process.env["FRUGL_ENDPOINT"],
     });
 
     try {
@@ -56,8 +56,8 @@ export default class Logout extends Command {
         );
       }
     } catch (err) {
-      if (isPoppiError(err)) {
-        process.exit(printPoppiError(err, mode));
+      if (isFruglError(err)) {
+        process.exit(printFruglError(err, mode));
       }
       throw err;
     }

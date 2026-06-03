@@ -11,7 +11,7 @@ describe("detection + discovery performance (SC-005)", { timeout: 30_000 }, () =
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(path.join(tmpdir(), "poppi-perf-"));
+    home = mkdtempSync(path.join(tmpdir(), "frugl-perf-"));
   });
 
   afterEach(() => {

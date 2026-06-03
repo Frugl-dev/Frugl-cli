@@ -2,7 +2,7 @@
 
 **Feature**: 005-cli-pr-metadata | **Date**: 2026-05-24
 
-This is the **public contract surface** for the opt-in per-session git metadata, extending the `001-cli-ingest-client` manifest contract. It is consumed by the cloud (`poppi/specs/005-intelligence-post-processing` FR-024) to link uploaded sessions to pull requests. Per `001` FR-036 and this feature's FR-012, these fields are a stable public contract: any **non-additive** change requires the coordinated cross-repo bump process with `poppi/005`.
+This is the **public contract surface** for the opt-in per-session git metadata, extending the `001-cli-ingest-client` manifest contract. It is consumed by the cloud (`frugl/specs/005-intelligence-post-processing` FR-024) to link uploaded sessions to pull requests. Per `001` FR-036 and this feature's FR-012, these fields are a stable public contract: any **non-additive** change requires the coordinated cross-repo bump process with `frugl/005`.
 
 The machine-readable schema fragment is [`manifest-entry.gitcontext.schema.json`](./manifest-entry.gitcontext.schema.json). This document is its narrative companion (mirroring the JSON-schema + markdown style of `001/contracts/`).
 

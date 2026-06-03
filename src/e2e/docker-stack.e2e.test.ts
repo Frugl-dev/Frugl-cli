@@ -3,23 +3,23 @@
  *
  * ## Prerequisites (all must be running before enabling this suite)
  *
- * 1. Supabase + MinIO:  cd ../poppi && pnpm stack:up && bash docker/bootstrap-minio.sh
+ * 1. Supabase + MinIO:  cd ../frugl && pnpm stack:up && bash docker/bootstrap-minio.sh
  * 2. Astro dev server configured with LOCAL Supabase + MinIO:
  *
  *    PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
  *    PUBLIC_SUPABASE_PUBLISHABLE_KEY=<local publishable key from `npx supabase status`>
  *    SUPABASE_SECRET_KEY=<local secret key>
- *    POPPI_S3_ENDPOINT=http://localhost:9000
- *    POPPI_S3_ACCESS_KEY_ID=minioadmin
- *    POPPI_S3_SECRET_ACCESS_KEY=minioadmin
- *    POPPI_S3_BUCKET=poppi-sessions-dev
- *    POPPI_S3_REGION=us-east-1
+ *    FRUGL_S3_ENDPOINT=http://localhost:9000
+ *    FRUGL_S3_ACCESS_KEY_ID=minioadmin
+ *    FRUGL_S3_SECRET_ACCESS_KEY=minioadmin
+ *    FRUGL_S3_BUCKET=frugl-sessions-dev
+ *    FRUGL_S3_REGION=us-east-1
  *
- *    Then: cd ../poppi && pnpm dev
+ *    Then: cd ../frugl && pnpm dev
  *
  * ## Enabling
  *
- *    POPPI_DOCKER_STACK=1 pnpm test src/e2e/docker-stack.e2e.test.ts
+ *    FRUGL_DOCKER_STACK=1 pnpm test src/e2e/docker-stack.e2e.test.ts
  *
  * ## Env vars (all have sensible local-stack defaults)
  *
@@ -37,11 +37,11 @@ import { injectAuth, clearAuth } from "./helpers/auth.js";
 import type { AuthSession } from "../auth/session.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "./helpers/fixtures.js";
 
-const ENABLED = process.env["POPPI_DOCKER_STACK"] === "1";
+const ENABLED = process.env["FRUGL_DOCKER_STACK"] === "1";
 
 const ASTRO_URL = process.env["TEST_ASTRO_URL"] ?? "http://localhost:4321";
 const SUPABASE_URL = process.env["TEST_SUPABASE_URL"] ?? "http://127.0.0.1:54321";
-// Default is the local Supabase secret key (from `npx supabase status` in the poppi/ repo)
+// Default is the local Supabase secret key (from `npx supabase status` in the frugl/ repo)
 const SUPABASE_SECRET_KEY =
   process.env["TEST_SUPABASE_SECRET_KEY"] ?? "sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz";
 
@@ -65,7 +65,7 @@ async function adminFetch(apiPath: string, init: RequestInit): Promise<Response>
 }
 
 async function createStackUser(): Promise<StackUser> {
-  const email = `e2e-cli-${Date.now()}-${randomUUID().slice(0, 8)}@poppi.test`;
+  const email = `e2e-cli-${Date.now()}-${randomUUID().slice(0, 8)}@frugl.test`;
 
   // 1. Create Supabase user (email pre-confirmed)
   const createRes = await adminFetch("/auth/v1/admin/users", {
@@ -97,7 +97,7 @@ async function createStackUser(): Promise<StackUser> {
     session: { access_token: string };
   };
 
-  // 4. Create org + membership (required by the poppi middleware)
+  // 4. Create org + membership (required by the frugl middleware)
   const orgId = randomUUID();
   const orgSlug = `e2e-${userId.replace(/-/g, "").slice(0, 16)}`;
   const orgRes = await adminFetch("/rest/v1/organizations", {
@@ -165,7 +165,7 @@ describe.skipIf(!ENABLED)(
       await deleteStackUser(stackUser.userId, stackUser.orgId);
     });
 
-    const env = () => ({ POPPI_HOME_DIR: tmp.dir });
+    const env = () => ({ FRUGL_HOME_DIR: tmp.dir });
     const endpoint = ASTRO_URL;
 
     it("whoami returns stored identity (exit 0)", async () => {
@@ -264,7 +264,7 @@ describe.skipIf(!ENABLED)(
     it("full upload of ≤ 200 sessions completes in ≤ 60 s (SC-003)", async () => {
       const start = performance.now();
       const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", ASTRO_URL], {
-        env: { POPPI_HOME_DIR: tmp.dir },
+        env: { FRUGL_HOME_DIR: tmp.dir },
         timeoutMs: 75_000,
       });
       const elapsedMs = performance.now() - start;

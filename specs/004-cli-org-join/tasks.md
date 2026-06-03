@@ -1,10 +1,10 @@
-# Tasks: poppi-cli org membership — `poppi join` + org-aware `whoami` / `upload`
+# Tasks: frugl-cli org membership — `frugl join` + org-aware `whoami` / `upload`
 
 > **⚠️ SUPERSEDED (2026-05-30).** This task list was never executed as written. Org
-> membership shipped on `main` (PR #9) under a **different design**: a `poppi org`
+> membership shipped on `main` (PR #9) under a **different design**: a `frugl org`
 > command namespace (`src/commands/org/{join,create,invites,use,ls}.ts` +
 > `src/org/setup.ts`) with `pop_inv_…` invite codes — **not** the top-level
-> `poppi join <code>` with base32-Crockford codes and `src/join/`, `src/cloud/join.ts`,
+> `frugl join <code>` with base32-Crockford codes and `src/join/`, `src/cloud/join.ts`,
 > `src/cloud/orgs.ts` modules this plan describes. The unchecked `[ ]` boxes below
 > point at files that were never created and will not be. Kept for historical context
 > only; do **not** treat these as a live backlog. See `src/commands/org/` for what
@@ -52,9 +52,9 @@
 
 ## Phase 3: User Story 1 — Redeem an invite code and join (Priority: P1) 🎯 MVP
 
-**Goal**: Implement `poppi join <code>` end-to-end: normalize + locally validate the code, redeem it, render the success message (and the idempotent already-member success), with `--json` output.
+**Goal**: Implement `frugl join <code>` end-to-end: normalize + locally validate the code, redeem it, render the success message (and the idempotent already-member success), with `--json` output.
 
-**Independent Test**: With the local stack running and an admin-generated code, a second logged-in account runs `poppi join <code>`; exit 0; a `memberships` row appears at the code's role and `invitations.used_count` increments by 1 (spec US1 Independent Test). Re-running exits 0 with "already a member" (SC-004).
+**Independent Test**: With the local stack running and an admin-generated code, a second logged-in account runs `frugl join <code>`; exit 0; a `memberships` row appears at the code's role and `invitations.used_count` increments by 1 (spec US1 Independent Test). Re-running exits 0 with "already a member" (SC-004).
 
 ### Tests for User Story 1 (write first, ensure they FAIL before implementation) ⚠️
 
@@ -66,18 +66,18 @@
 
 - [ ] T010 [P] [US1] Create `normalize(raw)`: uppercase, strip whitespace + separators + characters outside base32-Crockford; return the normalized string (the value sent on the wire), per FR-004 / R-10 in `src/join/normalize.ts`
 - [ ] T011 [P] [US1] Create `validate(normalized)`: enforce base32-Crockford alphabet + documented length bounds; throw a `USAGE`-coded error with "wrong length" / "unexpected characters" messages on failure, per FR-005 / spec edge cases in `src/join/validate.ts`
-- [ ] T012 [US1] Create `src/commands/join.ts` as a top-level oclif Command (`poppi join <code>`, NOT under a `poppi org` namespace, FR-001): required single positional `<code>` (strict args → `USAGE` on missing/extra); honour `--endpoint`/`POPPI_ENDPOINT` (FR-002) and `--json` (FR-021) / `--no-color` / `NO_COLOR` (no escape codes into a non-TTY, FR-022); pipeline = read token from keychain (no token → `AUTH_FAILURE` before network FR-008; keychain unavailable → `KEYCHAIN_UNAVAILABLE` FR-009) → normalize (T010) → validate (T011) → `redeemCode` (T005); on `kind:"joined"` print "✓ Joined `<name>` (`<slug>`) as `<role>`." + next-step line on stdout with the role verbatim, exit 0 (FR-019); on `kind:"already-member"` print "You are already a member of `<Org>`." exit 0 (FR-017/R-2); register the command in `src/index.ts` so `poppi --help`/`poppi join --help` discover it (FR-001/FR-003) per FR-001/FR-002/FR-022 in `src/commands/join.ts`
-- [ ] T013 [US1] Add help text to `src/commands/join.ts`: name the `<code>` argument, show one example (`poppi join ACME-XKLM-7P3R`), and state the code is obtained from an Org Admin; warn that `--debug` output may contain the code (secret) per FR-003 / FR-006 in `src/commands/join.ts`
+- [ ] T012 [US1] Create `src/commands/join.ts` as a top-level oclif Command (`frugl join <code>`, NOT under a `frugl org` namespace, FR-001): required single positional `<code>` (strict args → `USAGE` on missing/extra); honour `--endpoint`/`FRUGL_ENDPOINT` (FR-002) and `--json` (FR-021) / `--no-color` / `NO_COLOR` (no escape codes into a non-TTY, FR-022); pipeline = read token from keychain (no token → `AUTH_FAILURE` before network FR-008; keychain unavailable → `KEYCHAIN_UNAVAILABLE` FR-009) → normalize (T010) → validate (T011) → `redeemCode` (T005); on `kind:"joined"` print "✓ Joined `<name>` (`<slug>`) as `<role>`." + next-step line on stdout with the role verbatim, exit 0 (FR-019); on `kind:"already-member"` print "You are already a member of `<Org>`." exit 0 (FR-017/R-2); register the command in `src/index.ts` so `frugl --help`/`frugl join --help` discover it (FR-001/FR-003) per FR-001/FR-002/FR-022 in `src/commands/join.ts`
+- [ ] T013 [US1] Add help text to `src/commands/join.ts`: name the `<code>` argument, show one example (`frugl join ACME-XKLM-7P3R`), and state the code is obtained from an Org Admin; warn that `--debug` output may contain the code (secret) per FR-003 / FR-006 in `src/commands/join.ts`
 
-**Checkpoint**: `poppi join <code>` joins on the happy path and is idempotent on re-join; `poppi --help` lists it.
+**Checkpoint**: `frugl join <code>` joins on the happy path and is idempotent on re-join; `frugl --help` lists it.
 
 ---
 
 ## Phase 4: User Story 2 — Auth / keychain failure paths (Priority: P1)
 
-**Goal**: Ensure `poppi join` fails cleanly and early when there is no token, the token is rejected, or the keychain is unavailable — with zero network requests in the no-token case.
+**Goal**: Ensure `frugl join` fails cleanly and early when there is no token, the token is rejected, or the keychain is unavailable — with zero network requests in the no-token case.
 
-**Independent Test**: On a clean machine with no token, `poppi join ANY-VALID-FORMAT` exits `AUTH_FAILURE`, prints the "not signed in" message on stderr, and makes zero network requests (mock-server assertion, SC-002).
+**Independent Test**: On a clean machine with no token, `frugl join ANY-VALID-FORMAT` exits `AUTH_FAILURE`, prints the "not signed in" message on stderr, and makes zero network requests (mock-server assertion, SC-002).
 
 ### Tests for User Story 2 ⚠️
 
@@ -85,7 +85,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] In `src/commands/join.ts`, wire the auth gate ahead of any network request: read token via `src/auth/keychain.ts`; missing → throw `AuthError` (10) with "You're not signed in. Run `poppi login` first…"; keychain error → `KeychainError` (11) with the same class `upload` uses; ensure the `401` thrown by `redeemCode`/client surfaces as `AUTH_FAILURE` with "Your session has expired…" and is never retried or re-prompted (FR-010) per FR-007/008/009/010 in `src/commands/join.ts`
+- [ ] T015 [US2] In `src/commands/join.ts`, wire the auth gate ahead of any network request: read token via `src/auth/keychain.ts`; missing → throw `AuthError` (10) with "You're not signed in. Run `frugl login` first…"; keychain error → `KeychainError` (11) with the same class `upload` uses; ensure the `401` thrown by `redeemCode`/client surfaces as `AUTH_FAILURE` with "Your session has expired…" and is never retried or re-prompted (FR-010) per FR-007/008/009/010 in `src/commands/join.ts`
 
 **Checkpoint**: No-auth and keychain failures fast-fail with the documented codes; zero network in the no-token case.
 
@@ -111,9 +111,9 @@
 
 ---
 
-## Phase 6: User Story 4 — `poppi whoami` reports org + role (Priority: P1)
+## Phase 6: User Story 4 — `frugl whoami` reports org + role (Priority: P1)
 
-**Goal**: `poppi whoami` calls `GET /api/orgs/me` and reports the org + role (member) or the no-org state with both remedies (exit 0 either way); `--json` adds the additive `organization` field.
+**Goal**: `frugl whoami` calls `GET /api/orgs/me` and reports the org + role (member) or the no-org state with both remedies (exit 0 either way); `--json` adds the additive `organization` field.
 
 **Independent Test**: A member account's `whoami` names the org + role matching `GET /api/orgs/me`, exit 0; a no-Membership account reports "no org yet" with remedies, exit 0; logged-out exits `AUTH_FAILURE` (spec US4 Independent Test / SC-007).
 
@@ -123,18 +123,18 @@
 
 ### Implementation for User Story 4
 
-- [ ] T021 [US4] Edit `src/commands/whoami.ts`: after the existing `001` identity report, call `getOrgContext` (T006); on `kind:"member"` print "Organization: `<name>` (`<slug>`) — `<member_count>` members" + "Your role: `<role>`"; on `kind:"none"` print "Not a member of any organization yet." + `poppi join <code>` and dashboard remedies; exit 0 in BOTH cases (FR-025); honour `--endpoint`/`POPPI_ENDPOINT` per FR-024/025 in `src/commands/whoami.ts`
+- [ ] T021 [US4] Edit `src/commands/whoami.ts`: after the existing `001` identity report, call `getOrgContext` (T006); on `kind:"member"` print "Organization: `<name>` (`<slug>`) — `<member_count>` members" + "Your role: `<role>`"; on `kind:"none"` print "Not a member of any organization yet." + `frugl join <code>` and dashboard remedies; exit 0 in BOTH cases (FR-025); honour `--endpoint`/`FRUGL_ENDPOINT` per FR-024/025 in `src/commands/whoami.ts`
 - [ ] T022 [US4] Extend the `whoami` `--json` result in `src/commands/whoami.ts`: add the additive `organization` field — the org object (`id,name,slug,member_count,role`) on member, `null` on no-Membership — to the `001` `WhoamiResultOk`, matching contracts/command-output.schema.json `WhoamiResultOkWithOrg`; no existing field renamed/removed (FR-026 / R-12) in `src/commands/whoami.ts`
 
 **Checkpoint**: `whoami` reports org context in text and `--json`; no-org is an exit-0 reported state.
 
 ---
 
-## Phase 7: User Story 5 — `poppi upload` onboarding gate (Priority: P1)
+## Phase 7: User Story 5 — `frugl upload` onboarding gate (Priority: P1)
 
-**Goal**: `poppi upload` resolves org context BEFORE discovery/anonymization; a no-Membership user hits the `ORG_REQUIRED` gate with zero work done (incl. under `--dry-run`); a mid-upload `401`/`403` exits `AUTH_FAILURE` preserving resume state.
+**Goal**: `frugl upload` resolves org context BEFORE discovery/anonymization; a no-Membership user hits the `ORG_REQUIRED` gate with zero work done (incl. under `--dry-run`); a mid-upload `401`/`403` exits `AUTH_FAILURE` preserving resume state.
 
-**Independent Test**: A logged-in no-Membership account runs `poppi upload`: no presign/manifest call, no anonymization, zero bytes, the onboarding-gate message naming both remedies, exit `ORG_REQUIRED`; a mock-server run asserts no upload endpoint was hit (spec US5 Independent Test / SC-008).
+**Independent Test**: A logged-in no-Membership account runs `frugl upload`: no presign/manifest call, no anonymization, zero bytes, the onboarding-gate message naming both remedies, exit `ORG_REQUIRED`; a mock-server run asserts no upload endpoint was hit (spec US5 Independent Test / SC-008).
 
 ### Tests for User Story 5 ⚠️
 
@@ -149,11 +149,11 @@
 
 ---
 
-## Phase 8: User Story 6 — `poppi upload` names the destination org (Priority: P2)
+## Phase 8: User Story 6 — `frugl upload` names the destination org (Priority: P2)
 
 **Goal**: For a member, the pre-upload summary names the destination org + role (in addition to the `001` FR-020 fields); under `--confirm`/`--yes` the destination is still emitted; the `--json` `upload-start` event carries an additive `organization` object.
 
-**Independent Test**: A member runs `poppi upload` without `--confirm`; the summary contains a line naming the org (name+slug) and role from the same `GET /api/orgs/me` call; under `--json` the `upload-start` event carries org id+slug (spec US6 Independent Test / SC-009).
+**Independent Test**: A member runs `frugl upload` without `--confirm`; the summary contains a line naming the org (name+slug) and role from the same `GET /api/orgs/me` call; under `--json` the `upload-start` event carries org id+slug (spec US6 Independent Test / SC-009).
 
 ### Tests for User Story 6 ⚠️
 
@@ -173,11 +173,11 @@
 
 **Purpose**: The no-leak invariant, the help/docs surface, the `--json` schema validation, and the end-to-end SC loop.
 
-- [ ] T030 [P] Write `src/commands/join.noleak.test.ts`: run `poppi join <code>` at the default log level and assert the captured stdout+stderr does NOT contain the plaintext code (the success message names the ORG, not the code); assert the `--json` result object contains no `code` field per SC-005 / FR-006 in `src/commands/join.noleak.test.ts`
+- [ ] T030 [P] Write `src/commands/join.noleak.test.ts`: run `frugl join <code>` at the default log level and assert the captured stdout+stderr does NOT contain the plaintext code (the success message names the ORG, not the code); assert the `--json` result object contains no `code` field per SC-005 / FR-006 in `src/commands/join.noleak.test.ts`
 - [ ] T031 [P] Write `src/cloud/orgs.test.ts` (contract): zod round-trip the `200` member body and the `409 org_required` body; assert `getOrgContext` returns `kind:"member"` (role verbatim, member_count present) and `kind:"none"` respectively; `401` throws `AuthError`; malformed body → `GENERIC_FAILURE` per FR-012 / R-3 / SC-006 in `src/cloud/orgs.test.ts`
 - [ ] T032 [P] Add a `--json` schema-validation test asserting the `JoinResultOk`/`JoinResultError`/`WhoamiResultOkWithOrg` shapes and the `upload-start` `organization` extension validate against `specs/004-cli-org-join/contracts/command-output.schema.json` (same zod/JSON-schema approach `001` uses for its output contracts) per FR-021/026/030 / FR-036 in `src/cloud/output-contract.test.ts`
-- [ ] T033 [P] Update README.md / docs: document `poppi join <code>` (one example, code from Org Admin, `--debug`-may-leak warning), the org lines in `whoami`, the `ORG_REQUIRED` gate and destination line in `upload`, and link to `specs/004-cli-org-join/quickstart.md`; list the four new exit codes per FR-003/006 / contracts/exit-codes.md in `README.md`
-- [ ] T034 Run the end-to-end SC loop against the local stack per quickstart.md §11: admin generates a code → `poppi login` → `poppi join <code>` (exit 0, < 30 s, SC-001) → re-join (exit 0, SC-004) → `poppi whoami` names org+role (SC-007) → a no-Membership account's `poppi upload`/`--dry-run` hits `ORG_REQUIRED` with zero bytes/no upload-endpoint hit (SC-008) → a member's `poppi upload` names the destination (SC-009); confirm every exit code matches `contracts/exit-codes.md`; assert the no-leak invariant on real output (SC-005)
+- [ ] T033 [P] Update README.md / docs: document `frugl join <code>` (one example, code from Org Admin, `--debug`-may-leak warning), the org lines in `whoami`, the `ORG_REQUIRED` gate and destination line in `upload`, and link to `specs/004-cli-org-join/quickstart.md`; list the four new exit codes per FR-003/006 / contracts/exit-codes.md in `README.md`
+- [ ] T034 Run the end-to-end SC loop against the local stack per quickstart.md §11: admin generates a code → `frugl login` → `frugl join <code>` (exit 0, < 30 s, SC-001) → re-join (exit 0, SC-004) → `frugl whoami` names org+role (SC-007) → a no-Membership account's `frugl upload`/`--dry-run` hits `ORG_REQUIRED` with zero bytes/no upload-endpoint hit (SC-008) → a member's `frugl upload` names the destination (SC-009); confirm every exit code matches `contracts/exit-codes.md`; assert the no-leak invariant on real output (SC-005)
 
 ---
 
@@ -187,7 +187,7 @@
 
 - **Setup (Phase 1)**: Verifies the `001` foundation — the single external blocking dependency. Must pass before anything else.
 - **Foundational (Phase 2)**: Depends on Phase 1 — BLOCKS all user-story phases (exit codes, errors, schemas, transport wrappers).
-- **US1 (Phase 3)**: Depends on Phase 2. The MVP — `poppi join` happy path + idempotent re-join.
+- **US1 (Phase 3)**: Depends on Phase 2. The MVP — `frugl join` happy path + idempotent re-join.
 - **US2 (Phase 4)**: Depends on Phase 2; extends `src/commands/join.ts` from US1 (auth gate). Best done right after US1 since both edit `join.ts`.
 - **US3 (Phase 5)**: Depends on Phase 2; completes the error mapping in `src/cloud/join.ts` (T005→T018) and `join.ts` rendering. Best done after US1.
 - **US4 (Phase 6)**: Depends on Phase 2 only (edits `whoami.ts`). Independent of US1–US3 — can run in parallel with the join phases.
@@ -234,12 +234,12 @@
 ### MVP First (User Story 1)
 
 1. Phase 1 (verify `001`) → Phase 2 (Foundational) → Phase 3 (US1).
-2. **STOP and VALIDATE**: `poppi join <code>` against the local stack joins (exit 0) and re-joins idempotently (exit 0).
+2. **STOP and VALIDATE**: `frugl join <code>` against the local stack joins (exit 0) and re-joins idempotently (exit 0).
 3. This is the minimum shippable increment of the feature.
 
 ### Incremental Delivery
 
-1. Phases 1–3 → `poppi join` happy path (MVP).
+1. Phases 1–3 → `frugl join` happy path (MVP).
 2. - Phases 4–5 → full `join` robustness (auth + typed errors). The `join` command is now complete and trustworthy (SC-002/003/004/005).
 3. - Phase 6 (US4) → `whoami` org awareness (SC-007).
 4. - Phase 7 (US5) → `upload` onboarding gate (SC-008).

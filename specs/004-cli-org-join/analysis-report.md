@@ -2,7 +2,7 @@
 
 **Feature**: 004-cli-org-join | **Date**: 2026-05-24 | **Phase**: post-`/speckit-tasks` (non-destructive consistency analysis)
 
-**Scope**: Consistency across `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/`, and `tasks.md`; alignment with the Poppi Cloud Constitution v2.0.0; and fidelity of the cloud-contract references to the actual cloud `003-org-membership-permissions` contracts (`poppi/specs/003-org-membership-permissions/contracts/{join,orgs,README}.md`).
+**Scope**: Consistency across `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/`, and `tasks.md`; alignment with the Frugl Cloud Constitution v2.0.0; and fidelity of the cloud-contract references to the actual cloud `003-org-membership-permissions` contracts (`frugl/specs/003-org-membership-permissions/contracts/{join,orgs,README}.md`).
 
 **Method**: Built a requirement -> task traceability matrix for all 33 FRs and 6 user stories; reverse-checked every task to a requirement; checked the 9 SCs for test coverage; diffed the consumer-contract field names against the authoritative cloud contracts; re-ran the Constitution Check.
 
@@ -46,7 +46,7 @@ Every functional requirement maps to at least one task. Summary matrix:
 
 ## 3. Cloud-contract fidelity (vs. `003`)
 
-Diffed the consumer contracts against `poppi/specs/003-org-membership-permissions/contracts/`:
+Diffed the consumer contracts against `frugl/specs/003-org-membership-permissions/contracts/`:
 
 - `POST /api/join` request `{code}`, success `{org:{id,name,slug}, membership:{id,role,joined_at}}`, and the full error table (`400 validation_failed`, `401 unauthorized`, `404 not_found`, `409 already_member`, `409 wrong_org`, `410 expired|revoked|exhausted`, `426 upgrade_required`, `429 rate_limited`, `500 internal`) -- exact match with cloud `join.md`. PASS
 - `wrong_org` `details` field names (`current_org_name`, `current_org_slug`, `target_org_name`) -- exact match with cloud `join.md`. PASS

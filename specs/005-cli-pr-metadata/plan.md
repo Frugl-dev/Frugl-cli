@@ -1,4 +1,4 @@
-# Implementation Plan: poppi-cli PR-link metadata — opt-in per-session git context at upload time
+# Implementation Plan: frugl-cli PR-link metadata — opt-in per-session git context at upload time
 
 **Branch**: `005-cli-pr-metadata` | **Date**: 2026-05-24 | **Spec**: [./spec.md](./spec.md)
 
@@ -6,7 +6,7 @@
 
 ## Summary
 
-This feature is the **producer half** of the cloud's PR-linking / merge-rate waste lever (cloud `005` FR-024/FR-028). It adds an **opt-in** `--link-prs` flag to `poppi upload` that, for each session in the `(new ∪ updated)` upload batch, resolves a small forge-agnostic git coordinate — `{ repository: { host, owner, name }, branch?, commitSha }` — **read-only** from the session's recorded working directory and attaches it to that session's manifest entry as strictly-additive metadata. With the flag absent, `poppi upload` is byte-for-byte unchanged from `001`.
+This feature is the **producer half** of the cloud's PR-linking / merge-rate waste lever (cloud `005` FR-024/FR-028). It adds an **opt-in** `--link-prs` flag to `frugl upload` that, for each session in the `(new ∪ updated)` upload batch, resolves a small forge-agnostic git coordinate — `{ repository: { host, owner, name }, branch?, commitSha }` — **read-only** from the session's recorded working directory and attaches it to that session's manifest entry as strictly-additive metadata. With the flag absent, `frugl upload` is byte-for-byte unchanged from `001`.
 
 The technical approach reuses the `001` pipeline wholesale and inserts one new, well-scoped module, `src/upload/git-context.ts`. It derives the repository root by walking up from each session's `cwd` (which the Claude Code source records natively per JSONL record), reads `origin` from `.git/config`, strips any embedded credentials to host + `owner/name`, reads the branch (preferring the session-recorded `gitBranch` per FR-006, else current ref) and the full `HEAD` commit SHA — all by reading files under `.git/` directly, executing **no** git binary and therefore **no** repository hooks. Resolution is best-effort and non-fatal (FR-008/009): any session that cannot be resolved simply carries no git context, and the batch proceeds.
 
@@ -29,7 +29,7 @@ No spawning of a `git` subprocess (see research.md R-2): reading the ref files d
 **Storage**:
 
 - **No new persisted state by default.** Git context is computed in-memory per upload and attached to the manifest; it is never written to the ledger or resume state.
-- **Optional opt-in config (FR-003)**: one additional key, `linkPrs: boolean` (default `false`), in a `conf`-backed `poppi-config` namespace under the existing env-paths state dir (`src/lib/paths.ts`). When both the persisted setting and the explicit flag are present, the explicit flag wins. This is the only net-new persistence and it holds no repository data — just the boolean preference.
+- **Optional opt-in config (FR-003)**: one additional key, `linkPrs: boolean` (default `false`), in a `conf`-backed `frugl-config` namespace under the existing env-paths state dir (`src/lib/paths.ts`). When both the persisted setting and the explicit flag are present, the explicit flag wins. This is the only net-new persistence and it holds no repository data — just the boolean preference.
 
 **Testing**: vitest, co-located `*.test.ts` (the `001`/existing convention). Three tiers, mirroring `001`:
 
@@ -48,7 +48,7 @@ No spawning of a `git` subprocess (see research.md R-2): reading the ref files d
 - **Privacy posture (Principle VI + spec crux)**: default-off is byte-for-byte the `001` path (FR-001/002); credential-stripping is fail-closed (FR-005/015); every value that leaves the machine is auditable pre-send (FR-013/014). Git context is the one thing the CLI transmits that is _not_ run through the redactor, so it is gated behind explicit opt-in and mandatory visibility.
 - **Read-only / no side effects (FR-004)**: inspection reads files under `.git/` only; never invokes a process, never writes, never runs a hook.
 - **Ledger invariance (FR-011, `001` FR-006c)**: git context is manifest metadata, not payload; it is excluded from the bytes hashed into `redactedHashHex`. Enabling/disabling the flag cannot reclassify an unchanged session.
-- **Contract surface (FR-010/012/016, `001` FR-036)**: the `gitContext` object on `ManifestEntry`, plus the additive `upload-start`/final-summary `--json` fields, are public contracts; non-additive change requires the coordinated cross-repo bump with `poppi/005`.
+- **Contract surface (FR-010/012/016, `001` FR-036)**: the `gitContext` object on `ManifestEntry`, plus the additive `upload-start`/final-summary `--json` fields, are public contracts; non-additive change requires the coordinated cross-repo bump with `frugl/005`.
 - **No new exit codes (spec Assumptions)**: best-effort derivation never fails the upload, so no failure mode or exit code is added beyond the `001`/`004` table.
 
 **Scale/Scope**:
@@ -61,7 +61,7 @@ No spawning of a `git` subprocess (see research.md R-2): reading the ref files d
 
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-The applicable constitution is **Poppi Cloud Constitution v2.0.0** at `~/Documents/poppi/poppi/.specify/memory/constitution.md` (the CLI inherits per the README pointer; the local `.specify/memory/constitution.md` is a placeholder). This feature touches the **privacy / fail-closed / honest-failures** principle most directly, because it deliberately transmits data the anonymizer normally redacts — so that principle is the primary gate.
+The applicable constitution is **Frugl Cloud Constitution v2.0.0** at `~/Documents/frugl/frugl/.specify/memory/constitution.md` (the CLI inherits per the README pointer; the local `.specify/memory/constitution.md` is a placeholder). This feature touches the **privacy / fail-closed / honest-failures** principle most directly, because it deliberately transmits data the anonymizer normally redacts — so that principle is the primary gate.
 
 | Principle                                                               | Applies                     | Gate evaluation                                                                                                                                                                                                                                                                                   |
 | ----------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -110,7 +110,7 @@ specs/005-cli-pr-metadata/
 Single-package CLI. This feature adds **one** new module and makes small, additive edits to existing ones. The `001` structure is otherwise unchanged. New/changed files marked below.
 
 ```text
-poppi-cli/
+frugl-cli/
 ├── src/
 │   ├── commands/
 │   │   └── upload.ts            # EDIT — add --link-prs flag (FR-001); resolve opt-in (flag > config, FR-003);
@@ -133,7 +133,7 @@ poppi-cli/
 │   ├── cloud/
 │   │   └── schemas.ts           # EDIT — additive: optional git_context on manifestEntryRequestSchema
 │   └── lib/
-│       └── config.ts            # NEW (optional, FR-003) — conf-backed poppi-config; linkPrs:boolean default false
+│       └── config.ts            # NEW (optional, FR-003) — conf-backed frugl-config; linkPrs:boolean default false
 └── specs/005-cli-pr-metadata/contracts/   # the public contract extension (see tree above)
 ```
 

@@ -7,7 +7,7 @@ export interface OrgRow {
   active: boolean;
 }
 
-// The `org ls` table — SLUG / ROLE / MEMBERS / ACTIVE, with a poppi-green dot
+// The `org ls` table — SLUG / ROLE / MEMBERS / ACTIVE, with a frugl-green dot
 // marking the active org. Columns are padded on the plain text before coloring
 // so the (zero-width) color codes never disturb alignment.
 const COL = { slug: 14, role: 9, members: 10 };
@@ -34,13 +34,13 @@ export function renderOrgTable(rows: OrgRow[]): string {
 export function renderNoOrg(email?: string): string {
   const lines: string[] = [];
   lines.push(color.bold("You're not in any org yet."));
-  lines.push(color.dim("  Every Poppi account belongs to an org. Pick one:"));
+  lines.push(color.dim("  Every Frugl account belongs to an org. Pick one:"));
   lines.push("");
   lines.push(
-    `    ${color.poppy("poppi org create")}        ${color.dim("start a new org (you become owner)")}`,
+    `    ${color.poppy("frugl org create")}        ${color.dim("start a new org (you become owner)")}`,
   );
   lines.push(
-    `    ${color.poppy("poppi org join <code>")}   ${color.dim("accept an invite from a teammate")}`,
+    `    ${color.poppy("frugl org join <code>")}   ${color.dim("accept an invite from a teammate")}`,
   );
   if (email) {
     lines.push("");

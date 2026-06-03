@@ -1,4 +1,4 @@
-# Cloud HTTP Boundary (consumed by poppi-cli v1)
+# Cloud HTTP Boundary (consumed by frugl-cli v1)
 
 **Feature**: 001-cli-ingest-client | **Date**: 2026-05-23 | **Status**: contract surface
 
@@ -13,7 +13,7 @@ For each endpoint: method + path, expected status codes, request shape, response
 | Header           | Value                                      | FR         |
 | ---------------- | ------------------------------------------ | ---------- |
 | `Authorization`  | `Bearer <token>` from keychain             | FR-001/004 |
-| `X-Poppi-Client` | `poppi-cli/<semver>` (from `package.json`) | FR-032     |
+| `X-Frugl-Client` | `frugl-cli/<semver>` (from `package.json`) | FR-032     |
 | `Content-Type`   | `application/json` for JSON bodies         | —          |
 
 ## Common response status semantics (every endpoint)
@@ -21,7 +21,7 @@ For each endpoint: method + path, expected status codes, request shape, response
 | Status                            | CLI behavior                                                                              | Exit code                                                                                                             |
 | --------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `2xx`                             | Honor per-endpoint                                                                        | OK or continue                                                                                                        |
-| `401` / `403`                     | NEVER retried (FR-029b); surface "re-run `poppi login`"                                   | `AUTH_FAILURE` (10)                                                                                                   |
+| `401` / `403`                     | NEVER retried (FR-029b); surface "re-run `frugl login`"                                   | `AUTH_FAILURE` (10)                                                                                                   |
 | `426 Upgrade Required`            | NEVER retried (FR-029b); parse body for `minSupportedCliVersion`, surface upgrade message | `VERSION_GATE_FAILURE` (50)                                                                                           |
 | `429`                             | Retried per FR-029a (bounded exponential backoff, 3 attempts total)                       | `NETWORK_FAILURE` (40) if exhausted                                                                                   |
 | `5xx`                             | Retried per FR-029a                                                                       | `NETWORK_FAILURE` (40) if exhausted                                                                                   |
@@ -81,7 +81,7 @@ Exchange the email + code for a session token.
 }
 ```
 
-CLI behavior: persist `{userId, email, token}` to OS keychain under service `poppi`, account `<endpointUrl>`.
+CLI behavior: persist `{userId, email, token}` to OS keychain under service `frugl`, account `<endpointUrl>`.
 
 **Documented failures**:
 
@@ -242,7 +242,7 @@ Finalize the manifest (FR-024/028). Idempotent: calling twice with the same body
 **Success response** (`200 OK`):
 
 ```json
-{ "manifestId": "mfst_xxx", "dashboardUrl": "https://app.poppi.app/uploads/mfst_xxx" }
+{ "manifestId": "mfst_xxx", "dashboardUrl": "https://app.frugl.app/uploads/mfst_xxx" }
 ```
 
 CLI behavior on success: clear local resume state (FR-028), update ledger entries for every `acked` session (FR-006e), print the manifest ID and dashboard URL on stdout (FR-025).

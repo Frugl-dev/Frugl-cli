@@ -4,7 +4,7 @@ import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
 import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
 import { loadAuthSession, saveAuthSession } from "../auth/session.js";
-import { isPoppiError } from "../lib/errors.js";
+import { isFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import { setupOrg } from "../org/setup.js";
@@ -27,7 +27,7 @@ export default class Setup extends Command {
     const mode = resolveOutputMode({ json: flags.json });
     const endpoint = resolveEndpoint({
       flag: flags.endpoint,
-      env: process.env["POPPI_ENDPOINT"],
+      env: process.env["FRUGL_ENDPOINT"],
     });
 
     const client = new CloudClient({
@@ -113,7 +113,7 @@ export default class Setup extends Command {
 
         if (result.status === "slug-taken") {
           process.stderr.write(
-            `poppi: That slug is already taken. Suggested alternative: ${result.suggestion}\n`,
+            `frugl: That slug is already taken. Suggested alternative: ${result.suggestion}\n`,
           );
           // eslint-disable-next-line no-await-in-loop
           const name = await input({
@@ -126,7 +126,7 @@ export default class Setup extends Command {
         }
 
         if (result.status === "invalid-code") {
-          process.stderr.write("poppi: Invite code not found. Check the code and try again.\n");
+          process.stderr.write("frugl: Invite code not found. Check the code and try again.\n");
           // eslint-disable-next-line no-await-in-loop
           const code = await input({
             message: "Invite code:",
@@ -137,7 +137,7 @@ export default class Setup extends Command {
         }
 
         if (result.status === "expired-code") {
-          process.stderr.write("poppi: That invite code has expired or been used up.\n");
+          process.stderr.write("frugl: That invite code has expired or been used up.\n");
           // eslint-disable-next-line no-await-in-loop
           const code = await input({
             message: "Invite code:",
@@ -148,12 +148,12 @@ export default class Setup extends Command {
         }
       }
     } catch (err) {
-      if (isPoppiError(err)) {
-        process.stderr.write(`poppi: ${err.message}\n`);
+      if (isFruglError(err)) {
+        process.stderr.write(`frugl: ${err.message}\n`);
         process.exit(err.exitCode);
       }
       if (err instanceof CloudHttpError) {
-        process.stderr.write(`poppi: ${err.message}\n`);
+        process.stderr.write(`frugl: ${err.message}\n`);
         process.exit(1);
       }
       throw err;
