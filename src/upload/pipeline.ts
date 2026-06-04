@@ -1,44 +1,23 @@
-import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
 import pLimit from "p-limit";
-import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import {
-  createManifestResponseSchema,
-  presignResponseSchema,
-  completeUploadResponseSchema,
-} from "../cloud/schemas.js";
-import { withRetry } from "../lib/retry.js";
 import { NetworkError, FruglError, StaleResumeError } from "../lib/errors.js";
-import { classifyFailure } from "./failure-reasons.js";
 import { EXIT } from "../lib/exit-codes.js";
-import type { AnonymizationResult } from "../anonymize/index.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { ProgressReporter } from "./progress.js";
 import type { GitContext } from "./git-context.js";
+import { CloudPortError, type UploadCloudPort } from "./cloud-port.js";
 import {
-  ResumeStore,
-  type ManifestEntryState,
-  type ManifestState,
-  type ResumeState,
-} from "./resume.js";
+  SessionUpload,
+  rawFileHash,
+  type SessionOutcome,
+  type SessionUploadJob,
+} from "./session-upload.js";
+import { ResumeStore, type ManifestState, type ResumeState } from "./resume.js";
 
-export interface SessionUploadJob {
-  sessionId: string;
-  identityDerivation: "native" | "path-hash";
-  formatVersion: string;
-  sourceFilePath: string;
-  anonymizationResult: AnonymizationResult;
-  rawContentHashAtFirstRun: string;
-  // Opt-in (005) git coordinate, attached as manifest metadata only — never part
-  // of the payload PUT or of redactedHashHex/contentHash (FR-011, SC-007).
-  gitContext?: GitContext;
-  // Sub-path within the repo's .claude/worktrees/ dir when the session comes
-  // from a git worktree (e.g. "001/cloud/ingest/db"). Null for main checkouts.
-  worktreePath?: string;
-}
+export { rawFileHash };
+export type { SessionUploadJob };
 
 export interface PipelineOptions {
-  client: CloudClient;
+  cloud: UploadCloudPort;
   jobs: SessionUploadJob[];
   ledger: Ledger;
   resumeStore: ResumeStore;
@@ -61,11 +40,10 @@ export interface PipelineResult {
   failures: { sessionId: string; reason: string }[];
 }
 
-export async function rawFileHash(filePath: string): Promise<string> {
-  const buf = await readFile(filePath);
-  return createHash("sha256").update(buf).digest("hex");
-}
-
+// The batch orchestrator: manifest create/reconcile, initial resume save,
+// uploadStart/Complete, the pLimit fan-out, folding per-session outcomes, and
+// completeManifest + resume clear. The per-entry lifecycle lives in
+// `SessionUpload`; this layer never classifies failures or writes entry status.
 export async function runUploadPipeline(opts: PipelineOptions): Promise<PipelineResult> {
   if (opts.jobs.length === 0) {
     throw new FruglError("No sessions to upload", EXIT.GENERIC_FAILURE);
@@ -99,11 +77,27 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
   const totalCount = manifestState.entries.length;
   let progressIndex = 0;
 
+  const fold = (outcome: SessionOutcome): void => {
+    switch (outcome.kind) {
+      case "acked":
+        acked.push(outcome.sessionId);
+        return;
+      case "skipped":
+        skipped.push({ sessionId: outcome.sessionId, reason: outcome.reason });
+        return;
+      case "failed":
+        failures.push({ sessionId: outcome.sessionId, reason: outcome.reason });
+        return;
+    }
+  };
+
   await Promise.all(
     manifestState.entries.map((entry) =>
       limit(async () => {
         progressIndex += 1;
         const job = jobsBySessionId.get(entry.sessionId);
+        // Already-terminal entries from a prior run fold straight through —
+        // never re-uploaded (SC-005), no progress emitted.
         if (entry.status === "acked") {
           acked.push(entry.sessionId);
           return;
@@ -114,20 +108,23 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
           }
           return;
         }
+
+        const session = new SessionUpload({
+          cloud: opts.cloud,
+          resume: opts.resumeStore,
+          reporter: opts.reporter,
+          ledger: opts.ledger,
+          manifestId: manifestState.manifestId,
+          index: progressIndex,
+          total: totalCount,
+        });
+
+        // On resume, re-check the source file before attempting; a vanished or
+        // modified file is skipped, not uploaded.
         if (existing) {
-          const verdict = await verifyResumableEntry(entry);
-          if (verdict !== null) {
-            opts.resumeStore.updateEntry(entry.sessionId, (e) => ({
-              ...e,
-              status: "skipped-on-resume",
-              skippedReason: verdict,
-            }));
-            skipped.push({ sessionId: entry.sessionId, reason: verdict });
-            opts.reporter.sessionSkipped({
-              manifestId: manifestState.manifestId,
-              sessionId: entry.sessionId,
-              reason: verdict,
-            });
+          const skipReason = await session.skipIfUnresumable(entry);
+          if (skipReason !== null) {
+            skipped.push({ sessionId: entry.sessionId, reason: skipReason });
             return;
           }
         }
@@ -135,67 +132,9 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
           failures.push({ sessionId: entry.sessionId, reason: "missing-job" });
           return;
         }
-        try {
-          opts.reporter.sessionStart({
-            manifestId: manifestState.manifestId,
-            sessionId: entry.sessionId,
-            byteSize: entry.byteSize,
-            index: progressIndex,
-            total: totalCount,
-          });
-          opts.resumeStore.updateEntry(entry.sessionId, (e) => ({
-            ...e,
-            status: "in-flight",
-          }));
-          await uploadOneSession(opts.client, manifestState.manifestId, job);
-          const now = new Date().toISOString();
-          opts.resumeStore.updateEntry(entry.sessionId, (e) => {
-            // A prior attempt may have recorded a failure on this entry; clear it
-            // now that the session landed so --report won't show a stale reason.
-            const cleaned: ManifestEntryState = { ...e, status: "acked", ackedAt: now };
-            delete cleaned.lastFailureReason;
-            delete cleaned.lastFailureMessage;
-            delete cleaned.failedAt;
-            return cleaned;
-          });
-          opts.ledger.upsertEntry({
-            sessionId: entry.sessionId,
-            // Prefer this run's freshly-computed deterministic hash over the
-            // value stored in resume state: a manifest created by an older
-            // binary may hold the salt-dependent redactedHashHex, which would
-            // re-trigger a spurious "updated" on the next run.
-            contentHash: job.anonymizationResult.contentHashHex,
-            lastUploadedAt: now,
-            manifestId: manifestState.manifestId,
-          });
-          opts.reporter.sessionAcked({
-            manifestId: manifestState.manifestId,
-            sessionId: entry.sessionId,
-          });
-          acked.push(entry.sessionId);
-        } catch (err) {
-          if (err instanceof StaleResumeError) {
-            throw err;
-          }
-          // Isolate the failure: reset to pending so a re-run retries only this
-          // session, and persist the classified reason so `frugl upload --report`
-          // can explain the cause and remedy.
-          const failure = classifyFailure(err);
-          opts.resumeStore.updateEntry(entry.sessionId, (e) => ({
-            ...e,
-            status: "pending",
-            lastFailureReason: failure.reason,
-            failedAt: new Date().toISOString(),
-            ...(failure.message !== undefined ? { lastFailureMessage: failure.message } : {}),
-          }));
-          opts.reporter.sessionFailed({
-            manifestId: manifestState.manifestId,
-            sessionId: entry.sessionId,
-            reason: failure.reason,
-            ...(failure.message !== undefined ? { message: failure.message } : {}),
-          });
-          failures.push({ sessionId: entry.sessionId, reason: failure.reason });
-        }
+        // `attempt` records the outcome itself (persist + emit); StaleResumeError
+        // propagates to abort the whole batch.
+        fold(await session.attempt(entry, job));
       }),
     ),
   );
@@ -208,16 +147,12 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
 
   let complete;
   try {
-    complete = await opts.client.call({
-      method: "POST",
-      path: `/api/uploads/${encodeURIComponent(manifestState.manifestId)}/complete`,
-      body: {
-        redaction_summary: aggregateRedactions(opts.jobs),
-      },
-      schema: completeUploadResponseSchema,
-    });
+    complete = await opts.cloud.completeManifest(
+      manifestState.manifestId,
+      aggregateRedactions(opts.jobs),
+    );
   } catch (err) {
-    if (err instanceof CloudHttpError && (err.status === 404 || err.status === 410)) {
+    if (err instanceof CloudPortError && (err.status === 404 || err.status === 410)) {
       throw new StaleResumeError(manifestState.manifestId);
     }
     throw err;
@@ -225,14 +160,14 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
 
   opts.resumeStore.clear();
   opts.reporter.uploadComplete({
-    manifestId: complete.manifest_id,
+    manifestId: complete.manifestId,
     actualSessionCount: acked.length,
-    dashboardUrl: complete.dashboard_url,
+    dashboardUrl: complete.dashboardUrl,
   });
 
   return {
-    manifestId: complete.manifest_id,
-    dashboardUrl: complete.dashboard_url,
+    manifestId: complete.manifestId,
+    dashboardUrl: complete.dashboardUrl,
     acked,
     skipped,
     failures,
@@ -264,44 +199,21 @@ function toWireGitContext(ctx: GitContext): {
 }
 
 async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
-  let created;
-  try {
-    created = await opts.client.call({
-      method: "POST",
-      path: "/api/uploads/manifest",
-      body: {
-        cli_version: opts.cliVersion,
-        redaction_policy_version: opts.policyVersion,
-        source_kind: opts.sourceKind,
-        expected_session_count: opts.jobs.length,
-        sessions: opts.jobs.map((job) => ({
-          session_id: job.sessionId,
-          format_version: job.formatVersion,
-          expected_bytes: job.anonymizationResult.byteSize,
-          ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
-          ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
-        })),
-      },
-      schema: createManifestResponseSchema,
-      timeoutMs: 12_000,
-    });
-  } catch (err) {
-    if (
-      err instanceof CloudHttpError &&
-      err.status === 409 &&
-      typeof err.body === "object" &&
-      err.body !== null &&
-      (err.body as Record<string, unknown>).error === "org_required"
-    ) {
-      throw new FruglError(
-        "Your account has no organization. Run 'frugl setup' to finish setup.",
-        EXIT.GENERIC_FAILURE,
-      );
-    }
-    throw err;
-  }
+  const { uploadId } = await opts.cloud.createManifest({
+    cli_version: opts.cliVersion,
+    redaction_policy_version: opts.policyVersion,
+    source_kind: opts.sourceKind,
+    expected_session_count: opts.jobs.length,
+    sessions: opts.jobs.map((job) => ({
+      session_id: job.sessionId,
+      format_version: job.formatVersion,
+      expected_bytes: job.anonymizationResult.byteSize,
+      ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
+      ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
+    })),
+  });
   return {
-    manifestId: created.upload_id,
+    manifestId: uploadId,
     cliVersion: opts.cliVersion,
     redactionPolicyVersion: opts.policyVersion,
     sourceKind: opts.sourceKind,
@@ -331,60 +243,4 @@ function reconcileExistingManifest(state: ResumeState, jobs: SessionUploadJob[])
     }
   }
   return state.manifest;
-}
-
-async function verifyResumableEntry(
-  entry: ManifestEntryState,
-): Promise<"missing" | "modified" | null> {
-  try {
-    const exists = await stat(entry.sourceFilePath).catch(() => null);
-    if (!exists) return "missing";
-    const currentHash = await rawFileHash(entry.sourceFilePath);
-    if (currentHash !== entry.rawContentHashAtFirstRun) return "modified";
-    return null;
-  } catch {
-    return "missing";
-  }
-}
-
-async function uploadOneSession(
-  client: CloudClient,
-  manifestId: string,
-  job: SessionUploadJob,
-): Promise<void> {
-  // The cloud stores each session as NDJSON (`.jsonl`) and parses it line by
-  // line. The anonymized payload is the array of redacted records, so emit one
-  // JSON document per line rather than a single gzipped blob.
-  const payload = job.anonymizationResult.payload;
-  const ndjson = Array.isArray(payload)
-    ? payload.map((record) => JSON.stringify(record)).join("\n")
-    : JSON.stringify(payload);
-  const body = Buffer.from(ndjson, "utf8");
-
-  await withRetry(async () => {
-    let presigned;
-    try {
-      presigned = await client.call({
-        method: "POST",
-        path: `/api/uploads/${encodeURIComponent(manifestId)}/presign`,
-        body: { session_id: job.sessionId },
-        schema: presignResponseSchema,
-      });
-    } catch (err) {
-      if (err instanceof CloudHttpError && (err.status === 404 || err.status === 410)) {
-        throw new StaleResumeError(manifestId);
-      }
-      throw err;
-    }
-    const response = await client.putBody(presigned.presigned_url, body, { ...presigned.headers });
-    if (!response.ok) {
-      const status = response.status;
-      const err: CloudHttpError = new CloudHttpError(
-        status,
-        await response.text().catch(() => ""),
-        `PUT presigned URL failed: HTTP ${status}`,
-      );
-      throw err;
-    }
-  });
 }

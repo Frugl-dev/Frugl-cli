@@ -64,7 +64,10 @@ export async function withRetry<T>(
       return await fn(attempt);
     } catch (err) {
       if (!shouldRetry(err)) {
-        throw new AbortError(err instanceof Error ? err.message : String(err));
+        // Pass the original Error (not just its message) so AbortError preserves
+        // it verbatim — callers downstream still see `.status` and the concrete
+        // error type after a non-retryable abort, not a stripped clone.
+        throw new AbortError(err instanceof Error ? err : String(err));
       }
       throw err;
     }
