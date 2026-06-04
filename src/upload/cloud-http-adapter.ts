@@ -93,7 +93,12 @@ export class HttpCloudAdapter implements UploadCloudPort {
     } catch (err) {
       throw toCloudPortError(err);
     }
-    return { manifestId: complete.manifest_id, dashboardUrl: complete.dashboard_url };
+    // The server may return a relative dashboard path; resolve it against the
+    // endpoint so the CLI always prints a full clickable URL.
+    return {
+      manifestId: complete.manifest_id,
+      dashboardUrl: new URL(complete.dashboard_url, this.client.endpointUrl).toString(),
+    };
   }
 }
 
