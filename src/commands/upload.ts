@@ -19,15 +19,15 @@ import { ResumeStore } from "../upload/resume.js";
 import {
   buildUploadSummary,
   formatSummaryForHuman,
-  type PrLinkingSummary,
+  buildReport,
+  formatReportHuman,
+  shouldLinkPrs,
   type ProjectSummaryRow,
-} from "../upload/summary.js";
+} from "../upload/upload-output.js";
 import { createProgressReporter } from "../upload/progress.js";
-import { buildReport, formatReportHuman } from "../upload/report.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
 import { extractWorktreePath } from "../sources/claude-code/project.js";
-import { resolveEffectiveLinkPrs, type EffectiveLinkPrs } from "../upload/link-prs.js";
 import {
   detectProviders,
   getProvider,
@@ -123,11 +123,11 @@ export default class Upload extends Command {
     try {
       // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
       const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
-      // Precedence (FR-026): flag > config file > default.
-      const linkPrs = resolveEffectiveLinkPrs(
-        flags["link-prs"],
-        uploadConfig?.upload?.linkPrs ?? getLinkPrs(),
-      );
+      // Precedence (FR-026): flag > config file > default. The summary builder
+      // owns the precedence rule; the command only asks whether linking is active
+      // so it can decide whether to run the (expensive) git-context pass.
+      const configLinkPrs = uploadConfig?.upload?.linkPrs ?? getLinkPrs();
+      const linkActive = shouldLinkPrs(flags["link-prs"], configLinkPrs);
       const concurrency = flags.concurrency ?? uploadConfig?.upload?.concurrency ?? 4;
 
       const session = await resolveUploadAuth({
@@ -256,17 +256,14 @@ export default class Upload extends Command {
       const activeSources = [...refsBySource.keys()];
       const displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
 
-      // Opt-in git-context resolution
+      // Opt-in git-context resolution: only run the (expensive) git pass when
+      // linking is active. The builder folds in the link-prs precedence and
+      // assembles the `prLinking` summary from these raw git facts.
       const gitBySession = new Map<string, GitContext>();
-      let prLinking: PrLinkingSummary | undefined;
-      if (linkPrs.active) {
-        const repositories = await this.resolveBatchGitContext(willUpload, gitBySession, linkPrs);
-        prLinking = {
-          active: true,
-          source: linkPrs.source,
-          sessionsWithContext: gitBySession.size,
-          repositories,
-        };
+      let gitContext: { sessionsWithContext: number; repositories: string[] } | undefined;
+      if (linkActive) {
+        const repositories = await this.resolveBatchGitContext(willUpload, gitBySession);
+        gitContext = { sessionsWithContext: gitBySession.size, repositories };
       }
 
       const projectRows = buildProjectRows(willUpload, groups);
@@ -276,10 +273,12 @@ export default class Upload extends Command {
         policyVersion: POLICY_VERSION,
         endpoint,
         sourceKind: displaySourceKind,
-        ...(prLinking ? { prLinking } : {}),
+        linkPrs: { flagValue: flags["link-prs"], configValue: configLinkPrs },
+        ...(gitContext ? { gitContext } : {}),
         ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
         ...(projectRows.length > 0 ? { projects: projectRows } : {}),
       });
+      const prLinking = summary.prLinking;
 
       if (mode === "text") {
         process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
@@ -547,7 +546,6 @@ export default class Upload extends Command {
   private async resolveBatchGitContext(
     willUpload: SessionClassification[],
     gitBySession: Map<string, GitContext>,
-    linkPrs: EffectiveLinkPrs,
   ): Promise<string[]> {
     const memo = new Map<string, Awaited<ReturnType<typeof resolveGitContext>>>();
     const repositories = new Set<string>();
@@ -577,7 +575,6 @@ export default class Upload extends Command {
       }
     }
 
-    void linkPrs;
     if (attempted > 0 && gitUnavailable === attempted) {
       process.stderr.write(
         `${color.warn(`${symbol.warn} PR linking was on, but git could not be inspected`)}${color.dim("; proceeding as if --link-prs were off.")}\n`,
