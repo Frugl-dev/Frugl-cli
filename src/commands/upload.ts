@@ -373,7 +373,7 @@ export default class Upload extends Command {
       if (!flags.confirm && !flags.yes) {
         const ok = await confirm({
           message: `Upload ${willUpload.length} session(s) to ${endpoint.url}?`,
-          default: false,
+          default: true,
         });
         if (!ok) {
           process.stderr.write(color.dim("Aborted. 0 bytes sent.\n"));
