@@ -1,12 +1,8 @@
-import { Command, Flags } from "@oclif/core";
+import { Command } from "@oclif/core";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint } from "../cloud/endpoints.js";
-import { loadAuthSession } from "../auth/session.js";
 import { orgMeResponseSchema } from "../cloud/schemas.js";
-import { getCliVersion } from "../lib/cli-version.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { isFruglError, printFruglError } from "../lib/errors.js";
-import { resolveOutputMode } from "../lib/output-mode.js";
+import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
 import { color, symbol } from "../lib/theme.js";
 
 interface OrgInfo {
@@ -25,21 +21,13 @@ type OrgResult = OrgInfo | "none" | "unknown";
 export default class Whoami extends Command {
   static override description = "Print the signed-in user's email and active org.";
 
-  static override flags = {
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
-  };
+  static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Whoami);
-    const mode = resolveOutputMode({ json: flags.json });
-    const endpoint = resolveEndpoint({
-      flag: flags.endpoint,
-      env: process.env["FRUGL_ENDPOINT"],
-    });
+    const { mode, client, session } = await buildCommandContext(flags, { auth: "optional" });
 
     try {
-      const session = await loadAuthSession(endpoint.url);
       if (!session) {
         if (mode === "json") {
           process.stdout.write(
@@ -54,12 +42,6 @@ export default class Whoami extends Command {
         process.exit(EXIT.AUTH_FAILURE);
       }
 
-      const client = new CloudClient({
-        endpointUrl: endpoint.url,
-        cliVersion: getCliVersion(),
-        token: session.token,
-        endpointExplicit: endpoint.resolvedFrom !== "default",
-      });
       const org = await this.resolveOrg(client);
       const orgInfo = typeof org === "string" ? null : org;
 
@@ -106,10 +88,7 @@ export default class Whoami extends Command {
         );
       }
     } catch (err) {
-      if (isFruglError(err) || err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 

@@ -1,7 +1,6 @@
-import { Args, Command, Flags } from "@oclif/core";
-import { CloudHttpError } from "../../cloud/client.js";
-import { isFruglError, printFruglError } from "../../lib/errors.js";
+import { Args, Command } from "@oclif/core";
 import { resolveOutputMode } from "../../lib/output-mode.js";
+import { COMMON_FLAGS, handleCommandError } from "../../lib/command-context.js";
 import { authedClient, fetchOrgContext } from "../../org/runtime.js";
 import { renderNoOrg } from "../../org/render.js";
 import { color, symbol } from "../../lib/theme.js";
@@ -13,10 +12,7 @@ export default class OrgUse extends Command {
     slug: Args.string({ description: "Org slug to switch to", required: true }),
   };
 
-  static override flags = {
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
-  };
+  static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(OrgUse);
@@ -68,10 +64,7 @@ export default class OrgUse extends Command {
       );
       process.exit(0);
     } catch (err) {
-      if (isFruglError(err) || err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 }

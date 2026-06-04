@@ -1,8 +1,8 @@
 import { Command, Flags } from "@oclif/core";
 import { input } from "@inquirer/prompts";
-import { CloudHttpError } from "../../cloud/client.js";
-import { isFruglError, printFruglError, UsageError } from "../../lib/errors.js";
+import { UsageError } from "../../lib/errors.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
+import { COMMON_FLAGS, handleCommandError } from "../../lib/command-context.js";
 import { authedClient } from "../../org/runtime.js";
 import type { OrgSetupAction } from "../../org/setup.js";
 import { runOrgSetupFlow } from "../../org/flow.js";
@@ -19,8 +19,7 @@ export default class OrgCreate extends Command {
 
   static override flags = {
     name: Flags.string({ description: "Org name (skips the interactive prompt)" }),
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    ...COMMON_FLAGS,
   };
 
   async run(): Promise<void> {
@@ -77,10 +76,7 @@ export default class OrgCreate extends Command {
       renderOrgSetupResult(result, spec, mode);
       return;
     } catch (err) {
-      if (isFruglError(err) || err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 

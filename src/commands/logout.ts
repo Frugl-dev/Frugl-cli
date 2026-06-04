@@ -1,39 +1,23 @@
-import { Command, Flags } from "@oclif/core";
+import { Command } from "@oclif/core";
 import { z } from "zod";
-import { CloudClient } from "../cloud/client.js";
-import { resolveEndpoint } from "../cloud/endpoints.js";
-import { clearAuthSession, loadAuthSession } from "../auth/session.js";
+import { clearAuthSession } from "../auth/session.js";
 import { logoutResponseSchema } from "../cloud/schemas.js";
-import { getCliVersion } from "../lib/cli-version.js";
-import { isFruglError, printFruglError } from "../lib/errors.js";
-import { resolveOutputMode } from "../lib/output-mode.js";
+import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
 import { color, symbol } from "../lib/theme.js";
 
 export default class Logout extends Command {
   static override description = "Forget the local token and revoke this device's session.";
 
-  static override flags = {
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
-  };
+  static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Logout);
-    const mode = resolveOutputMode({ json: flags.json });
-    const endpoint = resolveEndpoint({
-      flag: flags.endpoint,
-      env: process.env["FRUGL_ENDPOINT"],
+    const { mode, endpoint, client, session } = await buildCommandContext(flags, {
+      auth: "optional",
     });
 
     try {
-      const session = await loadAuthSession(endpoint.url);
       if (session) {
-        const client = new CloudClient({
-          endpointUrl: endpoint.url,
-          cliVersion: getCliVersion(),
-          token: session.token,
-          endpointExplicit: endpoint.resolvedFrom !== "default",
-        });
         try {
           await client.call({
             method: "POST",
@@ -56,10 +40,7 @@ export default class Logout extends Command {
         );
       }
     } catch (err) {
-      if (isFruglError(err)) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 }

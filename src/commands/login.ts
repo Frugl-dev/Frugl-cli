@@ -1,13 +1,13 @@
 import { Command, Flags } from "@oclif/core";
 import { input, password, select } from "@inquirer/prompts";
-import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint } from "../cloud/endpoints.js";
+import { CloudHttpError } from "../cloud/client.js";
+import type { Endpoint } from "../cloud/endpoints.js";
 import { AuthService } from "../auth/auth-service.js";
 import { cloudIdentityClient } from "../auth/identity-client.js";
 import { clearAuthSession } from "../auth/session.js";
-import { isFruglError, printFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
-import { resolveOutputMode } from "../lib/output-mode.js";
+import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
+import type { OutputMode } from "../lib/output-mode.js";
 import { orgMeResponseSchema, type OrgMeResponse } from "../cloud/schemas.js";
 import type { OrgSetupAction } from "../org/setup.js";
 import { runOrgSetupFlow } from "../org/flow.js";
@@ -29,17 +29,14 @@ export default class Login extends Command {
       description:
         "Store a pre-issued access token for non-interactive use (CI / hooks) instead of the email OTP flow.",
     }),
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    ...COMMON_FLAGS,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Login);
-    const mode = resolveOutputMode({ json: flags.json });
-    const endpoint = resolveEndpoint({
-      flag: flags.endpoint,
-      env: process.env["FRUGL_ENDPOINT"],
-    });
+    // "none": pre-auth, token-less client. We obtain the token mid-run (OTP or
+    // the --token branch) and call client.setToken / persist it ourselves.
+    const { mode, endpoint, client } = await buildCommandContext(flags, { auth: "none" });
 
     // Non-interactive: store a pre-issued access token (no OTP).
     if (flags.token) {
@@ -47,21 +44,16 @@ export default class Login extends Command {
       return;
     }
 
-    const endpointExplicit = endpoint.resolvedFrom !== "default";
+    // AuthService owns the OTP flow; `client` (from buildCommandContext) is the
+    // token-less CloudClient reused for the post-login /api/orgs/me + org setup
+    // flow, which is out of AuthService's scope.
     const auth = new AuthService({
       endpointUrl: endpoint.url,
       identity: cloudIdentityClient({
         endpointUrl: endpoint.url,
-        endpointExplicit,
+        endpointExplicit: endpoint.resolvedFrom !== "default",
         cliVersion: getCliVersion(),
       }),
-    });
-    // Login keeps its own CloudClient for the post-login /api/orgs/me + org
-    // setup flow; org setup is out of AuthService's scope.
-    const client = new CloudClient({
-      endpointUrl: endpoint.url,
-      cliVersion: getCliVersion(),
-      endpointExplicit,
     });
 
     let email = flags.email;
@@ -261,21 +253,11 @@ export default class Login extends Command {
       this.printNextSteps();
       return;
     } catch (err) {
-      if (isFruglError(err)) {
-        process.exit(printFruglError(err, mode));
-      }
-      if (err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 
-  private async loginWithToken(
-    token: string,
-    endpoint: ReturnType<typeof resolveEndpoint>,
-    mode: ReturnType<typeof resolveOutputMode>,
-  ): Promise<void> {
+  private async loginWithToken(token: string, endpoint: Endpoint, mode: OutputMode): Promise<void> {
     try {
       const auth = new AuthService({
         endpointUrl: endpoint.url,
@@ -304,10 +286,7 @@ export default class Login extends Command {
         `${color.ok(`${symbol.tick} Stored access token for ${session.email}`)}  ${color.dim(`(endpoint: ${session.endpointUrl})`)}\n`,
       );
     } catch (err) {
-      if (isFruglError(err) || err instanceof CloudHttpError) {
-        process.exit(printFruglError(err, mode));
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 

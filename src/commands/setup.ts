@@ -1,13 +1,9 @@
 import { Command, Flags } from "@oclif/core";
 import { input, password, select } from "@inquirer/prompts";
-import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint } from "../cloud/endpoints.js";
 import { AuthService } from "../auth/auth-service.js";
 import { cloudIdentityClient } from "../auth/identity-client.js";
-import { loadAuthSession } from "../auth/session.js";
-import { isFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
-import { resolveOutputMode } from "../lib/output-mode.js";
+import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
 import type { OrgSetupAction } from "../org/setup.js";
 import { runOrgSetupFlow } from "../org/flow.js";
 import {
@@ -22,39 +18,38 @@ export default class Setup extends Command {
     "Authenticate and set up your organization in one step. Idempotent — safe to re-run.";
 
   static override flags = {
-    endpoint: Flags.string({ description: "Override the API endpoint" }),
     email: Flags.string({ description: "Email address to sign in with" }),
     "org-name": Flags.string({ description: "Organization name (skips interactive prompt)" }),
     "invite-code": Flags.string({ description: "Invite code to join an existing org" }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    ...COMMON_FLAGS,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Setup);
-    const mode = resolveOutputMode({ json: flags.json });
-    const endpoint = resolveEndpoint({
-      flag: flags.endpoint,
-      env: process.env["FRUGL_ENDPOINT"],
+    // "optional": reuse a saved session when present (client token pre-set);
+    // otherwise session is null and we run the OTP flow + setToken below.
+    const {
+      mode,
+      endpoint,
+      client,
+      session: existing,
+    } = await buildCommandContext(flags, {
+      auth: "optional",
     });
 
-    const endpointExplicit = endpoint.resolvedFrom !== "default";
-    const client = new CloudClient({
-      endpointUrl: endpoint.url,
-      cliVersion: getCliVersion(),
-      endpointExplicit,
-    });
+    // AuthService owns the OTP flow when there's no saved session.
     const auth = new AuthService({
       endpointUrl: endpoint.url,
       identity: cloudIdentityClient({
         endpointUrl: endpoint.url,
-        endpointExplicit,
+        endpointExplicit: endpoint.resolvedFrom !== "default",
         cliVersion: getCliVersion(),
       }),
     });
 
     try {
       // Step 1: Auth — reuse saved session or do OTP flow.
-      let session = await loadAuthSession(endpoint.url);
+      let session = existing;
       if (!session) {
         let email = flags.email;
         if (!email) {
@@ -163,15 +158,7 @@ export default class Setup extends Command {
       renderOrgSetupResult(result, spec, mode);
       return;
     } catch (err) {
-      if (isFruglError(err)) {
-        process.stderr.write(`frugl: ${err.message}\n`);
-        process.exit(err.exitCode);
-      }
-      if (err instanceof CloudHttpError) {
-        process.stderr.write(`frugl: ${err.message}\n`);
-        process.exit(1);
-      }
-      throw err;
+      handleCommandError(err, mode);
     }
   }
 }
