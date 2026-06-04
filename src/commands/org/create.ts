@@ -6,6 +6,11 @@ import { resolveOutputMode } from "../../lib/output-mode.js";
 import { authedClient } from "../../org/runtime.js";
 import type { OrgSetupAction } from "../../org/setup.js";
 import { runOrgSetupFlow } from "../../org/flow.js";
+import {
+  makeOrgSetupPrompts,
+  renderOrgSetupResult,
+  type OrgSetupPresentation,
+} from "../../org/presenter.js";
 import { deriveSlug } from "../../org/slug.js";
 import { color, symbol } from "../../lib/theme.js";
 
@@ -32,50 +37,44 @@ export default class OrgCreate extends Command {
       const name = flags.name ?? (await this.promptName("Org name"));
       const action: OrgSetupAction = { action: "create", name, slug: deriveSlug(name) };
 
-      // The flow drives create + slug-conflict retries; we only supply the
-      // reprompt (text) / hard-fail (JSON) behaviour for a taken slug. A
-      // create intent can never yield a join outcome.
-      const result = await runOrgSetupFlow(client, action, {
-        onSlugTaken: async (suggestion) => {
-          if (mode === "json") {
-            throw new UsageError(
-              `Slug is taken. Try a different name (suggestion: ${suggestion}).`,
-            );
-          }
-          process.stderr.write(
-            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}\n`,
-          );
-          return this.promptName("Org name (try a different one)");
+      // The flow drives create + slug-conflict retries; the presenter supplies
+      // the reprompt (text) / hard-fail (JSON) behaviour for a taken slug. A
+      // create intent can never yield a join outcome, so the code branches are
+      // omitted — the presenter guards them as "unexpected result".
+      const spec: OrgSetupPresentation = {
+        command: "org create",
+        reprompt: { name: () => this.promptName("Org name (try a different one)") },
+        messages: {
+          slugTaken: (suggestion) => ({
+            warn: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
+            abort: `Slug is taken. Try a different name (suggestion: ${suggestion}).`,
+          }),
+          invalidCode: {
+            warn: "Unexpected org-create result: invalid-code",
+            abort: "Unexpected org-create result: invalid-code",
+          },
+          expiredCode: {
+            warn: "Unexpected org-create result: expired-code",
+            abort: "Unexpected org-create result: expired-code",
+          },
         },
-        onInvalidCode: () => {
-          throw new UsageError("Unexpected org-create result: invalid-code");
-        },
-        onExpiredCode: () => {
-          throw new UsageError("Unexpected org-create result: expired-code");
-        },
-      });
-
-      if (mode === "json") {
-        process.stdout.write(
-          `${JSON.stringify({
+        render: {
+          text: (r) =>
+            r.status === "already-setup"
+              ? `${color.ok(`${symbol.tick} You're already in ${r.orgName}`)}  ${color.dim(`(${r.slug}).`)}\n`
+              : `${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(r.slug)}${color.dim(".")}\n`,
+          json: (r) => ({
             command: "org create",
             ok: true,
-            slug: result.slug,
-            name: result.orgName,
-            outcome: result.status === "created" ? "created" : "existing",
-          })}\n`,
-        );
-        return;
-      }
-      if (result.status === "already-setup") {
-        process.stdout.write(
-          `${color.ok(`${symbol.tick} You're already in ${result.orgName}`)}  ${color.dim(`(${result.slug}).`)}\n`,
-        );
-      } else {
-        process.stdout.write(
-          `${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(result.slug)}${color.dim(".")}\n`,
-        );
-      }
+            slug: r.slug,
+            name: r.orgName,
+            outcome: r.status === "created" ? "created" : "existing",
+          }),
+        },
+      };
+
+      const result = await runOrgSetupFlow(client, action, makeOrgSetupPrompts(spec, mode));
+      renderOrgSetupResult(result, spec, mode);
       return;
     } catch (err) {
       if (isFruglError(err) || err instanceof CloudHttpError) {

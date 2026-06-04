@@ -9,8 +9,13 @@ import { isFruglError, printFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
 import { orgMeResponseSchema, type OrgMeResponse } from "../cloud/schemas.js";
-import type { OrgSetupAction, OrgSetupResult } from "../org/setup.js";
+import type { OrgSetupAction } from "../org/setup.js";
 import { runOrgSetupFlow } from "../org/flow.js";
+import {
+  makeOrgSetupPrompts,
+  renderOrgSetupResult,
+  type OrgSetupPresentation,
+} from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
 import { color, symbol } from "../lib/theme.js";
 
@@ -191,7 +196,8 @@ export default class Login extends Command {
 
       // The flow drives setup + slug-conflict / bad-code retries; each handler
       // reprompts for the field that failed. (This section is text-only — JSON
-      // mode returned above before reaching the org fork.)
+      // mode returned above before reaching the org fork, so the prompts and
+      // rendering run in text mode.)
       const promptInviteCode = async (): Promise<string> => {
         const inviteCode = await input({
           message: "Invite code:",
@@ -199,31 +205,59 @@ export default class Login extends Command {
         });
         return inviteCode.trim();
       };
-      const result = await runOrgSetupFlow(client, orgAction, {
-        onSlugTaken: async (suggestion) => {
-          process.stderr.write(
-            `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}\n`)}`,
-          );
-          return input({
-            message: "Organization name (try a different one):",
-            validate: (v) =>
-              (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-          });
+      const promptOrgName = (): Promise<string> =>
+        input({
+          message: "Organization name (try a different one):",
+          validate: (v) =>
+            (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+        });
+      const orgSetupSpec: OrgSetupPresentation = {
+        command: "login",
+        reprompt: { name: promptOrgName, code: promptInviteCode },
+        messages: {
+          slugTaken: (suggestion) => ({
+            warn: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
+            abort: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
+          }),
+          invalidCode: {
+            warn: `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}`,
+            abort: `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}`,
+          },
+          expiredCode: {
+            warn: `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}`,
+            abort: `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}`,
+          },
         },
-        onInvalidCode: async () => {
-          process.stderr.write(
-            `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}\n`,
-          );
-          return promptInviteCode();
+        render: {
+          text: (r) => {
+            if (r.status === "created") {
+              return `\n${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(r.slug)}${color.dim(".")}\n`;
+            }
+            if (r.status === "joined") {
+              return `\n${color.ok(`${symbol.tick} Joined ${r.slug}`)}  ${color.dim("as member.")}\n`;
+            }
+            return `\n${color.ok(`${symbol.tick} Active org: ${r.orgName}`)}  ${color.dim(`(${r.slug})`)}\n`;
+          },
+          json: (r) => ({
+            command: "login",
+            ok: true,
+            slug: r.slug,
+            name: r.orgName,
+            outcome:
+              r.status === "already-setup"
+                ? "existing"
+                : r.status === "created"
+                  ? "created"
+                  : "joined",
+          }),
         },
-        onExpiredCode: async () => {
-          process.stderr.write(
-            `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}\n`,
-          );
-          return promptInviteCode();
-        },
-      });
-      this.printSetupSuccess(result);
+      };
+      const result = await runOrgSetupFlow(
+        client,
+        orgAction,
+        makeOrgSetupPrompts(orgSetupSpec, "text"),
+      );
+      renderOrgSetupResult(result, orgSetupSpec, "text");
       this.printNextSteps();
       return;
     } catch (err) {
@@ -274,24 +308,6 @@ export default class Login extends Command {
         process.exit(printFruglError(err, mode));
       }
       throw err;
-    }
-  }
-
-  private printSetupSuccess(
-    result: Extract<OrgSetupResult, { status: "created" | "joined" | "already-setup" }>,
-  ): void {
-    if (result.status === "created") {
-      process.stdout.write(
-        `\n${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(result.slug)}${color.dim(".")}\n`,
-      );
-    } else if (result.status === "joined") {
-      process.stdout.write(
-        `\n${color.ok(`${symbol.tick} Joined ${result.slug}`)}  ${color.dim("as member.")}\n`,
-      );
-    } else {
-      process.stdout.write(
-        `\n${color.ok(`${symbol.tick} Active org: ${result.orgName}`)}  ${color.dim(`(${result.slug})`)}\n`,
-      );
     }
   }
 
