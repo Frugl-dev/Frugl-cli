@@ -2,8 +2,9 @@ import { Command, Flags } from "@oclif/core";
 import { input, password, select } from "@inquirer/prompts";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
-import { requestOtp, verifyOtp } from "../auth/otp-flow.js";
-import { loadAuthSession, saveAuthSession } from "../auth/session.js";
+import { AuthService } from "../auth/auth-service.js";
+import { cloudIdentityClient } from "../auth/identity-client.js";
+import { loadAuthSession } from "../auth/session.js";
 import { isFruglError } from "../lib/errors.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { resolveOutputMode } from "../lib/output-mode.js";
@@ -31,10 +32,19 @@ export default class Setup extends Command {
       env: process.env["FRUGL_ENDPOINT"],
     });
 
+    const endpointExplicit = endpoint.resolvedFrom !== "default";
     const client = new CloudClient({
       endpointUrl: endpoint.url,
       cliVersion: getCliVersion(),
-      endpointExplicit: endpoint.resolvedFrom !== "default",
+      endpointExplicit,
+    });
+    const auth = new AuthService({
+      endpointUrl: endpoint.url,
+      identity: cloudIdentityClient({
+        endpointUrl: endpoint.url,
+        endpointExplicit,
+        cliVersion: getCliVersion(),
+      }),
     });
 
     try {
@@ -48,14 +58,13 @@ export default class Setup extends Command {
             validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || "Enter a valid email address",
           });
         }
-        await requestOtp(client, email);
+        await auth.startLogin(email);
         const code = await password({
           message: "6-digit code from email:",
           mask: "*",
           validate: (v) => /^\d{6}$/.test(v) || "Code must be 6 digits",
         });
-        session = await verifyOtp(client, email, code);
-        await saveAuthSession(session);
+        session = await auth.completeLogin(email, code);
       }
       client.setToken(session.token);
 

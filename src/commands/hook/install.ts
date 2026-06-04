@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { installHook, type HookScope } from "../../hook/claude-code.js";
-import { resolveHeadlessToken } from "../../auth/token-auth.js";
+import { SessionStore } from "../../auth/session-store.js";
 import { resolveEndpoint } from "../../cloud/endpoints.js";
 import { resolveOutputMode } from "../../lib/output-mode.js";
 import { isFruglError, printFruglError } from "../../lib/errors.js";
@@ -28,7 +28,8 @@ export default class HookInstall extends Command {
       // Warn (don't fail) when no headless token is configured — the hook would
       // otherwise fail when it fires.
       const endpoint = resolveEndpoint({ env: process.env["FRUGL_ENDPOINT"] });
-      const tokenConfigured = (await resolveHeadlessToken({ endpointUrl: endpoint.url })) !== null;
+      const tokenConfigured =
+        (await new SessionStore().resolveToken({ endpointUrl: endpoint.url })) !== null;
 
       if (mode === "json") {
         process.stdout.write(

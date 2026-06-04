@@ -29,6 +29,14 @@ export interface ResolvedToken {
   source: TokenSource;
 }
 
+// The resolved credential together with the session it came from when (and only
+// when) the source is the stored keychain session. Lets a caller obtain the
+// token AND the originating identity from a SINGLE keychain read, instead of
+// resolving the token and then re-loading the session to recover its identity.
+export type ResolvedAuth =
+  | { token: string; source: "flag" | "env"; session: null }
+  | { token: string; source: "session"; session: AuthSession };
+
 export interface SessionStoreOptions {
   // Credential backend; defaults to the OS keychain adapter.
   store?: CredentialStore;
@@ -107,6 +115,27 @@ export class SessionStore {
 
     return null;
   }
+
+  // Like resolveToken, but for a session-sourced token it also returns the
+  // originating AuthSession — so token + identity come from ONE keychain read.
+  // flag/env tokens carry no stored identity (session: null); the caller is
+  // expected to resolve their identity from the server. Returns null when no
+  // credential is available anywhere.
+  async resolveAuth(opts: {
+    flagToken?: string | undefined;
+    endpointUrl: string;
+  }): Promise<ResolvedAuth | null> {
+    const flag = opts.flagToken?.trim();
+    if (flag) return { token: flag, source: "flag", session: null };
+
+    const envToken = this.env.FRUGL_TOKEN?.trim();
+    if (envToken) return { token: envToken, source: "env", session: null };
+
+    const session = await this.loadOrNull(opts.endpointUrl);
+    if (session?.token) return { token: session.token, source: "session", session };
+
+    return null;
+  }
 }
 
 function accountFor(endpointUrl: string): string {
@@ -114,6 +143,7 @@ function accountFor(endpointUrl: string): string {
 }
 
 // Process-wide store backed by the real OS keychain. The thin function facades
-// in session.ts / token-auth.ts delegate here so existing callers are
-// unchanged while the depth lives in one tested place.
+// in session.ts delegate here so existing save/load/require/clear callers are
+// unchanged while the depth lives in one tested place. The auth-resolution path
+// now flows through AuthService (which wraps a SessionStore + IdentityClient).
 export const defaultSessionStore = new SessionStore();
