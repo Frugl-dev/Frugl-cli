@@ -1,11 +1,6 @@
-import path from "node:path";
 import type { SessionRef, Source } from "./types.js";
-import { claudeCodeSource } from "./claude-code/index.js";
-import { deriveClaudeProjects } from "./claude-code/project.js";
-import { cursorSource } from "./cursor/index.js";
-import { codexSource } from "./codex/index.js";
-import { geminiSource } from "./gemini/index.js";
-import { probeClaude, probeCodex, probeCursor, probeGemini, type ProbeOptions } from "./probe.js";
+import { DESCRIPTORS } from "./descriptor.js";
+import { probe, toSource } from "./walker.js";
 
 export type ProviderId = "claude" | "codex" | "cursor" | "gemini";
 
@@ -17,7 +12,14 @@ export interface ProjectGroup {
   sessionCount: number;
 }
 
-export interface ProviderDescriptor {
+export interface ProbeOptions {
+  homeDir?: string;
+}
+
+// A registry entry: the runtime view of a provider that downstream code consumes
+// (probe + Source + project derivation). Derived from the pure-data
+// ProviderDescriptor via `toSource`; never hand-maintained alongside it.
+export interface RegisteredProvider {
   id: ProviderId;
   displayName: string;
   supported: boolean;
@@ -27,83 +29,22 @@ export interface ProviderDescriptor {
   deriveProjects?(refs: SessionRef[]): ProjectGroup[];
 }
 
-function deriveCursorProjects(refs: SessionRef[]): ProjectGroup[] {
-  const byProject = new Map<string, SessionRef[]>();
-  for (const ref of refs) {
-    const parts = ref.absolutePath.replace(/\\/g, "/").split("/");
-    const projIdx = parts.indexOf("projects");
-    const projectId =
-      projIdx >= 0 && parts[projIdx + 1]
-        ? parts[projIdx + 1]!
-        : path.basename(path.dirname(path.dirname(ref.absolutePath)));
-    const sessions = byProject.get(projectId);
-    if (sessions) sessions.push(ref);
-    else byProject.set(projectId, [ref]);
-  }
-  return [...byProject.entries()].map(([projectId, sessions]) => ({
-    providerId: "cursor" as ProviderId,
-    projectId,
-    displayName: projectId,
-    sessions,
-    sessionCount: sessions.length,
-  }));
-}
-
-function deriveFlatProjects(providerId: ProviderId, displayName: string) {
-  return (refs: SessionRef[]): ProjectGroup[] =>
-    refs.length === 0
-      ? []
-      : [
-          {
-            providerId,
-            projectId: providerId,
-            displayName,
-            sessions: refs,
-            sessionCount: refs.length,
-          },
-        ];
-}
-
-export const PROVIDERS: readonly ProviderDescriptor[] = [
-  {
-    id: "claude",
-    displayName: "Claude Code",
-    supported: true,
-    probe: probeClaude,
-    source: claudeCodeSource,
-    deriveProjects: deriveClaudeProjects,
-  },
-  {
-    id: "codex",
-    displayName: "Codex",
-    supported: true,
-    probe: probeCodex,
-    source: codexSource,
-    deriveProjects: deriveFlatProjects("codex", "Codex sessions"),
-  },
-  {
-    id: "cursor",
-    displayName: "Cursor",
-    supported: true,
-    probe: probeCursor,
-    source: cursorSource,
-    deriveProjects: deriveCursorProjects,
-  },
-  {
-    id: "gemini",
-    displayName: "Gemini",
-    supported: true,
-    probe: probeGemini,
-    source: geminiSource,
-    deriveProjects: deriveFlatProjects("gemini", "Gemini sessions"),
-  },
-];
+// The registry is derived from the descriptors so a provider can never appear in
+// PROVIDERS without its Source (and vice versa). Order matches DESCRIPTORS.
+export const PROVIDERS: readonly RegisteredProvider[] = DESCRIPTORS.map((d) => ({
+  id: d.id,
+  displayName: d.displayName,
+  supported: true,
+  probe: (opts?: ProbeOptions) => probe(d, opts),
+  source: toSource(d),
+  deriveProjects: d.deriveProjects,
+}));
 
 export interface DetectedProvider {
-  descriptor: ProviderDescriptor;
+  descriptor: RegisteredProvider;
 }
 
-export function getProvider(id: string): ProviderDescriptor | undefined {
+export function getProvider(id: string): RegisteredProvider | undefined {
   return PROVIDERS.find((p) => p.id === id);
 }
 

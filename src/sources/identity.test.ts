@@ -1,12 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { deriveClaudeIdentity } from "./claude-code/identity.js";
+import { claude } from "./descriptor.js";
+import { deriveIdentity } from "./walker.js";
 import { resolveIdentity, deriveSessionUuid, uuidv5, isUuid } from "./identity.js";
-import type { SessionRef } from "./types.js";
+import type { SessionIdentity, SessionRef } from "./types.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ref(absolutePath: string): SessionRef {
   return { sourceKind: "claude-code", absolutePath, byteSizeOnDisk: 100, mtimeMs: 1 };
+}
+
+// The claude descriptor routed through the generic walker reproduces the old
+// deriveClaudeIdentity(ref, firstRecord) behaviour — worktree suppression included.
+function deriveClaudeIdentity(r: SessionRef, firstRecord: unknown): SessionIdentity {
+  return deriveIdentity(claude, { ref: r, records: [firstRecord], firstRecord });
 }
 
 describe("uuidv5 / deriveSessionUuid", () => {
