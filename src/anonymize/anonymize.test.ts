@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { AnonymizationError } from "../lib/errors.js";
 import { anonymize, POLICY_VERSION, PseudonymTable } from "./index.js";
+import { secretsRule } from "./rules/secrets.js";
 
 const PLANTED = {
   "anthropic-key": "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -183,5 +185,26 @@ describe("anonymize", () => {
     expect(serialized).not.toContain(home);
     expect(serialized).toContain("<HOME>");
     expect(result.redactionsByCategory["home-path"]).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("anonymize fail-closed envelope", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("throws AnonymizationError and emits no payload when a rule throws", () => {
+    const spy = vi.spyOn(secretsRule, "apply").mockImplementation(() => {
+      throw new Error("boom");
+    });
+    let result: unknown;
+    expect(() => {
+      result = anonymize(
+        { sessions: [{ text: "anything at all" }] },
+        { uploadId: "u-fail", ownerEmail: OWNER_EMAIL },
+      );
+    }).toThrow(AnonymizationError);
+    expect(result).toBeUndefined();
+    expect(spy).toHaveBeenCalled();
   });
 });
