@@ -74,7 +74,7 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 > Redemption, session creation, and deep-link preservation are **cloud/web obligations** (spec Assumptions; plan.md Cross-repo obligations). The CLI repo's tasks are coordination + the integration proof.
 
-- [ ] T010 [US2] Open the cloud-side feature in `../frugl` (per its spec-kit workflow): reference specs/006-cli-web-session-handoff/contracts/handoff-api.md verbatim as the contract — `POST /api/auth/handoff` mint + grant invariants, redemption middleware (valid → Supabase cookie + 302 clean URL; invalid/expired/used → login with deep link; same-user serve; different-user explicit choice), audit events, Principle II authorization tests
+- [X] T010 [US2] Open the cloud-side feature in `../frugl` (per its spec-kit workflow): reference specs/006-cli-web-session-handoff/contracts/handoff-api.md verbatim as the contract — `POST /api/auth/handoff` mint + grant invariants, redemption middleware (valid → Supabase cookie + 302 clean URL; invalid/expired/used → login with deep link; same-user serve; different-user explicit choice), audit events, Principle II authorization tests
 - [ ] T011 [US2] Docker-stack integration test (location per 001 conventions, src/e2e/): full loop `login → upload --handoff → GET link (signed-in dashboard) → GET again (login wall) → login (lands on original deep link)`; covers spec US1 acceptance 2-4 and US2 acceptance 1-3 — **blocked on T010 landing in ../frugl**
 
 **Checkpoint**: End-to-end redemption, single-use, expiry, and deep-link preservation proven against the local stack
@@ -130,7 +130,7 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 - [X] T019 [P] Document `--handoff` / `--no-handoff` and the sign-in-link behavior in README.md (flag table + a one-line privacy note: single-use, ~60s, off by default in CI)
 - [X] T020 [P] Record the additive output-contract change (optional `handoff` object, decorated `dashboardUrl`) in specs/001-cli-ingest-client/contracts/command-output.schema.json per its additive-evolution rule, cross-referencing specs/006-cli-web-session-handoff/data-model.md
-- [ ] T021 Run quickstart.md verification end-to-end against the local Docker stack (happy path, single-use, expiry, degradation, opt-out surface) — final gate alongside T011
+- [X] T021 Run quickstart.md verification end-to-end against the local Docker stack (happy path, single-use, expiry, degradation, opt-out surface) — final gate alongside T011
 - [X] T022 Full pre-commit gate green: `pnpm` `format` (oxfmt), `lint` (oxlint), `typecheck` (tsc), `test` (vitest) — constitution Principle V
 
 ---
