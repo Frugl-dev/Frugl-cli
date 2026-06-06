@@ -2,6 +2,7 @@ import path from "node:path";
 import type { ProjectGroup, ProviderId } from "./providers.js";
 import type { SessionRef } from "./types.js";
 import { deriveClaudeProjects, extractWorktreePath } from "./claude-code/project.js";
+import { collectToolResultRecords } from "./claude-code/tool-results.js";
 
 // On-disk record layout. The generic walker's decode dispatch keys off this so a
 // single code path serves every provider — structurally preventing the
@@ -50,6 +51,11 @@ export interface ProviderDescriptor {
     cwd?: string | undefined;
     recordedBranch?: string | undefined;
   };
+  // Additive (039) provider-specific metadata records APPENDED to `records`
+  // after the transcript lines — they flow through anonymization and the
+  // content hash like any other record. Warnings are surfaced by the walker
+  // and never abort the parse (honest failures).
+  collectExtraRecords?(ref: SessionRef): Promise<{ records: unknown[]; warnings: string[] }>;
   deriveProjects(refs: SessionRef[]): ProjectGroup[];
 }
 
@@ -145,6 +151,9 @@ const claude: ProviderDescriptor = {
     cwd: firstNonEmpty(records, "cwd"),
     recordedBranch: firstNonEmpty(records, "gitBranch"),
   }),
+  // spec 039 — size-only metadata for tool-results/*.txt sidecar files; the
+  // cloud's Claude adapter aggregates them into offloaded-result metrics.
+  collectExtraRecords: (ref) => collectToolResultRecords(ref.absolutePath),
   deriveProjects: deriveClaudeProjects,
 };
 
