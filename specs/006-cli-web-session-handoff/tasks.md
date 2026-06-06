@@ -34,8 +34,8 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T001 [P] Add `handoffRequestSchema` (`{ redirect_to }` with relative-path refinement: starts with `/`, not `//`, no scheme) and `handoffResponseSchema` (`{ code, expires_at }`) with inferred types to src/cloud/schemas.ts, matching contracts/handoff-api.md
-- [X] T002 [P] Create src/cloud/handoff.ts skeleton: `HandoffSkipReason` union (`disabled-flag | disabled-default | unsupported | unavailable | rejected`), `HandoffResult` discriminated union, and pure `resolveHandoffPreference(flagValue: boolean | undefined, isTTY: boolean, mode: OutputMode)` implementing the precedence table from data-model.md (mirrors `resolveEffectiveLinkPrs` idiom in src/upload/upload-output.ts:81-88)
+- [x] T001 [P] Add `handoffRequestSchema` (`{ redirect_to }` with relative-path refinement: starts with `/`, not `//`, no scheme) and `handoffResponseSchema` (`{ code, expires_at }`) with inferred types to src/cloud/schemas.ts, matching contracts/handoff-api.md
+- [x] T002 [P] Create src/cloud/handoff.ts skeleton: `HandoffSkipReason` union (`disabled-flag | disabled-default | unsupported | unavailable | rejected`), `HandoffResult` discriminated union, and pure `resolveHandoffPreference(flagValue: boolean | undefined, isTTY: boolean, mode: OutputMode)` implementing the precedence table from data-model.md (mirrors `resolveEffectiveLinkPrs` idiom in src/upload/upload-output.ts:81-88)
 
 **Checkpoint**: Wire schemas + types compile; user story implementation can begin
 
@@ -51,16 +51,16 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 > Write first; ensure they FAIL before implementing
 
-- [X] T003 [P] [US1] Contract tests in src/cloud/handoff.test.ts: zod round-trip of handoff request/response fixtures; `handoffRequestSchema` rejects absolute (`https://…`) and protocol-relative (`//…`) `redirect_to` values
-- [X] T004 [P] [US1] Unit tests in src/cloud/handoff.test.ts: `redirect_to` derivation = `pathname + search` of the dashboard URL (never host); decoration via `searchParams.set("handoff", code)` preserves existing query params; success path returns `{ active: true, dashboardUrl, expiresAt }`
+- [x] T003 [P] [US1] Contract tests in src/cloud/handoff.test.ts: zod round-trip of handoff request/response fixtures; `handoffRequestSchema` rejects absolute (`https://…`) and protocol-relative (`//…`) `redirect_to` values
+- [x] T004 [P] [US1] Unit tests in src/cloud/handoff.test.ts: `redirect_to` derivation = `pathname + search` of the dashboard URL (never host); decoration via `searchParams.set("handoff", code)` preserves existing query params; success path returns `{ active: true, dashboardUrl, expiresAt }`
 
 ### Implementation for User Story 1
 
-- [X] T005 [US1] Implement `requestHandoffUrl(client, dashboardUrl, preference)` in src/cloud/handoff.ts: skip with reason when preference inactive; otherwise `client.call({ method: "POST", path: "/api/auth/handoff", body, schema: handoffResponseSchema, timeoutMs: 3_000 })` and decorate the URL (research R-2/R-3/R-6)
-- [X] T006 [US1] Add `handoff` flag to src/commands/upload.ts (`Flags.boolean({ allowNo: true })`, **no default** so `undefined` is detectable, description covering `--handoff`/`--no-handoff`); resolve preference once via `resolveHandoffPreference(flags.handoff, process.stdout.isTTY, mode)`
-- [X] T007 [US1] Call `requestHandoffUrl` once in src/commands/upload.ts after the per-source pipeline loop (on `lastDashboardUrl`, src/commands/upload.ts:444); set `dashboardUrl` in `finalSummary` to the result's URL and add the optional `handoff` object per data-model.md presence rules (absent on default-off path); never mint on the dry-run (line ~321) or no-op (line ~355) paths
-- [X] T008 [US1] Relocate the human `Dashboard:` line from the pipeline completion event (src/upload/progress.ts:205) to command-level final text output in src/commands/upload.ts so the printed URL can carry the handoff code; add the dim expiry hint ("link signs you in — expires in ~60s") when active; keep all other completion output unchanged
-- [X] T009 [US1] Command-level tests in src/commands/upload.handoff.test.ts (conventions of src/commands/upload.degradation.test.ts): interactive default mints and decorates; final-summary JSON gains `handoff: { active: true, expiresAt }` only when active; dry-run/no-op never call the endpoint
+- [x] T005 [US1] Implement `requestHandoffUrl(client, dashboardUrl, preference)` in src/cloud/handoff.ts: skip with reason when preference inactive; otherwise `client.call({ method: "POST", path: "/api/auth/handoff", body, schema: handoffResponseSchema, timeoutMs: 3_000 })` and decorate the URL (research R-2/R-3/R-6)
+- [x] T006 [US1] Add `handoff` flag to src/commands/upload.ts (`Flags.boolean({ allowNo: true })`, **no default** so `undefined` is detectable, description covering `--handoff`/`--no-handoff`); resolve preference once via `resolveHandoffPreference(flags.handoff, process.stdout.isTTY, mode)`
+- [x] T007 [US1] Call `requestHandoffUrl` once in src/commands/upload.ts after the per-source pipeline loop (on `lastDashboardUrl`, src/commands/upload.ts:444); set `dashboardUrl` in `finalSummary` to the result's URL and add the optional `handoff` object per data-model.md presence rules (absent on default-off path); never mint on the dry-run (line ~321) or no-op (line ~355) paths
+- [x] T008 [US1] Relocate the human `Dashboard:` line from the pipeline completion event (src/upload/progress.ts:205) to command-level final text output in src/commands/upload.ts so the printed URL can carry the handoff code; add the dim expiry hint ("link signs you in — expires in ~60s") when active; keep all other completion output unchanged
+- [x] T009 [US1] Command-level tests in src/commands/upload.handoff.test.ts (conventions of src/commands/upload.degradation.test.ts): interactive default mints and decorates; final-summary JSON gains `handoff: { active: true, expiresAt }` only when active; dry-run/no-op never call the endpoint
 
 **Checkpoint**: Interactive upload prints a decorated, expiry-hinted dashboard link; JSON contract additions verified
 
@@ -74,7 +74,7 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 > Redemption, session creation, and deep-link preservation are **cloud/web obligations** (spec Assumptions; plan.md Cross-repo obligations). The CLI repo's tasks are coordination + the integration proof.
 
-- [X] T010 [US2] Open the cloud-side feature in `../frugl` (per its spec-kit workflow): reference specs/006-cli-web-session-handoff/contracts/handoff-api.md verbatim as the contract — `POST /api/auth/handoff` mint + grant invariants, redemption middleware (valid → Supabase cookie + 302 clean URL; invalid/expired/used → login with deep link; same-user serve; different-user explicit choice), audit events, Principle II authorization tests
+- [x] T010 [US2] Open the cloud-side feature in `../frugl` (per its spec-kit workflow): reference specs/006-cli-web-session-handoff/contracts/handoff-api.md verbatim as the contract — `POST /api/auth/handoff` mint + grant invariants, redemption middleware (valid → Supabase cookie + 302 clean URL; invalid/expired/used → login with deep link; same-user serve; different-user explicit choice), audit events, Principle II authorization tests
 - [ ] T011 [US2] Docker-stack integration test (location per 001 conventions, src/e2e/): full loop `login → upload --handoff → GET link (signed-in dashboard) → GET again (login wall) → login (lands on original deep link)`; covers spec US1 acceptance 2-4 and US2 acceptance 1-3 — **blocked on T010 landing in ../frugl**
 
 **Checkpoint**: End-to-end redemption, single-use, expiry, and deep-link preservation proven against the local stack
@@ -91,13 +91,13 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 > Write first; ensure they FAIL before implementing
 
-- [X] T012 [P] [US3] Unit tests in src/cloud/handoff.test.ts: failure taxonomy per contracts/handoff-api.md status table — 404/405 → `unsupported`; 400/401/403 → `rejected`; timeout/network/429/5xx/426/zod-parse → `unavailable`; no error escapes; 3s timeout honored (fake timers)
+- [x] T012 [P] [US3] Unit tests in src/cloud/handoff.test.ts: failure taxonomy per contracts/handoff-api.md status table — 404/405 → `unsupported`; 400/401/403 → `rejected`; timeout/network/429/5xx/426/zod-parse → `unavailable`; no error escapes; 3s timeout honored (fake timers)
 
 ### Implementation for User Story 3
 
-- [X] T013 [US3] Implement total-function degradation in src/cloud/handoff.ts: catch `CloudHttpError`/`NetworkError`/`ZodError`/timeout from `client.call`, map status → `HandoffSkipReason`, always return `{ active: false, dashboardUrl: <plain>, reason }` (research R-7)
-- [X] T014 [US3] Surface degradation honestly in src/commands/upload.ts text output: plain `Dashboard:` line plus one dim note ("sign-in link unavailable — log in on the web") when reason is `unsupported | unavailable | rejected`; JSON carries `handoff: { active: false, reason }`; exit code and `ok` status provably unchanged (Principle VI + spec FR-008)
-- [X] T015 [US3] Command-level test in src/commands/upload.handoff.test.ts: upload with failing handoff endpoint exits 0 with `ok: true`, plain `dashboardUrl`, `handoff.reason` populated, and no retry delay beyond the 3s bound
+- [x] T013 [US3] Implement total-function degradation in src/cloud/handoff.ts: catch `CloudHttpError`/`NetworkError`/`ZodError`/timeout from `client.call`, map status → `HandoffSkipReason`, always return `{ active: false, dashboardUrl: <plain>, reason }` (research R-7)
+- [x] T014 [US3] Surface degradation honestly in src/commands/upload.ts text output: plain `Dashboard:` line plus one dim note ("sign-in link unavailable — log in on the web") when reason is `unsupported | unavailable | rejected`; JSON carries `handoff: { active: false, reason }`; exit code and `ok` status provably unchanged (Principle VI + spec FR-008)
+- [x] T015 [US3] Command-level test in src/commands/upload.handoff.test.ts: upload with failing handoff endpoint exits 0 with `ok: true`, plain `dashboardUrl`, `handoff.reason` populated, and no retry delay beyond the 3s bound
 
 **Checkpoint**: No failure mode of the convenience call can harm or noticeably delay a successful upload
 
@@ -113,12 +113,12 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 > Write first; ensure they FAIL before implementing
 
-- [X] T016 [P] [US4] Unit tests in src/cloud/handoff.test.ts: full precedence truth table from data-model.md — `--no-handoff` wins everything; `--handoff` forces on in JSON/non-TTY; unset → on only when TTY ∧ text mode
+- [x] T016 [P] [US4] Unit tests in src/cloud/handoff.test.ts: full precedence truth table from data-model.md — `--no-handoff` wins everything; `--handoff` forces on in JSON/non-TTY; unset → on only when TTY ∧ text mode
 
 ### Implementation for User Story 4
 
-- [X] T017 [US4] Enforce no-issuance paths in src/cloud/handoff.ts + src/commands/upload.ts: inactive preference short-circuits before any `client.call`; JSON summary shows `handoff: { active: false, reason: "disabled-flag" }` for the explicit flag and **omits the key entirely** on the default-off path (byte-identical for existing `--json` consumers, research R-8)
-- [X] T018 [US4] Command-level tests in src/commands/upload.handoff.test.ts: `--no-handoff` → zero handoff wire calls; `--json` without flag → no `handoff` key, plain `dashboardUrl`; `--json --handoff` → decorated; non-TTY stdout → default off
+- [x] T017 [US4] Enforce no-issuance paths in src/cloud/handoff.ts + src/commands/upload.ts: inactive preference short-circuits before any `client.call`; JSON summary shows `handoff: { active: false, reason: "disabled-flag" }` for the explicit flag and **omits the key entirely** on the default-off path (byte-identical for existing `--json` consumers, research R-8)
+- [x] T018 [US4] Command-level tests in src/commands/upload.handoff.test.ts: `--no-handoff` → zero handoff wire calls; `--json` without flag → no `handoff` key, plain `dashboardUrl`; `--json --handoff` → decorated; non-TTY stdout → default off
 
 **Checkpoint**: All four stories independently verified
 
@@ -128,10 +128,10 @@ No setup tasks. Existing single-package CLI; the plan introduces **zero new depe
 
 **Purpose**: Documentation, contract bookkeeping, full-gate validation
 
-- [X] T019 [P] Document `--handoff` / `--no-handoff` and the sign-in-link behavior in README.md (flag table + a one-line privacy note: single-use, ~60s, off by default in CI)
-- [X] T020 [P] Record the additive output-contract change (optional `handoff` object, decorated `dashboardUrl`) in specs/001-cli-ingest-client/contracts/command-output.schema.json per its additive-evolution rule, cross-referencing specs/006-cli-web-session-handoff/data-model.md
-- [X] T021 Run quickstart.md verification end-to-end against the local Docker stack (happy path, single-use, expiry, degradation, opt-out surface) — final gate alongside T011
-- [X] T022 Full pre-commit gate green: `pnpm` `format` (oxfmt), `lint` (oxlint), `typecheck` (tsc), `test` (vitest) — constitution Principle V
+- [x] T019 [P] Document `--handoff` / `--no-handoff` and the sign-in-link behavior in README.md (flag table + a one-line privacy note: single-use, ~60s, off by default in CI)
+- [x] T020 [P] Record the additive output-contract change (optional `handoff` object, decorated `dashboardUrl`) in specs/001-cli-ingest-client/contracts/command-output.schema.json per its additive-evolution rule, cross-referencing specs/006-cli-web-session-handoff/data-model.md
+- [x] T021 Run quickstart.md verification end-to-end against the local Docker stack (happy path, single-use, expiry, degradation, opt-out surface) — final gate alongside T011
+- [x] T022 Full pre-commit gate green: `pnpm` `format` (oxfmt), `lint` (oxlint), `typecheck` (tsc), `test` (vitest) — constitution Principle V
 
 ---
 
