@@ -16,6 +16,7 @@ frugl org join <code>         # accept an invite code from a teammate
 frugl upload --dry-run        # discover + anonymize; transmit zero bytes
 frugl upload --dry-run --inspect ./out   # also write redacted output to ./out
 frugl upload --confirm        # upload anonymized sessions to the cloud
+frugl context                 # capture + upload a timestamped context snapshot
 frugl logout                  # invalidate session, forget token
 ```
 
@@ -65,6 +66,36 @@ frugl org join pop_inv_…      # redeem an invite code from a teammate
 
 Invite codes come from a teammate (org owners/admins generate them on the
 dashboard); accept one with `frugl org join <code>`.
+
+## Context snapshots
+
+`frugl context` captures the configured AI tool's context-window breakdown —
+today Claude Code's `/context` — anonymizes it locally, and uploads a single
+**timestamped** snapshot. It launches the tool by spawning `claude -p "/context"`
+and uploads only what that command prints to stdout: category token counts plus
+config identifiers (skill / MCP server / agent names and memory-file paths). It
+never reads or uploads the **contents** of any file the breakdown references.
+Embedded secrets and third-party emails are redacted, and your home-directory
+prefix is normalized, by the same local anonymizer the upload path uses
+(fail-closed).
+
+```bash
+frugl context                 # capture, anonymize, upload one snapshot
+frugl context --json          # machine-readable result (capturedAt, manifestId, …)
+```
+
+**Cadence (v1).** There is no built-in scheduler. To accumulate snapshots over
+time — which is what makes them useful for spotting context-window drift — run
+`frugl context` on a recurring schedule from an external cron/CI job, roughly
+daily:
+
+```cron
+0 9 * * * frugl context >> ~/.frugl/context.log 2>&1
+```
+
+Each run produces a **distinct** snapshot (fresh id + fresh timestamp) — there
+is no overwrite or dedupe. A failed run (tool missing, no output, network blip)
+exits non-zero, uploads nothing, and **never blocks the next run**.
 
 ## Why open source?
 
