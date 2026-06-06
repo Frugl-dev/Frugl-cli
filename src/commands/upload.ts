@@ -28,6 +28,7 @@ import {
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
+import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
 import { extractWorktreePath } from "../sources/claude-code/project.js";
 import {
@@ -91,6 +92,13 @@ export default class Upload extends Command {
     "link-prs": Flags.boolean({
       description:
         "Opt in to attaching credential-stripped git context (repo, branch, commit) so sessions can be linked to PRs. Default off.",
+    }),
+    handoff: Flags.boolean({
+      // No default: `undefined` means "not passed", so the interactive-TTY
+      // default in resolveHandoffPreference stays detectable (research R-5).
+      allowNo: true,
+      description:
+        "Append a single-use, short-lived sign-in code to the printed dashboard link so the browser lands signed in (--no-handoff to disable). Default: on for interactive runs, off for --json / non-TTY / CI.",
     }),
     json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
     report: Flags.boolean({
@@ -444,6 +452,31 @@ export default class Upload extends Command {
         lastDashboardUrl = pipelineResult.dashboardUrl;
       }
 
+      // CLI→web handoff (006): decorate the final dashboard link with a
+      // single-use sign-in code. Total function — any issuance failure leaves
+      // the plain URL and the upload's outcome untouched (FR-008).
+      const handoff = await requestHandoffUrl(
+        client,
+        lastDashboardUrl,
+        resolveHandoffPreference(flags.handoff, Boolean(process.stdout.isTTY), mode),
+      );
+      if (mode === "text") {
+        process.stderr.write(
+          `${color.dim("  Dashboard: ")}${color.poppy(color.underline(handoff.dashboardUrl))}\n`,
+        );
+        if (handoff.active) {
+          process.stderr.write(
+            color.dim(
+              "             link signs you in — expires in ~60s; after that, log in normally\n",
+            ),
+          );
+        } else if (handoff.reason !== "disabled-flag" && handoff.reason !== "disabled-default") {
+          process.stderr.write(
+            color.dim("             sign-in link unavailable — log in on the web\n"),
+          );
+        }
+      }
+
       const finalSummary = {
         command: "upload" as const,
         ok: true as const,
@@ -454,7 +487,15 @@ export default class Upload extends Command {
         redactionPolicyVersion: POLICY_VERSION,
         sourceKind: displaySourceKind,
         endpoint: endpoint.url,
-        dashboardUrl: lastDashboardUrl,
+        dashboardUrl: handoff.dashboardUrl,
+        // Additive contract (006 data-model.md): present when issuance was
+        // attempted or explicitly opted out; absent on the default-off path so
+        // existing --json consumers see byte-identical output.
+        ...(handoff.active
+          ? { handoff: { active: true as const, expiresAt: handoff.expiresAt } }
+          : handoff.reason === "disabled-default"
+            ? {}
+            : { handoff: { active: false as const, reason: handoff.reason } }),
         classification: {
           discovered: summary.discovered,
           unchanged: summary.unchanged,

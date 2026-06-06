@@ -90,7 +90,34 @@
         "redactionPolicyVersion": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+$" },
         "sourceKind": { "type": "string" },
         "endpoint": { "type": "string", "format": "uri" },
-        "dashboardUrl": { "type": "string", "format": "uri" },
+        "dashboardUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Carries a single-use ?handoff= sign-in query parameter only when handoff.active=true (spec 006, additive); otherwise unchanged from v1."
+        },
+        "handoff": {
+          "description": "CLI-to-web session handoff (spec 006-cli-web-session-handoff, additive — see its data-model.md). Present only when sign-in-code issuance was attempted or explicitly disabled via --no-handoff; ABSENT on the default-off path (non-interactive runs without --handoff) so pre-006 consumers observe identical output. reason 'disabled-default' is never emitted (that path omits the key).",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["active", "expiresAt"],
+              "additionalProperties": false,
+              "properties": {
+                "active": { "const": true },
+                "expiresAt": { "type": "string", "format": "date-time" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["active", "reason"],
+              "additionalProperties": false,
+              "properties": {
+                "active": { "const": false },
+                "reason": { "enum": ["disabled-flag", "unsupported", "unavailable", "rejected"] }
+              }
+            }
+          ]
+        },
         "classification": {
           "type": "object",
           "required": ["discovered", "unchanged", "new", "updated"],

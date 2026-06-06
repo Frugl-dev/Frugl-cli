@@ -77,7 +77,9 @@ describe("createProgressReporter", () => {
     // Completion line reports the actual count + manifest.
     expect(err).toContain("Uploaded 2 sessions.");
     expect(err).toContain("Manifest mfst_1");
-    expect(err).toContain("https://test/dashboard");
+    // The human Dashboard line moved to the upload command so it can carry the
+    // handoff sign-in code (006) — the reporter no longer prints the URL.
+    expect(err).not.toContain("https://test/dashboard");
     // Text mode never writes machine NDJSON to stdout.
     expect(streams.stdout()).toBe("");
   });

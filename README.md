@@ -41,6 +41,15 @@ Non-interactive runs (`--yes`/`--confirm`, `--json`, or no TTY such as CI)
 skip the prompts and select every detected supported provider and all of its
 projects automatically.
 
+After a successful upload, the printed dashboard link carries a **single-use,
+~60-second sign-in code** (`?handoff=…`) so opening it lands you on your
+dashboard already signed in — no second login. Privacy notes: the code is not
+your CLI token, dies on first use or expiry, and is **off by default in
+non-interactive runs** (CI, pipes, `--json`); pass `--handoff` to opt in there,
+or `--no-handoff` to keep it out of any printed output (shared or recorded
+terminals). If the link has expired, the web login returns you to the same
+dashboard page afterwards.
+
 ## Organizations
 
 Every Frugl account belongs to exactly one org — the team whose AI retros you

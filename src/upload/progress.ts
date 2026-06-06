@@ -202,7 +202,9 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       emitText(
         `\n${color.ok(`${symbol.tick} Uploaded ${input.actualSessionCount} sessions.`)}  ${color.dim(`Manifest ${input.manifestId}`)}${tail}`,
       );
-      emitText(`${color.dim("  Dashboard: ")}${color.poppy(color.underline(input.dashboardUrl))}`);
+      // The human Dashboard line is printed once by the upload command after
+      // all per-source pipelines finish, so it can carry the handoff sign-in
+      // code (006). The JSON upload-complete event above keeps the plain URL.
     },
   };
 }
