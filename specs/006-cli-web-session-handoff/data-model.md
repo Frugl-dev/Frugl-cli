@@ -11,10 +11,10 @@ feature (research R-9); every entity below is in-memory for the duration of one 
 The tri-state `--handoff` / `--no-handoff` / unset flag resolved against the run's
 interactivity (research R-5).
 
-| Field    | Type                                   | Notes                                                   |
-| -------- | -------------------------------------- | ------------------------------------------------------- |
-| `active` | `boolean`                              | Whether issuance will be attempted                      |
-| `source` | `"flag" \| "default"`                  | Mirrors the `PrLinkingSummary.source` idiom             |
+| Field    | Type                  | Notes                                       |
+| -------- | --------------------- | ------------------------------------------- |
+| `active` | `boolean`             | Whether issuance will be attempted          |
+| `source` | `"flag" \| "default"` | Mirrors the `PrLinkingSummary.source` idiom |
 
 **Resolution rules** (in precedence order):
 
@@ -27,16 +27,16 @@ preference — there is no real dashboard destination to bind a code to.
 
 ## HandoffRequest (wire, CLI → cloud)
 
-| Field         | Type     | Validation                                                            |
-| ------------- | -------- | --------------------------------------------------------------------- |
+| Field         | Type     | Validation                                                                                                                              |
+| ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `redirect_to` | `string` | Relative path: MUST start with `/`, MUST NOT start with `//`, no URL scheme. Derived as `pathname + search` of the final dashboard URL. |
 
 ## HandoffGrant (wire, cloud → CLI)
 
-| Field        | Type     | Validation                                          |
-| ------------ | -------- | ---------------------------------------------------- |
+| Field        | Type     | Validation                                                               |
+| ------------ | -------- | ------------------------------------------------------------------------ |
 | `code`       | `string` | `min(1)`; opaque — the CLI never parses or logs it beyond URL decoration |
-| `expires_at` | `string` | `min(1)` ISO datetime; used only for the human hint  |
+| `expires_at` | `string` | `min(1)` ISO datetime; used only for the human hint                      |
 
 Cloud-side invariants bound to the grant (single-use, TTL, user binding, audit) are contract
 obligations, not CLI state — see `contracts/handoff-api.md`.
@@ -52,13 +52,13 @@ HandoffResult =
   | { active: false, dashboardUrl: string,  reason: HandoffSkipReason }  // plain URL
 ```
 
-| `HandoffSkipReason` | Meaning                                                        |
-| ------------------- | -------------------------------------------------------------- |
-| `"disabled-flag"`   | `--no-handoff`                                                 |
-| `"disabled-default"`| Non-interactive run, no explicit opt-in (FR-011)               |
-| `"unsupported"`     | Cloud returned 404/405 — endpoint not deployed (older cloud)   |
-| `"unavailable"`     | Timeout, network error, 5xx, 426, zod parse failure            |
-| `"rejected"`        | 4xx other than 404/405 (e.g. 400 invalid redirect, 401)        |
+| `HandoffSkipReason`  | Meaning                                                      |
+| -------------------- | ------------------------------------------------------------ |
+| `"disabled-flag"`    | `--no-handoff`                                               |
+| `"disabled-default"` | Non-interactive run, no explicit opt-in (FR-011)             |
+| `"unsupported"`      | Cloud returned 404/405 — endpoint not deployed (older cloud) |
+| `"unavailable"`      | Timeout, network error, 5xx, 426, zod parse failure          |
+| `"rejected"`         | 4xx other than 404/405 (e.g. 400 invalid redirect, 401)      |
 
 **State transitions**: none persisted. `active: true` results are terminal; the printed URL
 is the only artifact. A consumed/expired code transitions state **cloud-side only**.

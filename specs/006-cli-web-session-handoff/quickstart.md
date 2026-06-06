@@ -60,12 +60,12 @@ frugl upload --yes 2>&1 | cat          # piped stdout (non-TTY) → default off
 
 ## Where the code lives
 
-| Concern                              | Location                                  |
-| ------------------------------------ | ----------------------------------------- |
-| Issuance call, URL decoration, degradation | `src/cloud/handoff.ts` (new)         |
-| Wire schemas (drift sentinel)        | `src/cloud/schemas.ts`                    |
-| Flag + invocation + output           | `src/commands/upload.ts`                  |
-| Consumer contract on the cloud       | `specs/006-cli-web-session-handoff/contracts/handoff-api.md` |
+| Concern                                    | Location                                                     |
+| ------------------------------------------ | ------------------------------------------------------------ |
+| Issuance call, URL decoration, degradation | `src/cloud/handoff.ts` (new)                                 |
+| Wire schemas (drift sentinel)              | `src/cloud/schemas.ts`                                       |
+| Flag + invocation + output                 | `src/commands/upload.ts`                                     |
+| Consumer contract on the cloud             | `specs/006-cli-web-session-handoff/contracts/handoff-api.md` |
 
 ## Test suites
 

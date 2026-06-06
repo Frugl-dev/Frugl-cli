@@ -92,6 +92,24 @@ export const completeUploadResponseSchema = z.object({
 });
 export type CompleteUploadResponse = z.infer<typeof completeUploadResponseSchema>;
 
+// CLI→web session handoff (006). `redirect_to` is the open-redirect guard: a
+// relative path only — both sides of the wire enforce it (contracts/handoff-api.md).
+export const handoffRequestSchema = z.object({
+  redirect_to: z
+    .string()
+    .min(1)
+    .refine((p) => p.startsWith("/") && !p.startsWith("//") && !p.includes("://"), {
+      message: "redirect_to must be a relative path",
+    }),
+});
+export type HandoffRequest = z.infer<typeof handoffRequestSchema>;
+
+export const handoffResponseSchema = z.object({
+  code: z.string().min(1),
+  expires_at: z.string().min(1),
+});
+export type HandoffResponse = z.infer<typeof handoffResponseSchema>;
+
 export const versionGateBodySchema = z.object({
   minSupportedCliVersion: z.string(),
 });

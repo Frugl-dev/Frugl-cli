@@ -8,7 +8,7 @@
 
 **Input**: User description: "CLI-to-web session handoff via one-time code: after a successful upload, the CLI requests a single-use, short-lived (~60s) handoff code from the cloud (new authenticated endpoint, e.g. POST /api/auth/handoff, using the CLI's existing bearer token) and appends it to the dashboard URL it prints (e.g. ?handoff=<code>). When the user opens the link, the web app exchanges the code for a browser session (Supabase session cookie) and redirects to the clean dashboard URL, so the user is not asked to log in again. If the code is expired or already used, the web login wall preserves the deep link and returns the user to the intended dashboard page after login. CLI must degrade gracefully (print plain dashboard URL) if the handoff endpoint is unavailable, and offer an opt-out flag for shared terminals/CI where embedding a code in printed output is undesirable."
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Open dashboard without logging in again (Priority: P1)
 
@@ -31,7 +31,7 @@ A user who is already logged in to the CLI completes an upload. The CLI prints a
 
 A user opens the printed dashboard link after the handoff code has expired (e.g., the next morning) or after it has already been consumed. They see the normal web login. After completing login, they are taken directly to the dashboard page the link pointed at — the deep link is not lost.
 
-**Why this priority**: Handoff codes are deliberately short-lived, so the expired-link path is a routine experience, not a rare error. Without deep-link preservation the feature would make stale links *worse* than today.
+**Why this priority**: Handoff codes are deliberately short-lived, so the expired-link path is a routine experience, not a rare error. Without deep-link preservation the feature would make stale links _worse_ than today.
 
 **Independent Test**: Generate a dashboard link via upload, wait past the validity window (or open it twice), open the link, complete the web login, and confirm the browser lands on the upload's dashboard page.
 
@@ -82,7 +82,7 @@ A user running the CLI in CI or on a shared/recorded terminal opts out of handof
 - Multiple uploads in one CLI invocation: each printed dashboard link is independently usable; at minimum the final/primary link carries a code.
 - The handoff code grants exactly one browser sign-in for the CLI user; it is not the CLI's stored credential and its leakage never exposes the CLI token.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -104,7 +104,7 @@ A user running the CLI in CI or on a shared/recorded terminal opts out of handof
 - **Handoff Code**: A single-use, short-lived opaque credential issued to an authenticated CLI user. Attributes: associated user, target dashboard destination, issuance time, expiry time, redemption state. Never equal to or derivable from the CLI's stored credential.
 - **Dashboard Link**: The URL printed by the CLI after upload. May carry a handoff code as a query parameter; remains a valid plain deep link once the code is stripped, expired, or absent.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

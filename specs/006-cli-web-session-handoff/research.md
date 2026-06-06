@@ -12,7 +12,7 @@ as **consumer expectations** — they bind the cloud repo (`../frugl`) via
 ## R-1: Separate issuance endpoint, not a decorated `/complete` response
 
 **Decision**: The CLI mints the handoff code via a dedicated authenticated call,
-`POST /api/auth/handoff`, made *after* `POST /api/uploads/{id}/complete` succeeds. The
+`POST /api/auth/handoff`, made _after_ `POST /api/uploads/{id}/complete` succeeds. The
 `/complete` response stays untouched.
 
 **Rationale**:
@@ -21,7 +21,7 @@ as **consumer expectations** — they bind the cloud repo (`../frugl`) via
   response", 001 `contracts/cloud-api.md`). A single-use code embedded in its response would
   break that contract — a retried complete would either re-mint (not idempotent) or return a
   consumed code (broken link).
-- Opt-out (spec FR-010/011) means *no code is ever minted*; that is only expressible if
+- Opt-out (spec FR-010/011) means _no code is ever minted_; that is only expressible if
   issuance is a separate call the CLI can skip.
 - Failure isolation (spec FR-008): a failed convenience call after a successful upload is
   trivially swallowed when it is its own request; entangling it with `/complete` would put
@@ -29,16 +29,16 @@ as **consumer expectations** — they bind the cloud repo (`../frugl`) via
 
 **Alternatives considered**:
 
-- *Cloud returns a handoff-ready `dashboard_url` from `/complete`* — rejected per above
+- _Cloud returns a handoff-ready `dashboard_url` from `/complete`_ — rejected per above
   (idempotency, opt-out, blast radius).
-- *CLI mints a Supabase magic link* — rejected; the CLI deliberately does not embed
+- _CLI mints a Supabase magic link_ — rejected; the CLI deliberately does not embed
   `@supabase/supabase-js` (001 research R-8) and must never hold the service-role key
   (constitution Principle III).
 
 ## R-2: Request/response shape — server derives nothing from the URL
 
 **Decision**: Request body is `{ "redirect_to": "<relative dashboard path>" }` where the CLI
-passes the *path component* of the dashboard URL it received from `/complete` (e.g.
+passes the _path component_ of the dashboard URL it received from `/complete` (e.g.
 `/dashboard/uploads/mfst_xxx`). Response is `{ "code": "<opaque>", "expires_at": "<ISO>" }`.
 The CLI appends `?handoff=<code>` to the absolute dashboard URL it already prints.
 
@@ -54,10 +54,10 @@ The CLI appends `?handoff=<code>` to the absolute dashboard URL it already print
 
 **Alternatives considered**:
 
-- *Request carries `manifest_id` and the server re-derives the path* — workable, but couples
+- _Request carries `manifest_id` and the server re-derives the path_ — workable, but couples
   the auth endpoint to upload semantics; `redirect_to` keeps `/api/auth/handoff` reusable for
   future deep links (e.g. recommendations) without a contract change.
-- *Code in URL fragment (`#handoff=`)* — fragments don't reach the server, forcing a
+- _Code in URL fragment (`#handoff=`)_ — fragments don't reach the server, forcing a
   client-side JS exchange before SSR can render; query param + server-side redemption with a
   clean-URL redirect is simpler and keeps the code out of the rendered page.
 
@@ -136,7 +136,7 @@ informational only).
 latency for nothing (a fresh code is one command away). 3 s is far below the SC-005
 "no perceptible delay" ceiling given the summary already follows network completion. A 426
 here must not fail the run — the version-gate exit (50) is reserved for gates that block the
-*requested operation*, which has already completed.
+_requested operation_, which has already completed.
 
 ## R-8: Output contract changes (additive, FR-036-compatible)
 

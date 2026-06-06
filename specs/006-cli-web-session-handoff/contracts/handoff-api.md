@@ -37,25 +37,25 @@ reject anything else with `400` — this is the open-redirect guard.
 
 **Grant invariants** (cloud obligations, spec FR-002/003/009/012):
 
-| Invariant   | Requirement                                                                       |
-| ----------- | --------------------------------------------------------------------------------- |
-| Entropy     | Opaque, unguessable, ≥ 128 bits; NOT a JWT; reveals nothing about the CLI token   |
-| Single-use  | First successful redemption invalidates permanently                               |
-| TTL         | Default 60 s from issuance; expiry server-tunable without CLI changes             |
-| Binding     | Bound at mint to `(user_id, redirect_to)`; redeemable for exactly that pair       |
-| Audit       | Issued / redeemed / expired-unredeemed are observable events                      |
+| Invariant  | Requirement                                                                     |
+| ---------- | ------------------------------------------------------------------------------- |
+| Entropy    | Opaque, unguessable, ≥ 128 bits; NOT a JWT; reveals nothing about the CLI token |
+| Single-use | First successful redemption invalidates permanently                             |
+| TTL        | Default 60 s from issuance; expiry server-tunable without CLI changes           |
+| Binding    | Bound at mint to `(user_id, redirect_to)`; redeemable for exactly that pair     |
+| Audit      | Issued / redeemed / expired-unredeemed are observable events                    |
 
 **CLI behavior on each status** (all degrade to the plain dashboard URL; none retried,
 none change exit code):
 
-| Status                         | Meaning                            | `handoff.reason` in JSON |
-| ------------------------------ | ---------------------------------- | ------------------------ |
-| `201`                          | Grant minted                       | — (`active: true`)       |
-| `400`                          | Invalid `redirect_to`              | `rejected`               |
-| `401` / `403`                  | Token invalid mid-run              | `rejected`               |
-| `404` / `405`                  | Endpoint not deployed (older cloud)| `unsupported`            |
-| `426`                          | Version gate                       | `unavailable`            |
-| `429` / `5xx` / network / timeout (3 s) | Transient                 | `unavailable`            |
+| Status                                  | Meaning                             | `handoff.reason` in JSON |
+| --------------------------------------- | ----------------------------------- | ------------------------ |
+| `201`                                   | Grant minted                        | — (`active: true`)       |
+| `400`                                   | Invalid `redirect_to`               | `rejected`               |
+| `401` / `403`                           | Token invalid mid-run               | `rejected`               |
+| `404` / `405`                           | Endpoint not deployed (older cloud) | `unsupported`            |
+| `426`                                   | Version gate                        | `unavailable`            |
+| `429` / `5xx` / network / timeout (3 s) | Transient                           | `unavailable`            |
 
 ---
 
