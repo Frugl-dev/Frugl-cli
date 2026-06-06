@@ -11,7 +11,7 @@ import { anonymize } from "./index.js";
 // leak through anonymization because it was never in the input to begin with.
 const SECRET_FILE_BODY = "TOP_SECRET_FILE_CONTENTS_THAT_MUST_NEVER_APPEAR";
 
-const HOME = "/Users/shmck";
+const HOME = "/Users/dev";
 const PLANTED_ANTHROPIC_KEY = "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const PLANTED_EMAIL = "teammate@acme.example";
 const PLANTED_ENTROPY = "x8Kf9QmZ2pLvR7wNcB3hYtJ4sD6gA1eU0iO5";
@@ -34,8 +34,8 @@ const FIXTURE = `## Context Usage
 
 | Type | Path | Tokens |
 |------|------|--------|
-| Project | ${HOME}/Documents/Projects/Frugl/CLAUDE.md | 14 |
-| Project | ${HOME}/Documents/Projects/Frugl/AGENTS.md | 2.1k |
+| Project | ${HOME}/projects/acme-app/CLAUDE.md | 14 |
+| Project | ${HOME}/projects/acme-app/AGENTS.md | 2.1k |
 
 ### Skills
 
@@ -98,8 +98,8 @@ describe("context snapshot anonymization (planted secrets)", () => {
   it("preserves the memory-file path tails (config identifiers, minus the home prefix)", () => {
     // The repo-relative path under the home dir is kept so snapshots stay
     // comparable; only the user-identifying home prefix is normalized.
-    expect(out).toContain("Documents/Projects/Frugl/CLAUDE.md");
-    expect(out).toContain("Documents/Projects/Frugl/AGENTS.md");
+    expect(out).toContain("projects/acme-app/CLAUDE.md");
+    expect(out).toContain("projects/acme-app/AGENTS.md");
   });
 
   it("never emits the contents of any referenced file", () => {
