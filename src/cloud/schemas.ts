@@ -48,6 +48,13 @@ export const gitContextRequestSchema = z.object({
 });
 export type GitContextRequest = z.infer<typeof gitContextRequestSchema>;
 
+// The artifact a manifest carries. "session" is the historical default (parsed
+// session logs); "context_snapshot" (spec 025) is a single timestamped capture
+// of a tool's /context breakdown. The field is optional + defaults to "session"
+// so existing session uploads stay byte-identical on the wire.
+export const artifactKindSchema = z.enum(["session", "context_snapshot"]);
+export type ArtifactKind = z.infer<typeof artifactKindSchema>;
+
 export const manifestEntryRequestSchema = z.object({
   session_id: z.string().min(1).max(128),
   format_version: z.string().min(1),
@@ -55,6 +62,9 @@ export const manifestEntryRequestSchema = z.object({
   git_context: gitContextRequestSchema.optional(),
   // Sub-path within .claude/worktrees/ when the session comes from a worktree.
   worktree_path: z.string().min(1).optional(),
+  // Capture timestamp (ISO 8601). Optional on the wire for back-compat, but the
+  // server requires it when artifact_kind === "context_snapshot".
+  captured_at: z.string().datetime().optional(),
 });
 export type ManifestEntryRequest = z.infer<typeof manifestEntryRequestSchema>;
 
@@ -64,6 +74,9 @@ export const createManifestRequestSchema = z.object({
   source_kind: z.string().min(1),
   expected_session_count: z.number().int().min(1),
   sessions: z.array(manifestEntryRequestSchema).min(1),
+  // Optional; defaults to "session" server-side. Sent explicitly only for
+  // context snapshots so older flows are untouched.
+  artifact_kind: artifactKindSchema.optional(),
 });
 export type CreateManifestRequest = z.infer<typeof createManifestRequestSchema>;
 
