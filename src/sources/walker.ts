@@ -81,7 +81,17 @@ export function deriveIdentity(d: ProviderDescriptor, ctx: ExtractContext): Sess
 
 export async function parse(d: ProviderDescriptor, ref: SessionRef): Promise<ParsedSession> {
   const text = await readFile(ref.absolutePath, "utf8");
-  const records = decode(d, text);
+  let records = decode(d, text);
+  // Provider metadata records (039) join `records` after the transcript lines,
+  // so they pass through anonymization and the content hash like everything
+  // else. Collection warnings surface but never abort the parse.
+  if (d.collectExtraRecords) {
+    const extra = await d.collectExtraRecords(ref);
+    for (const warning of extra.warnings) {
+      console.warn(`[frugl] ${d.sourceKind}: ${warning}`);
+    }
+    if (extra.records.length > 0) records = [...records, ...extra.records];
+  }
   const ctx = contextFor(ref, records);
   const identity = deriveIdentity(d, ctx);
   const metadata = d.extractMetadata ? d.extractMetadata(ctx) : {};
