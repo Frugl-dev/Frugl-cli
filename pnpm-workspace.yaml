@@ -4,3 +4,4 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
   - pre-commit
+verifyDepsBeforeRun: false
