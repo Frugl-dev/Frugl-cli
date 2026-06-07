@@ -15,7 +15,7 @@ import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js
 const TOOL = "claude-code";
 
 export default class Context extends Command {
-  static override description = `Capture the configured AI tool's context breakdown (Claude Code's /context), anonymize it, and upload a timestamped snapshot. No built-in scheduler in v1: run on a cadence via external cron/CI (e.g. \`0 9 * * * frugl context >> ~/.frugl/context.log 2>&1\`). Each run accumulates a distinct snapshot; a failed run never blocks the next.
+  static override description = `Capture and upload a timestamped context snapshot from Claude Code. Each run accumulates a distinct snapshot; a failed run never blocks the next.
 
 Exit codes:
   0   success
@@ -96,11 +96,7 @@ Exit codes:
         `${color.dim("  View it on your dashboard: ")}${color.frog(handoff.dashboardUrl)}\n`,
       );
       if (handoff.active) {
-        process.stdout.write(
-          color.dim(
-            "             link signs you in — expires in ~60s; after that, log in normally\n",
-          ),
-        );
+        process.stdout.write(color.dim("             auto sign-in link — valid for ~60s\n"));
       } else if (handoff.reason !== "disabled-flag" && handoff.reason !== "disabled-default") {
         process.stdout.write(
           color.dim("             sign-in link unavailable — log in on the web\n"),

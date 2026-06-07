@@ -52,7 +52,7 @@ describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
 
   it("default (no --link-prs): NO git field is attached, even for a session in a real repo (SC-001)", async () => {
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--endpoint", server.url],
       {
         env: { FRUGL_HOME_DIR: home.dir },
       },
@@ -68,10 +68,9 @@ describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
   });
 
   it("--link-prs: attaches the credential-stripped git context to the manifest (US1)", async () => {
-    const { exitCode } = await runCli(
-      ["upload", "--confirm", "--link-prs", "--endpoint", server.url],
-      { env: { FRUGL_HOME_DIR: home.dir } },
-    );
+    const { exitCode } = await runCli(["upload", "--yes", "--link-prs", "--endpoint", server.url], {
+      env: { FRUGL_HOME_DIR: home.dir },
+    });
     expect(exitCode).toBe(EXIT.OK);
     expect(manifestSessions.length).toBe(1);
     expect(manifestSessions[0]!.git_context).toEqual({
@@ -83,7 +82,7 @@ describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
 
   it("--link-prs --json: upload-start + final summary carry an additive gitContext", async () => {
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--link-prs", "--json", "--endpoint", server.url],
+      ["upload", "--yes", "--link-prs", "--json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);

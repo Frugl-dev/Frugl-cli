@@ -46,8 +46,6 @@ export default class Recommendations extends Command {
   static override description =
     "List and rank cost-saving recommendations, and get a prompt to fix them.";
 
-  static override aliases = ["recs"];
-
   static override flags = {
     ...COMMON_FLAGS,
     status: Flags.string({

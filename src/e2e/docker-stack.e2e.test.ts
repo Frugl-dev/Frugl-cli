@@ -187,8 +187,8 @@ describe.skipIf(!ENABLED)(
       expect(existsSync(path.join(inspectDir, "redaction-summary.json"))).toBe(true);
     });
 
-    it("upload --confirm succeeds and returns a manifest ID (exit 0)", async () => {
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", endpoint], {
+    it("upload --yes succeeds and returns a manifest ID (exit 0)", async () => {
+      const { exitCode, stdout } = await runCli(["upload", "--yes", "--endpoint", endpoint], {
         env: env(),
         timeoutMs: 60_000,
       });
@@ -199,8 +199,8 @@ describe.skipIf(!ENABLED)(
       expect(result.actualSessionCount).toBe(5);
     });
 
-    it("second upload --confirm is a noop (exit 0)", async () => {
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", endpoint], {
+    it("second upload --yes is a noop (exit 0)", async () => {
+      const { exitCode, stdout } = await runCli(["upload", "--yes", "--endpoint", endpoint], {
         env: env(),
         timeoutMs: 60_000,
       });
@@ -213,7 +213,7 @@ describe.skipIf(!ENABLED)(
     it("--limit 1 uploads exactly 1 new session (exit 0)", async () => {
       await writeTestSessions(tmp.dir, 1, "sc004-extra-project");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--limit", "1", "--confirm", "--endpoint", endpoint],
+        ["upload", "--limit", "1", "--yes", "--endpoint", endpoint],
         { env: env(), timeoutMs: 60_000 },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -263,7 +263,7 @@ describe.skipIf(!ENABLED)(
 
     it("full upload of ≤ 200 sessions completes in ≤ 60 s (SC-003)", async () => {
       const start = performance.now();
-      const { exitCode, stdout } = await runCli(["upload", "--confirm", "--endpoint", ASTRO_URL], {
+      const { exitCode, stdout } = await runCli(["upload", "--yes", "--endpoint", ASTRO_URL], {
         env: { FRUGL_HOME_DIR: tmp.dir },
         timeoutMs: 75_000,
       });

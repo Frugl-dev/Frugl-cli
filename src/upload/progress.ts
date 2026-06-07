@@ -1,10 +1,6 @@
 import type { OutputMode } from "../lib/output-mode.js";
 import { bar, color, symbol } from "../lib/theme.js";
-
-// Shorten a session id for display: keep head + tail (e.g. sess_5fa1…81d3).
-function shortSession(id: string): string {
-  return id.length > 16 ? `${id.slice(0, 9)}…${id.slice(-4)}` : id;
-}
+import { shortSession } from "./upload-output.js";
 
 export type ProgressEvent =
   | {
