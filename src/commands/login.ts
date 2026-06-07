@@ -18,6 +18,11 @@ import {
 } from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
 import { color, symbol } from "../lib/theme.js";
+import {
+  requestHandoffUrl,
+  resolveHandoffPreference,
+  type HandoffResult,
+} from "../cloud/handoff.js";
 
 export default class Login extends Command {
   static override description = `Sign in with an email one-time code; token persisted in OS keychain.
@@ -119,7 +124,12 @@ Exit codes:
             `${color.dim("  Active org: ")}${color.bold(orgContext.org.name)}  ${color.dim(`(role: ${orgContext.membership.role})`)}\n`,
           );
         }
-        this.printNextSteps();
+        const handoff = await requestHandoffUrl(
+          client,
+          `${endpoint.url}/dashboard`,
+          resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
+        );
+        this.printNextSteps(handoff);
         return;
       }
 
@@ -255,7 +265,12 @@ Exit codes:
         makeOrgSetupPrompts(orgSetupSpec, "text"),
       );
       renderOrgSetupResult(result, orgSetupSpec, "text");
-      this.printNextSteps();
+      const handoff = await requestHandoffUrl(
+        client,
+        `${endpoint.url}/dashboard`,
+        resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
+      );
+      this.printNextSteps(handoff);
       return;
     } catch (err) {
       handleCommandError(err, mode);
@@ -295,13 +310,22 @@ Exit codes:
     }
   }
 
-  private printNextSteps(): void {
+  private printNextSteps(handoff: HandoffResult): void {
+    process.stdout.write(
+      `\n${color.dim("  Dashboard: ")}${color.frog(color.underline(handoff.dashboardUrl))}\n`,
+    );
+    if (handoff.active) {
+      process.stdout.write(color.dim("             auto sign-in link — valid for ~60s\n"));
+    }
     process.stdout.write(`\n${color.dim("  Next:")}\n`);
     process.stdout.write(
-      `${color.dim("    ")}${color.frog("frugl upload --dry-run")}${color.dim("   preview what would be sent")}\n`,
+      `${color.dim("    ")}${color.frog("frugl hook install --global")}${color.dim("   auto-upload on session end")}\n`,
     );
     process.stdout.write(
-      `${color.dim("    ")}${color.frog("frugl upload")}${color.dim("             anonymize + upload your first batch")}\n`,
+      `${color.dim("    ")}${color.frog("frugl upload --dry-run")}${color.dim("         preview what would be sent")}\n`,
+    );
+    process.stdout.write(
+      `${color.dim("    ")}${color.frog("frugl upload")}${color.dim("                   upload your first batch")}\n`,
     );
   }
 }

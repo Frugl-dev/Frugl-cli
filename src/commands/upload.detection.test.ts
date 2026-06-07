@@ -72,7 +72,7 @@ describe("frugl upload — provider detection & guided selection", { timeout: 30
   });
 
   it("exits NO_SESSIONS_FOUND when no provider is detected", async () => {
-    const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
+    const { exitCode } = await runCli(["upload", "--yes", "--endpoint", server.url], {
       env: { FRUGL_HOME_DIR: home.dir },
     });
     expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
@@ -81,7 +81,7 @@ describe("frugl upload — provider detection & guided selection", { timeout: 30
 
   it("exits OK with nothing uploaded when a detected provider has no session files", async () => {
     await makeCursorFixture(home.dir);
-    const { exitCode } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
+    const { exitCode } = await runCli(["upload", "--yes", "--endpoint", server.url], {
       env: { FRUGL_HOME_DIR: home.dir },
     });
     expect(exitCode).toBe(EXIT.OK);
@@ -93,7 +93,7 @@ describe("frugl upload — provider detection & guided selection", { timeout: 30
     await writeTestSessions(home.dir, 1, "-Users-me-scratch");
 
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -115,7 +115,7 @@ describe("frugl upload — provider detection & guided selection", { timeout: 30
     await makeCursorFixture(home.dir);
 
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);

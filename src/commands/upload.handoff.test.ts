@@ -64,7 +64,7 @@ describe("frugl upload — CLI→web handoff (006)", { timeout: 30_000 }, () => 
   it("--handoff mints a code, sends path+query redirect_to, decorates dashboardUrl (US1)", async () => {
     wireHandoff();
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--handoff", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--handoff", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -82,7 +82,7 @@ describe("frugl upload — CLI→web handoff (006)", { timeout: 30_000 }, () => 
   it("endpoint not deployed (404) degrades: exit OK, plain URL, reason unsupported (US3)", async () => {
     // No handoff route wired — MockServer answers 404.
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--handoff", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--handoff", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -97,7 +97,7 @@ describe("frugl upload — CLI→web handoff (006)", { timeout: 30_000 }, () => 
       server.json(res, 500, { error: "boom" });
     });
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--handoff", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--handoff", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -110,7 +110,7 @@ describe("frugl upload — CLI→web handoff (006)", { timeout: 30_000 }, () => 
   it("--no-handoff makes zero wire calls and reports disabled-flag (US4)", async () => {
     wireHandoff();
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--no-handoff", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--no-handoff", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -123,7 +123,7 @@ describe("frugl upload — CLI→web handoff (006)", { timeout: 30_000 }, () => 
   it("--json without the flag defaults off: no wire call, no handoff key (US4)", async () => {
     wireHandoff();
     const { exitCode, stdout } = await runCli(
-      ["upload", "--confirm", "--json", "--endpoint", server.url],
+      ["upload", "--yes", "--json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -135,19 +135,19 @@ describe("frugl upload — CLI→web handoff (006)", { timeout: 30_000 }, () => 
 
   it("text mode via pipe (non-TTY) defaults off but still prints the Dashboard line (US4/T008)", async () => {
     wireHandoff();
-    const { exitCode, stderr } = await runCli(["upload", "--confirm", "--endpoint", server.url], {
+    const { exitCode, stdout } = await runCli(["upload", "--yes", "--endpoint", server.url], {
       env: { FRUGL_HOME_DIR: home.dir },
     });
     expect(exitCode).toBe(EXIT.OK);
     expect(handoffCalls).toEqual([]); // spawned stdout is a pipe → default off
-    expect(stderr).toContain("Dashboard:");
-    expect(stderr).not.toContain("handoff=");
+    expect(stdout).toContain("Dashboard:");
+    expect(stdout).not.toContain("handoff=");
   });
 
   it("--dry-run never mints, even with --handoff (US1)", async () => {
     wireHandoff();
     const { exitCode, stdout } = await runCli(
-      ["upload", "--dry-run", "--confirm", "--json", "--handoff", "--endpoint", server.url],
+      ["upload", "--dry-run", "--yes", "--json", "--handoff", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);

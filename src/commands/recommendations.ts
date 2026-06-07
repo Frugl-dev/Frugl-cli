@@ -46,8 +46,6 @@ export default class Recommendations extends Command {
   static override description =
     "List and rank cost-saving recommendations, and get a prompt to fix them.";
 
-  static override aliases = ["recs"];
-
   static override flags = {
     ...COMMON_FLAGS,
     status: Flags.string({
@@ -148,7 +146,7 @@ export default class Recommendations extends Command {
     const top = recs[0];
     if (top) {
       process.stdout.write(
-        `${color.dim("Fix the top one: ")}${color.frog(`frugl recs --fix ${top.id} | claude`)}\n`,
+        `${color.dim("Fix the top one: ")}${color.frog(`frugl recommendations --fix ${top.id} | claude`)}\n`,
       );
     }
   }
@@ -165,7 +163,7 @@ export default class Recommendations extends Command {
         ` — recommendations land after your first retro.\n`,
     );
     process.stdout.write(
-      `  ${dot} Snoozed some? ${color.underline("frugl recs --status dismissed")} to see them.\n`,
+      `  ${dot} Snoozed some? ${color.underline("frugl recommendations --status dismissed")} to see them.\n`,
     );
   }
 

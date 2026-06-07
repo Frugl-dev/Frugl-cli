@@ -80,8 +80,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
   };
 
   static override flags = {
-    confirm: Flags.boolean({ description: "Skip the interactive confirmation prompt." }),
-    yes: Flags.boolean({ description: "Alias for --confirm" }),
+    yes: Flags.boolean({ description: "Skip the interactive confirmation prompt." }),
     "dry-run": Flags.boolean({ description: "Anonymize but do not transmit." }),
     inspect: Flags.string({
       description: "With --dry-run: write redacted output to a local inspection dir.",
@@ -100,7 +99,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         "Path to a frugl.config.json declaring upload scope/options (else discovered from the cwd up).",
     }),
     limit: Flags.integer({
-      description: "Maximum number of (new ∪ updated) sessions to upload.",
+      description: "Maximum sessions to upload (from new and updated candidates).",
     }),
     "link-prs": Flags.boolean({
       description:
@@ -151,12 +150,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       flag: flags.endpoint,
       env: process.env["FRUGL_ENDPOINT"],
     });
-    if (mode === "text") {
-      process.stderr.write(
-        color.dim(`Endpoint: ${endpoint.url} (from ${endpoint.resolvedFrom})\n`),
-      );
-    }
-
     try {
       // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
       const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
@@ -199,6 +192,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
       const homeDir = process.env["FRUGL_HOME_DIR"];
       const discoverOpts = homeDir ? { homeDir } : undefined;
+
+      if (mode === "text") process.stderr.write(color.dim("Scanning sessions…\n"));
 
       // 1) Detect which providers have sessions on this machine.
       const detected = await detectProviders(discoverOpts);
@@ -406,9 +401,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         return;
       }
 
-      if (!flags.confirm && !flags.yes) {
+      if (!flags.yes) {
         const ok = await confirm({
-          message: `Upload ${willUpload.length} session(s) to ${endpoint.url}?`,
+          message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
           default: true,
         });
         if (!ok) {
@@ -495,17 +490,13 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         resolveHandoffPreference(flags.handoff, Boolean(process.stdout.isTTY), mode),
       );
       if (mode === "text") {
-        process.stderr.write(
+        process.stdout.write(
           `${color.dim("  Dashboard: ")}${color.frog(color.underline(handoff.dashboardUrl))}\n`,
         );
         if (handoff.active) {
-          process.stderr.write(
-            color.dim(
-              "             link signs you in — expires in ~60s; after that, log in normally\n",
-            ),
-          );
+          process.stdout.write(color.dim("             auto sign-in link — valid for ~60s\n"));
         } else if (handoff.reason !== "disabled-flag" && handoff.reason !== "disabled-default") {
-          process.stderr.write(
+          process.stdout.write(
             color.dim("             sign-in link unavailable — log in on the web\n"),
           );
         }
