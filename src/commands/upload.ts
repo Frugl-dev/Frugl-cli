@@ -27,6 +27,7 @@ import {
 } from "../upload/upload-output.js";
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
+import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
@@ -406,6 +407,10 @@ export default class Upload extends Command {
             }
           : undefined;
 
+        // Declared MCP inventory (names-only, fail-open): `claude mcp list` is
+        // Claude Code's vocabulary, so only that source's manifest carries it.
+        const mcpServers = source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
+
         let pipelineResult;
         try {
           pipelineResult = await runUploadPipeline({
@@ -421,6 +426,7 @@ export default class Upload extends Command {
             endpointUrl: endpoint.url,
             userId: session.userId,
             ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+            ...(mcpServers ? { mcpServers } : {}),
           });
         } catch (err) {
           if (err instanceof StaleResumeError) {
@@ -441,6 +447,7 @@ export default class Upload extends Command {
               endpointUrl: endpoint.url,
               userId: session.userId,
               ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+              ...(mcpServers ? { mcpServers } : {}),
             });
           } else {
             throw err;

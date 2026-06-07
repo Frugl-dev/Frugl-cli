@@ -186,4 +186,50 @@ describe("upload pipeline", () => {
     expect(report.failures).toHaveLength(1);
     expect(report.failures[0]!.reason).toBe("network");
   });
+
+  it("sends the declared MCP inventory on the manifest when provided, omits it otherwise", async () => {
+    const { ledger, resumeStore } = stores();
+    const { jobs } = makeJobs(1);
+
+    const cloud = new InMemoryCloud({ manifestId: "mfst_mcp" });
+    await runUploadPipeline({
+      cloud,
+      jobs,
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+      mcpServers: [
+        { name: "playwright", status: "connected" },
+        { name: "github", status: "failed" },
+      ],
+    });
+    expect(cloud.manifests.get("mfst_mcp")?.mcp_servers).toEqual([
+      { name: "playwright", status: "connected" },
+      { name: "github", status: "failed" },
+    ]);
+
+    // Without the option (e.g. capture failed) the field is absent on the wire.
+    const { ledger: ledger2, resumeStore: resume2 } = stores();
+    const cloud2 = new InMemoryCloud({ manifestId: "mfst_no_mcp" });
+    await runUploadPipeline({
+      cloud: cloud2,
+      jobs: makeJobs(1).jobs,
+      ledger: ledger2,
+      resumeStore: resume2,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    });
+    expect(cloud2.manifests.get("mfst_no_mcp")).not.toHaveProperty("mcp_servers");
+  });
 });

@@ -14,6 +14,9 @@ export interface ContextUploadInput {
   policyVersion: string;
   capturedAt: string;
   anonymization: AnonymizationResult;
+  // Declared MCP server inventory (names-only, fail-open) recorded on the
+  // upload row server-side; omitted when the capture failed or found nothing.
+  mcpServers?: { name: string; status: "connected" | "failed" | "pending" | "unknown" }[];
 }
 
 export interface ContextUploadResult {
@@ -40,6 +43,7 @@ export async function uploadContextSnapshot(
     source_kind: input.sourceKind,
     expected_session_count: 1,
     artifact_kind: "context_snapshot",
+    ...(input.mcpServers?.length ? { mcp_servers: input.mcpServers } : {}),
     sessions: [
       {
         session_id: sessionId,

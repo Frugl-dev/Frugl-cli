@@ -30,6 +30,9 @@ export interface PipelineOptions {
   userId: string;
   // Opt-in (005) batch summary for the upload-start event; omitted when off.
   gitContext?: { active: boolean; sessionsWithContext: number; repositories: string[] };
+  // Declared MCP server inventory (names-only) captured at upload time;
+  // omitted when the capture failed or found nothing — never blocks the batch.
+  mcpServers?: { name: string; status: "connected" | "failed" | "pending" | "unknown" }[];
 }
 
 export interface PipelineResult {
@@ -204,6 +207,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
     redaction_policy_version: opts.policyVersion,
     source_kind: opts.sourceKind,
     expected_session_count: opts.jobs.length,
+    ...(opts.mcpServers?.length ? { mcp_servers: opts.mcpServers } : {}),
     sessions: opts.jobs.map((job) => ({
       session_id: job.sessionId,
       format_version: job.formatVersion,
