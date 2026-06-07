@@ -35,7 +35,7 @@ export default class OrgInvites extends Command {
       process.stdout.write(
         `${color.dim(`  Ask a teammate for an invite code (sent to ${session.email}), then run:`)}\n`,
       );
-      process.stdout.write(`    ${color.poppy("frugl org join <code>")}\n`);
+      process.stdout.write(`    ${color.frog("frugl org join <code>")}\n`);
     } catch (err) {
       handleCommandError(err, mode);
     }

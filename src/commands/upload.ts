@@ -310,11 +310,11 @@ export default class Upload extends Command {
           );
           if (flags.inspect) {
             process.stdout.write(
-              `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.poppy("jq .")}${color.dim(" before transmitting.")}\n`,
+              `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.frog("jq .")}${color.dim(" before transmitting.")}\n`,
             );
           } else {
             process.stdout.write(
-              `${color.dim("  Tip: add ")}${color.poppy("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
+              `${color.dim("  Tip: add ")}${color.frog("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
             );
           }
         }
@@ -469,7 +469,7 @@ export default class Upload extends Command {
       );
       if (mode === "text") {
         process.stderr.write(
-          `${color.dim("  Dashboard: ")}${color.poppy(color.underline(handoff.dashboardUrl))}\n`,
+          `${color.dim("  Dashboard: ")}${color.frog(color.underline(handoff.dashboardUrl))}\n`,
         );
         if (handoff.active) {
           process.stderr.write(
@@ -538,13 +538,13 @@ export default class Upload extends Command {
         );
         process.stderr.write(`${color.dim("  Every upload belongs to an org. Pick one:")}\n\n`);
         process.stderr.write(
-          `    ${color.poppy("frugl org create")}        ${color.dim("start a new org (you become owner)")}\n`,
+          `    ${color.frog("frugl org create")}        ${color.dim("start a new org (you become owner)")}\n`,
         );
         process.stderr.write(
-          `    ${color.poppy("frugl org join <code>")}   ${color.dim("accept an invite from a teammate")}\n`,
+          `    ${color.frog("frugl org join <code>")}   ${color.dim("accept an invite from a teammate")}\n`,
         );
         process.stderr.write(
-          `    ${color.poppy("frugl logout")}            ${color.dim("this isn't the right account")}\n`,
+          `    ${color.frog("frugl logout")}            ${color.dim("this isn't the right account")}\n`,
         );
       } else {
         process.stderr.write(

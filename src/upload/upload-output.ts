@@ -267,7 +267,7 @@ export function formatSummaryForHuman(s: UploadSummary): string {
   lines.push(`    ${color.dim("New".padEnd(LABEL - 2))}${color.ok(String(s.new))}`);
   lines.push(`    ${color.dim("Updated".padEnd(LABEL - 2))}${color.warn(String(s.updated))}`);
   lines.push(
-    `  ${label("Will upload")}${color.poppyBold(String(s.willUpload))} ${color.dim("sessions")}`,
+    `  ${label("Will upload")}${color.frogBold(String(s.willUpload))} ${color.dim("sessions")}`,
   );
 
   if (s.limited?.active) {
@@ -373,7 +373,7 @@ export function formatReportHuman(report: UploadReport): string {
 
   if (counts.failed > 0) {
     lines.push(
-      `  ${color.dim(`${counts.failed} failed session${counts.failed === 1 ? "" : "s"} queued as `)}${color.bold("pending")}${color.dim(". Resume: ")}${color.poppy("frugl upload")}`,
+      `  ${color.dim(`${counts.failed} failed session${counts.failed === 1 ? "" : "s"} queued as `)}${color.bold("pending")}${color.dim(". Resume: ")}${color.frog("frugl upload")}`,
     );
   }
 

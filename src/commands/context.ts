@@ -88,7 +88,7 @@ export default class Context extends Command {
         `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
       );
       process.stdout.write(
-        `${color.dim("  View it on your dashboard: ")}${color.poppy(handoff.dashboardUrl)}\n`,
+        `${color.dim("  View it on your dashboard: ")}${color.frog(handoff.dashboardUrl)}\n`,
       );
       if (handoff.active) {
         process.stdout.write(

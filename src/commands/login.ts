@@ -156,7 +156,7 @@ export default class Login extends Command {
 
       if (choice === "later") {
         process.stdout.write(
-          `\n${color.dim("  No problem. Set one up anytime with ")}${color.poppy("frugl org create")}${color.dim(" or ")}${color.poppy("frugl org join <code>")}${color.dim(".")}\n`,
+          `\n${color.dim("  No problem. Set one up anytime with ")}${color.frog("frugl org create")}${color.dim(" or ")}${color.frog("frugl org join <code>")}${color.dim(".")}\n`,
         );
         process.stdout.write(color.dim("  Upload stays blocked until then.\n"));
         return;
@@ -165,7 +165,7 @@ export default class Login extends Command {
       if (choice === "logout") {
         await clearAuthSession(endpoint.url);
         process.stdout.write(
-          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.poppy("frugl login")}${color.dim(" to sign in with a different account.")}\n`,
+          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.frog("frugl login")}${color.dim(" to sign in with a different account.")}\n`,
         );
         return;
       }
@@ -293,10 +293,10 @@ export default class Login extends Command {
   private printNextSteps(): void {
     process.stdout.write(`\n${color.dim("  Next:")}\n`);
     process.stdout.write(
-      `${color.dim("    ")}${color.poppy("frugl upload --dry-run")}${color.dim("   preview what would be sent")}\n`,
+      `${color.dim("    ")}${color.frog("frugl upload --dry-run")}${color.dim("   preview what would be sent")}\n`,
     );
     process.stdout.write(
-      `${color.dim("    ")}${color.poppy("frugl upload")}${color.dim("             anonymize + upload your first batch")}\n`,
+      `${color.dim("    ")}${color.frog("frugl upload")}${color.dim("             anonymize + upload your first batch")}\n`,
     );
   }
 }

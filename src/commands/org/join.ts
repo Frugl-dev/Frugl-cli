@@ -61,7 +61,7 @@ export default class OrgJoin extends Command {
             r.status === "already-setup"
               ? `${color.ok(`${symbol.tick} You're already in ${r.orgName}`)}  ${color.dim(`(${r.slug}).`)}\n`
               : `${color.ok(`${symbol.tick} Joined ${r.slug}`)}  ${color.dim("as member.")}\n` +
-                `${color.dim("  Next: ")}${color.poppy("frugl upload --dry-run")}\n`,
+                `${color.dim("  Next: ")}${color.frog("frugl upload --dry-run")}\n`,
           json: (r) => ({
             command: "org join",
             ok: true,
