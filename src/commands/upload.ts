@@ -54,11 +54,23 @@ import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { getLinkPrs } from "../lib/config.js";
 import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
-import { resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
+import { resolveDebug, resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
 
 export default class Upload extends Command {
-  static override description =
-    "Discover local AI-coding session sources, anonymize them, and batch-upload to hosted Frugl.";
+  static override description = `Discover local AI-coding session sources, anonymize them, and batch-upload to hosted Frugl.
+
+Exit codes:
+  0   success
+  2   usage error (bad flags)
+ 10   not authenticated — run: frugl login
+ 20   no sessions found
+ 30   anonymization failure
+ 40   network error
+ 41   endpoint unreachable (--endpoint)
+ 50   version outdated — run: npm install -g frugl@latest
+ 60   --inspect dir already exists
+
+Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
   static override args = {
     manifestId: Args.string({
@@ -114,6 +126,20 @@ export default class Upload extends Command {
     const mode = resolveOutputMode({ json: flags.json });
     const reporter = createProgressReporter(mode);
 
+    // Clear the live progress bar line and tell the user how to inspect
+    // partial progress. Exit 130 is the Unix convention for Ctrl-C.
+    process.on("SIGINT", (): never => {
+      process.stderr.write("\n");
+      if (mode === "json") {
+        process.stdout.write(`${JSON.stringify({ event: "interrupted" })}\n`);
+      } else {
+        process.stderr.write(
+          color.dim("Upload interrupted. Run 'frugl upload --report' to see what was uploaded.\n"),
+        );
+      }
+      process.exit(130);
+    });
+
     if (flags.inspect && !flags["dry-run"]) {
       this.bail(new UsageError("--inspect requires --dry-run."), mode);
     }
@@ -155,6 +181,7 @@ export default class Upload extends Command {
         cliVersion: getCliVersion(),
         token: session.token,
         endpointExplicit: endpoint.resolvedFrom !== "default",
+        debug: resolveDebug(),
       });
       const cloud = new HttpCloudAdapter(client);
 

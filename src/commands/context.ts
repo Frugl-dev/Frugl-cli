@@ -15,8 +15,13 @@ import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js
 const TOOL = "claude-code";
 
 export default class Context extends Command {
-  static override description =
-    "Capture the configured AI tool's context breakdown (Claude Code's /context), anonymize it, and upload a timestamped snapshot. No built-in scheduler in v1: run on a cadence via external cron/CI (e.g. `0 9 * * * frugl context >> ~/.frugl/context.log 2>&1`). Each run accumulates a distinct snapshot; a failed run never blocks the next.";
+  static override description = `Capture the configured AI tool's context breakdown (Claude Code's /context), anonymize it, and upload a timestamped snapshot. No built-in scheduler in v1: run on a cadence via external cron/CI (e.g. \`0 9 * * * frugl context >> ~/.frugl/context.log 2>&1\`). Each run accumulates a distinct snapshot; a failed run never blocks the next.
+
+Exit codes:
+  0   success
+ 10   not authenticated — run: frugl login
+ 30   anonymization failure
+ 40   network error`;
 
   static override examples = [
     "<%= config.bin %> <%= command.id %>",

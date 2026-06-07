@@ -20,8 +20,13 @@ import { deriveSlug } from "../org/slug.js";
 import { color, symbol } from "../lib/theme.js";
 
 export default class Login extends Command {
-  static override description =
-    "Sign in with an email one-time code; token persisted in OS keychain.";
+  static override description = `Sign in with an email one-time code; token persisted in OS keychain.
+
+Exit codes:
+  0   success
+ 10   authentication failed (wrong code or token)
+ 11   OS keychain unavailable
+ 40   network error`;
 
   static override flags = {
     email: Flags.string({ description: "Email address to sign in with" }),

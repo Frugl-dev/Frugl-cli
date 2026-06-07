@@ -4,7 +4,7 @@ import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
 import { isFruglError, printFruglError } from "./errors.js";
-import { resolveOutputMode, type OutputMode } from "./output-mode.js";
+import { resolveDebug, resolveOutputMode, type OutputMode } from "./output-mode.js";
 
 export interface CommandFlags {
   json?: boolean | undefined;
@@ -73,6 +73,7 @@ export async function buildCommandContext<A extends AuthMode>(
     endpointUrl: endpoint.url,
     cliVersion: getCliVersion(),
     endpointExplicit: endpoint.resolvedFrom !== "default",
+    debug: resolveDebug(),
     ...(session ? { token: session.token } : {}),
   });
 

@@ -18,6 +18,8 @@ export interface CloudClientOptions {
   bodyPutTimeoutMs?: number;
   /** When true, fetch failures surface as EndpointError(41) instead of NetworkError(40). */
   endpointExplicit?: boolean;
+  /** When true (FRUGL_DEBUG=1), log HTTP request/response lines to stderr. */
+  debug?: boolean;
 }
 
 const DEFAULT_CONTROL_PLANE_TIMEOUT_MS = 8_000;
@@ -49,6 +51,7 @@ export class CloudClient {
   private readonly controlPlaneTimeoutMs: number;
   private readonly bodyPutTimeoutMs: number;
   private readonly endpointExplicit: boolean;
+  private readonly debug: boolean;
   private firstCallSucceeded = false;
   private token: string | undefined;
 
@@ -59,6 +62,7 @@ export class CloudClient {
     this.controlPlaneTimeoutMs = opts.controlPlaneTimeoutMs ?? DEFAULT_CONTROL_PLANE_TIMEOUT_MS;
     this.bodyPutTimeoutMs = opts.bodyPutTimeoutMs ?? DEFAULT_BODY_PUT_TIMEOUT_MS;
     this.endpointExplicit = opts.endpointExplicit ?? false;
+    this.debug = opts.debug ?? false;
   }
 
   setToken(token: string | undefined): void {
@@ -80,6 +84,9 @@ export class CloudClient {
     const timeoutMs = opts.timeoutMs ?? this.controlPlaneTimeoutMs;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    if (this.debug) {
+      process.stderr.write(`[frugl:debug] → ${opts.method} ${opts.path}\n`);
+    }
     let response: Response;
     try {
       response = await fetch(url, {
@@ -97,6 +104,9 @@ export class CloudClient {
     } finally {
       clearTimeout(timeout);
     }
+    if (this.debug) {
+      process.stderr.write(`[frugl:debug] ← ${response.status} ${opts.method} ${opts.path}\n`);
+    }
     this.firstCallSucceeded = true;
     return this.handleResponse(response, opts);
   }
@@ -107,15 +117,22 @@ export class CloudClient {
     headers: Record<string, string>,
     timeoutMs?: number,
   ): Promise<Response> {
+    if (this.debug) {
+      process.stderr.write(`[frugl:debug] → PUT <body ${body.byteLength}B>\n`);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs ?? this.bodyPutTimeoutMs);
     try {
-      return await fetch(url, {
+      const response = await fetch(url, {
         method: "PUT",
         headers,
         body,
         signal: controller.signal,
       });
+      if (this.debug) {
+        process.stderr.write(`[frugl:debug] ← ${response.status} PUT\n`);
+      }
+      return response;
     } finally {
       clearTimeout(timeout);
     }

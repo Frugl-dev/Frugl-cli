@@ -6,6 +6,16 @@
 
 import pc from "picocolors";
 
+// picocolors keys off process.stdout for its global enabled flag. err/warn
+// always go to stderr, so when stdout is piped (e.g. --json | jq) colors
+// would be lost on stderr even though it's still a terminal. Bypass pc and
+// check stderr directly for these two.
+const stderrHasColor = (): boolean =>
+  process.env.NO_COLOR === undefined &&
+  (process.env.FORCE_COLOR !== undefined || process.stderr.isTTY === true);
+const ANSI_RED = (s: string): string => `\x1b[31m${s}\x1b[39m`;
+const ANSI_YELLOW = (s: string): string => `\x1b[33m${s}\x1b[39m`;
+
 // Two-color Frugl system:
 //   frog  green = the brand. commands, flags, URLs, savings, success.
 //   amber yellow = the meter. waste, spend bars, gauges, caution.
@@ -14,8 +24,8 @@ export const color = {
   frog: (s: string): string => pc.green(s),
   frogBold: (s: string): string => pc.bold(pc.green(s)),
   ok: (s: string): string => pc.green(s),
-  warn: (s: string): string => pc.yellow(s),
-  err: (s: string): string => pc.red(s),
+  warn: (s: string): string => (stderrHasColor() ? ANSI_YELLOW(s) : s),
+  err: (s: string): string => (stderrHasColor() ? ANSI_RED(s) : s),
   dim: (s: string): string => pc.dim(s),
   mute: (s: string): string => pc.gray(s),
   bold: (s: string): string => pc.bold(s),
