@@ -2,21 +2,45 @@
   "name": "frugl",
   "version": "0.1.0",
   "description": "Upload anonymized AI-coding session logs to hosted Frugl.",
+  "keywords": [
+    "ai",
+    "anonymize",
+    "cli",
+    "coding",
+    "frugl",
+    "oclif",
+    "telemetry"
+  ],
+  "homepage": "https://github.com/Frugl-dev/Frugl-cli#readme",
+  "bugs": {
+    "url": "https://github.com/Frugl-dev/Frugl-cli/issues"
+  },
   "license": "MIT",
+  "author": "Frugl",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Frugl-dev/Frugl-cli.git"
+  },
   "bin": {
     "frugl": "./bin/run.js"
   },
   "files": [
-    "bin",
+    "bin/run.js",
     "dist",
+    "oclif.manifest.json",
     "README.md",
     "LICENSE"
   ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "tsx bin/dev.js",
-    "build": "tsup src/index.ts --format esm --target node20 --clean --dts",
+    "clean": "rm -rf dist oclif.manifest.json",
+    "build": "npm run clean && tsc -p tsconfig.build.json && oclif manifest",
     "prepack": "npm run build",
+    "postpack": "rm -f oclif.manifest.json",
     "lint": "oxlint --ignore-pattern '.claude/**'",
     "lint:fix": "oxlint --fix --ignore-pattern '.claude/**'",
     "format": "oxfmt",
@@ -61,7 +85,7 @@
   ],
   "oclif": {
     "bin": "frugl",
-    "commands": "./src/commands",
+    "commands": "./dist/commands",
     "dirname": "frugl",
     "topicSeparator": " "
   },

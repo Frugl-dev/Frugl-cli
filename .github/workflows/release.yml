@@ -1,0 +1,53 @@
+name: Release
+
+# Publish to npm when a GitHub Release is published. Cut a release whose tag
+# matches the package.json version (e.g. v0.1.0) and this workflow builds,
+# verifies, and publishes `frugl` to the public npm registry with provenance.
+on:
+  release:
+    types: [published]
+
+# `id-token: write` is required for npm provenance (signed build attestation).
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: build + verify + publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify (lint + typecheck + test)
+        run: |
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      # `npm publish` runs the `prepack` script (build + oclif manifest) first,
+      # then publishes the tarball described by package.json `files`.
+      # --provenance signs the build; --access public publishes the unscoped
+      # package publicly. NODE_AUTH_TOKEN authenticates against the registry.
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
