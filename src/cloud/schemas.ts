@@ -110,9 +110,17 @@ export const handoffResponseSchema = z.object({
 });
 export type HandoffResponse = z.infer<typeof handoffResponseSchema>;
 
-export const versionGateBodySchema = z.object({
-  minSupportedCliVersion: z.string(),
-});
+// The server's 426 body uses snake_case `min_version` (see the cloud repo's
+// contracts/uploads.md); older drafts used `minSupportedCliVersion`. Accept
+// either so the gate message can always name the required version.
+export const versionGateBodySchema = z
+  .object({
+    minSupportedCliVersion: z.string().optional(),
+    min_version: z.string().optional(),
+  })
+  .refine((body) => body.minSupportedCliVersion !== undefined || body.min_version !== undefined, {
+    message: "expected minSupportedCliVersion or min_version",
+  });
 export type VersionGateBody = z.infer<typeof versionGateBodySchema>;
 
 export const orgMeResponseSchema = z
