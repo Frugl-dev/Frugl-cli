@@ -7,7 +7,10 @@ export function checkVersionGate(cliVersion: string, responseBody: unknown): voi
   if (!parsed.success) {
     throw new VersionGateError(cliVersion, "unknown");
   }
-  const required = parsed.data.minSupportedCliVersion;
+  const required = parsed.data.minSupportedCliVersion ?? parsed.data.min_version;
+  if (required === undefined) {
+    throw new VersionGateError(cliVersion, "unknown");
+  }
   const current = semver.coerce(cliVersion)?.version ?? cliVersion;
   const minSupported = semver.coerce(required)?.version ?? required;
   if (semver.lt(current, minSupported)) {

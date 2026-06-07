@@ -14,6 +14,25 @@ describe("checkVersionGate", () => {
     );
   });
 
+  it("reads the server's snake_case min_version field", () => {
+    // The deployed server sends { error: "cli_too_old", min_version } —
+    // the camelCase name only ever existed in spec drafts.
+    expect(() => checkVersionGate("0.5.0", { error: "cli_too_old", min_version: "1.0.0" })).toThrow(
+      VersionGateError,
+    );
+    expect(() =>
+      checkVersionGate("1.2.3", { error: "cli_too_old", min_version: "1.0.0" }),
+    ).not.toThrow();
+  });
+
+  it("carries requiredVersion from min_version on the error", () => {
+    const err = collectError(() =>
+      checkVersionGate("0.1.0", { error: "cli_too_old", min_version: "1.0.0" }),
+    );
+    expect(err).toBeInstanceOf(VersionGateError);
+    expect((err as VersionGateError).requiredVersion).toBe("1.0.0");
+  });
+
   it("throws when body is malformed (treats it as outdated)", () => {
     expect(() => checkVersionGate("1.0.0", { weird: "body" })).toThrow(VersionGateError);
   });
