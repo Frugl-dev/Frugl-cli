@@ -1,10 +1,22 @@
 name: CI
 
+# Docs-only changes (markdown, specs, license) can't affect format/lint/
+# typecheck/test results, so skip CI for them entirely. Note: .github/** and
+# config files (package.json, tsconfig, vitest.config) are intentionally NOT
+# ignored — they can change check outcomes.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "specs/**"
+      - "LICENSE"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "specs/**"
+      - "LICENSE"
 
 # Cancel in-flight runs on a branch when a newer push arrives — cheaper, faster
 # feedback. Manual workflow_dispatch runs are not cancelled. Inputs referenced
