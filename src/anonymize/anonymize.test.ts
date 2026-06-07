@@ -167,6 +167,37 @@ describe("anonymize", () => {
     expect(a).toBe(b);
   });
 
+  it("preserves provider-reported usage blocks bit-identical", () => {
+    // The cloud's Claude adapter sums message.usage into the canonical session
+    // totals (ground truth, not a size estimate). Redaction must never touch
+    // these records: all usage values are numbers and the walk only rewrites
+    // strings, so a failure here means a rule change broke that invariant.
+    const usage = {
+      input_tokens: 2551,
+      cache_creation_input_tokens: 3311,
+      cache_read_input_tokens: 16218,
+      output_tokens: 599,
+      server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },
+    };
+    const fixture = {
+      sessions: [
+        {
+          type: "assistant",
+          message: {
+            id: "msg_01XyZAbCdEfGhIjKlMnOpQ",
+            model: "claude-opus-4-8",
+            role: "assistant",
+            usage,
+          },
+        },
+      ],
+    };
+    const result = anonymize(fixture, { uploadId: "u-usage", ownerEmail: OWNER_EMAIL });
+    const payload = result.payload as typeof fixture;
+    expect(payload.sessions[0]!.message.usage).toEqual(usage);
+    expect(payload.sessions[0]!.message.model).toBe("claude-opus-4-8");
+  });
+
   it("redacts home prefix in Cursor, Codex, and Gemini session paths", () => {
     const home = "/Users/bob";
     const fixture = {
