@@ -48,7 +48,7 @@ export default class HookInstall extends Command {
       process.stdout.write(
         `${color.ok(`${symbol.tick} Installed Claude Code hook`)}  ${color.dim(`(${scope}: ${file})`)}\n`,
       );
-      process.stdout.write(`${color.dim("  Runs on session end: ")}${color.poppy(command)}\n`);
+      process.stdout.write(`${color.dim("  Runs on session end: ")}${color.frog(command)}\n`);
       if (!tokenConfigured) {
         process.stderr.write(
           `${color.warn(`${symbol.warn} No access token configured.`)} ${color.dim(

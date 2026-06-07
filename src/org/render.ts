@@ -37,10 +37,10 @@ export function renderNoOrg(email?: string): string {
   lines.push(color.dim("  Every Frugl account belongs to an org. Pick one:"));
   lines.push("");
   lines.push(
-    `    ${color.poppy("frugl org create")}        ${color.dim("start a new org (you become owner)")}`,
+    `    ${color.frog("frugl org create")}        ${color.dim("start a new org (you become owner)")}`,
   );
   lines.push(
-    `    ${color.poppy("frugl org join <code>")}   ${color.dim("accept an invite from a teammate")}`,
+    `    ${color.frog("frugl org join <code>")}   ${color.dim("accept an invite from a teammate")}`,
   );
   if (email) {
     lines.push("");

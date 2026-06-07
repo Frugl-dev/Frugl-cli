@@ -36,7 +36,7 @@ export default class Whoami extends Command {
         } else {
           process.stderr.write(`${color.err(`${symbol.cross} Not logged in.`)} `);
           process.stderr.write(
-            `${color.dim("Run ")}${color.poppy("frugl login")}${color.dim(" first.")}\n`,
+            `${color.dim("Run ")}${color.frog("frugl login")}${color.dim(" first.")}\n`,
           );
         }
         process.exit(EXIT.AUTH_FAILURE);
@@ -80,7 +80,7 @@ export default class Whoami extends Command {
       );
       if (org === "none") {
         process.stdout.write(
-          `${color.dim("             Set one up: ")}${color.poppy("frugl org create")}${color.dim(" or ")}${color.poppy("frugl org join <code>")}\n`,
+          `${color.dim("             Set one up: ")}${color.frog("frugl org create")}${color.dim(" or ")}${color.frog("frugl org join <code>")}\n`,
         );
       } else {
         process.stdout.write(

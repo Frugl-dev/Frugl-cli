@@ -88,7 +88,7 @@ export default class Recommendations extends Command {
     } else {
       process.stderr.write(`${color.err(`${symbol.cross} Not logged in.`)} `);
       process.stderr.write(
-        `${color.dim("Run ")}${color.poppy("frugl login")}${color.dim(" first.")}\n`,
+        `${color.dim("Run ")}${color.frog("frugl login")}${color.dim(" first.")}\n`,
       );
     }
   }
@@ -130,7 +130,7 @@ export default class Recommendations extends Command {
       `${color.bold("Cost-saving recommendations")} ${color.dim(`(ranked · ${count})`)}\n\n`,
     );
     recs.forEach((r, i) => {
-      const savings = color.poppyBold(savingsCol(r.estimated_savings_usd));
+      const savings = color.frogBold(savingsCol(r.estimated_savings_usd));
       const flag = r.status === "applied" ? color.ok(" [applied]") : "";
       process.stdout.write(`${color.dim(`${i + 1}.`)} ${savings} ${color.bold(r.title)}${flag}\n`);
       process.stdout.write(
@@ -142,13 +142,13 @@ export default class Recommendations extends Command {
     const total = recs.reduce((sum, r) => sum + r.estimated_savings_usd, 0);
     const plural = recs.length === 1 ? "recommendation" : "recommendations";
     process.stdout.write(
-      `  ${color.dim("Estimated total  ")}${color.poppyBold(`~${formatSavings(total)}/mo`)}` +
+      `  ${color.dim("Estimated total  ")}${color.frogBold(`~${formatSavings(total)}/mo`)}` +
         `  ${color.dim(`across ${recs.length} ${word ? `${word} ` : ""}${plural}`)}\n\n`,
     );
     const top = recs[0];
     if (top) {
       process.stdout.write(
-        `${color.dim("Fix the top one: ")}${color.poppy(`frugl recs --fix ${top.id} | claude`)}\n`,
+        `${color.dim("Fix the top one: ")}${color.frog(`frugl recs --fix ${top.id} | claude`)}\n`,
       );
     }
   }
@@ -209,7 +209,7 @@ export default class Recommendations extends Command {
         const ratio = im.baseline_cost_usd > 0 ? realized / im.baseline_cost_usd : 0;
         process.stdout.write(
           `    ${color.mute(impactLabel("Realized"))}` +
-            `${color.ok(`~${formatSavings(realized)}/mo saved`)}   ${bar(ratio * 20)}` +
+            `${color.ok(`~${formatSavings(realized)}/mo saved`)}   ${bar(ratio * 20, 20, "frog")}` +
             `  ${symbol.activeDot} ${color.dim("available")}\n\n`,
         );
       } else {
@@ -227,7 +227,7 @@ export default class Recommendations extends Command {
     const suffix = parts.length > 0 ? `  ${color.dim(`· ${parts.join(" · ")}`)}` : "";
     process.stdout.write(
       `  ${color.mute("Total realized so far  ")}` +
-        `${color.poppyBold(`~${formatSavings(realizedTotal)}/mo`)}${suffix}\n`,
+        `${color.frogBold(`~${formatSavings(realizedTotal)}/mo`)}${suffix}\n`,
     );
   }
 

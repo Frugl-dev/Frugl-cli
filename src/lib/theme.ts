@@ -6,12 +6,13 @@
 
 import pc from "picocolors";
 
-// Semantic colors. `poppy` is the brand red used for prompts, CTAs, and the
-// headline count; the rest mirror the roles picocolors-based output already
-// leaned on (green = success, yellow = caution, gray = secondary, dim = aside).
+// Two-color Frugl system:
+//   frog  green = the brand. commands, flags, URLs, savings, success.
+//   amber yellow = the meter. waste, spend bars, gauges, caution.
+//   red          = honest failure only.
 export const color = {
-  poppy: (s: string): string => pc.red(s),
-  poppyBold: (s: string): string => pc.bold(pc.red(s)),
+  frog: (s: string): string => pc.green(s),
+  frogBold: (s: string): string => pc.bold(pc.green(s)),
   ok: (s: string): string => pc.green(s),
   warn: (s: string): string => pc.yellow(s),
   err: (s: string): string => pc.red(s),
@@ -27,7 +28,7 @@ export const color = {
 export const symbol = {
   tick: pc.green("✓"),
   cross: pc.red("✗"),
-  pointer: pc.bold(pc.red("❯")),
+  pointer: pc.bold(pc.green("❯")),
   radioOn: pc.green("◉"),
   radioOff: pc.dim("◯"),
   warn: pc.yellow("⚠"),
@@ -36,10 +37,12 @@ export const symbol = {
   bullet: pc.dim("·"),
 } as const;
 
-// A horizontal bar of `width` cells, `filled` of them solid (poppy), rest dim.
-export function bar(filled: number, width = 20): string {
+// A horizontal bar of `width` cells, `filled` of them solid, rest dim.
+// tone "amber" (default) = the meter/waste gauge; tone "frog" = savings/positive bars.
+export function bar(filled: number, width = 20, tone: "amber" | "frog" = "amber"): string {
   const f = Math.max(0, Math.min(width, Math.round(filled)));
-  return color.poppy("█".repeat(f)) + color.dim("░".repeat(width - f));
+  const solid = tone === "frog" ? pc.green("█".repeat(f)) : pc.yellow("█".repeat(f));
+  return solid + color.dim("░".repeat(width - f));
 }
 
 // Human byte size matching the design's "12.4 KB" / "4.8 MB" style.

@@ -60,7 +60,7 @@ export default class OrgUse extends Command {
         ),
       );
       process.stdout.write(
-        `${color.dim("  To move to another org, join it with ")}${color.poppy("frugl org join <code>")}${color.dim(".")}\n`,
+        `${color.dim("  To move to another org, join it with ")}${color.frog("frugl org join <code>")}${color.dim(".")}\n`,
       );
       process.exit(0);
     } catch (err) {
