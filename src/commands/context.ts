@@ -6,6 +6,7 @@ import { captureContext } from "../context/capture.js";
 import { uploadContextSnapshot } from "../context/upload.js";
 import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
+import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 
 // v1 has no built-in scheduler. To capture snapshots on a cadence, drive
 // `frugl context` from an external cron/CI job (see README). The tool is the
@@ -60,6 +61,12 @@ export default class Context extends Command {
         ...(mcpServers ? { mcpServers } : {}),
       });
 
+      const handoff = await requestHandoffUrl(
+        client,
+        upload.dashboardUrl,
+        resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
+      );
+
       if (mode === "json") {
         process.stdout.write(
           `${JSON.stringify({
@@ -71,7 +78,7 @@ export default class Context extends Command {
             sessionId: upload.sessionId,
             redactionPolicyVersion: result.policyVersion,
             byteSize: result.byteSize,
-            dashboardUrl: upload.dashboardUrl,
+            dashboardUrl: handoff.dashboardUrl,
           })}\n`,
         );
         return;
@@ -81,8 +88,19 @@ export default class Context extends Command {
         `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
       );
       process.stdout.write(
-        `${color.dim("  View it on your dashboard: ")}${color.poppy(upload.dashboardUrl)}\n`,
+        `${color.dim("  View it on your dashboard: ")}${color.poppy(handoff.dashboardUrl)}\n`,
       );
+      if (handoff.active) {
+        process.stdout.write(
+          color.dim(
+            "             link signs you in — expires in ~60s; after that, log in normally\n",
+          ),
+        );
+      } else if (handoff.reason !== "disabled-flag" && handoff.reason !== "disabled-default") {
+        process.stdout.write(
+          color.dim("             sign-in link unavailable — log in on the web\n"),
+        );
+      }
     } catch (err) {
       handleCommandError(err, mode);
     }
