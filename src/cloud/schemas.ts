@@ -68,6 +68,16 @@ export const manifestEntryRequestSchema = z.object({
 });
 export type ManifestEntryRequest = z.infer<typeof manifestEntryRequestSchema>;
 
+// Declared MCP server inventory (names-only slice of spec 026): name + health
+// status from `claude mcp list`, captured at manifest time. Optional — a CLI
+// that couldn't run the capture omits the field rather than blocking the
+// upload. Statuses mirror the capture vocabulary (capture/types.ts McpStatus).
+export const declaredMcpServerSchema = z.object({
+  name: z.string().min(1).max(200),
+  status: z.enum(["connected", "failed", "pending", "unknown"]),
+});
+export type WireDeclaredMcpServer = z.infer<typeof declaredMcpServerSchema>;
+
 export const createManifestRequestSchema = z.object({
   cli_version: z.string(),
   redaction_policy_version: z.string().min(1),
@@ -77,6 +87,7 @@ export const createManifestRequestSchema = z.object({
   // Optional; defaults to "session" server-side. Sent explicitly only for
   // context snapshots so older flows are untouched.
   artifact_kind: artifactKindSchema.optional(),
+  mcp_servers: z.array(declaredMcpServerSchema).max(100).optional(),
 });
 export type CreateManifestRequest = z.infer<typeof createManifestRequestSchema>;
 

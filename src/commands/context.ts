@@ -4,6 +4,7 @@ import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/co
 import { color, symbol } from "../lib/theme.js";
 import { captureContext } from "../context/capture.js";
 import { uploadContextSnapshot } from "../context/upload.js";
+import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 
 // v1 has no built-in scheduler. To capture snapshots on a cadence, drive
@@ -45,7 +46,10 @@ export default class Context extends Command {
       });
 
       // 3) Upload via the manifest -> presign -> PUT -> complete handshake.
+      // The declared MCP inventory (names-only, fail-open) rides the manifest:
+      // a failed `claude mcp list` simply omits it, never blocking the snapshot.
       const cloud = new HttpCloudAdapter(client);
+      const mcpServers = captureDeclaredMcpServers();
       const upload = await uploadContextSnapshot({
         cloud,
         cliVersion: client.cliVersion,
@@ -53,6 +57,7 @@ export default class Context extends Command {
         policyVersion: result.policyVersion,
         capturedAt: capture.capturedAt,
         anonymization: result,
+        ...(mcpServers ? { mcpServers } : {}),
       });
 
       if (mode === "json") {
