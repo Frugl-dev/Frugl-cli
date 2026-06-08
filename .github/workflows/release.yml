@@ -46,8 +46,7 @@ jobs:
       # `npm publish` runs the `prepack` script (build + oclif manifest) first,
       # then publishes the tarball described by package.json `files`.
       # --provenance signs the build; --access public publishes the unscoped
-      # package publicly. NODE_AUTH_TOKEN authenticates against the registry.
+      # package publicly. Authentication uses npm Trusted Publisher (OIDC) —
+      # no NPM_TOKEN secret required.
       - name: Publish to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
