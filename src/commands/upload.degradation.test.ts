@@ -58,9 +58,12 @@ describe("frugl upload — best-effort degradation (US4/SC-005)", { timeout: 30_
       projName: "p-missing",
     });
 
-    const { exitCode } = await runCli(["upload", "--yes", "--link-prs", "--endpoint", server.url], {
-      env: { FRUGL_HOME_DIR: home.dir },
-    });
+    const { exitCode } = await runCli(
+      ["upload", "--sessions", "--yes", "--link-prs", "--endpoint", server.url],
+      {
+        env: { FRUGL_HOME_DIR: home.dir },
+      },
+    );
     expect(exitCode).toBe(EXIT.OK); // never fatal (no new exit code)
 
     // All three sessions are in the manifest (none dropped because git failed)…

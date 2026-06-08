@@ -245,9 +245,12 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const firstResult = JSON.parse(first.stdout.trim().split("\n").at(-1)!);
       expect(firstResult.actualSessionCount).toBe(2);
 
-      const second = await runCli(["upload", "--yes", "--json", "--endpoint", server.url], {
-        env,
-      });
+      const second = await runCli(
+        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        {
+          env,
+        },
+      );
       expect(second.exitCode).toBe(EXIT.OK);
       const secondResult = JSON.parse(second.stdout.trim().split("\n").at(-1)!);
       expect(secondResult.noop).toBe(true);
@@ -491,7 +494,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("step 4: second upload --yes is a noop", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
         {
           env: env(),
         },

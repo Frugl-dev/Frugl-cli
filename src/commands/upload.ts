@@ -28,6 +28,8 @@ import {
 import { createProgressReporter } from "../upload/progress.js";
 import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
 import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
+import { captureContext } from "../context/capture.js";
+import { uploadContextSnapshot } from "../context/upload.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
@@ -42,7 +44,7 @@ import {
 import { applySelection, isInteractive, selectProjects, selectProviders } from "../select/index.js";
 import type { Selection } from "../select/selection.js";
 import type { Source, SessionRef } from "../sources/types.js";
-import { POLICY_VERSION } from "../anonymize/index.js";
+import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
 import {
   InspectDirError,
   NoSessionsError,
@@ -118,12 +120,24 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         "Explain the last upload's failures (grouped by reason, with remedies) instead of uploading.",
       default: false,
     }),
+    sessions: Flags.boolean({
+      description:
+        "Upload AI coding sessions. When neither --sessions nor --context is given, both are uploaded.",
+    }),
+    context: Flags.boolean({
+      description:
+        "Capture and upload a Claude Code context snapshot. When neither --sessions nor --context is given, both are uploaded.",
+    }),
   };
 
   async run(): Promise<void> {
     const { flags, args } = await this.parse(Upload);
     const mode = resolveOutputMode({ json: flags.json });
     const reporter = createProgressReporter(mode);
+
+    const neither = !flags.sessions && !flags.context;
+    const uploadSessions = flags.sessions || neither;
+    const uploadContext = flags.context || neither;
 
     // Clear the live progress bar line and tell the user how to inspect
     // partial progress. Exit 130 is the Unix convention for Ctrl-C.
@@ -190,295 +204,365 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         });
       }
 
-      const homeDir = process.env["FRUGL_HOME_DIR"];
-      const discoverOpts = homeDir ? { homeDir } : undefined;
-
-      if (mode === "text") process.stderr.write(color.dim("Scanning sessions…\n"));
-
-      // 1) Detect which providers have sessions on this machine.
-      const detected = await detectProviders(discoverOpts);
-      const supportedDetected = detected.filter((d) => d.descriptor.supported);
-      if (supportedDetected.length === 0) {
-        const names = detected.map((d) => d.descriptor.displayName).join(", ");
-        throw new NoSessionsError(
-          detected.length === 0
-            ? "No sessions found. Make sure at least one AI coding tool (Claude Code, Cursor, Codex, or Gemini) has been used on this machine."
-            : `Detected ${names}, but none are supported for upload yet.`,
-        );
-      }
-
-      const interactive = isInteractive({
-        json: flags.json,
-        yes: flags.yes,
-        confirm: flags.confirm,
-        isTTY: Boolean(process.stdin.isTTY),
-      });
-
-      const groups: ProjectGroup[] = [];
-      let selection: Selection;
-
-      if (uploadConfig) {
-        // Config-driven scope: derive all supported providers' projects, then
-        // filter by the config's providers + project include/exclude globs.
-        for (const d of supportedDetected) {
-          const descriptor = getProvider(d.descriptor.id);
-          if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
-          const providerRefs = await descriptor.source.discover(discoverOpts);
-          groups.push(...descriptor.deriveProjects(providerRefs));
-        }
-        selection = resolveConfigSelection(uploadConfig, detected, groups);
-      } else {
-        // 2) Choose providers — interactive picker, or auto-select-all when not.
-        const selectedProviderIds = await selectProviders(detected, { interactive });
-        if (selectedProviderIds.length === 0) {
-          if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
-          process.exit(EXIT.OK);
-        }
-        // 3) Discover sessions for the selected providers, grouped by project.
-        for (const id of selectedProviderIds) {
-          const descriptor = getProvider(id);
-          if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
-          const providerRefs = await descriptor.source.discover(discoverOpts);
-          groups.push(...descriptor.deriveProjects(providerRefs));
-        }
-        // 4) Choose projects — all preselected; deselect to exclude from upload.
-        const selectedProjectIds = await selectProjects(groups, { interactive });
-        selection = { providerIds: selectedProviderIds, projectIds: selectedProjectIds };
-      }
-      const selectionReport = buildSelectionReport(detected, groups, selection);
-
-      const refs = applySelection(groups, selection);
-      if (refs.length === 0) {
-        if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
-        process.exit(EXIT.OK);
-      }
-
-      const uploadId = randomUUID();
-      // Group refs by source for per-source pipeline
-      const refsBySource = new Map<Source, SessionRef[]>();
-      for (const ref of refs) {
-        const source = getSourceByKind(ref.sourceKind);
-        if (!source) continue;
-        const existing = refsBySource.get(source) ?? [];
-        existing.push(ref);
-        refsBySource.set(source, existing);
-      }
-
-      const ledger = new Ledger({ endpointUrl: endpoint.url, userId: session.userId });
-      const resumeStore = new ResumeStore({ endpointUrl: endpoint.url, userId: session.userId });
-
-      // Classify per source (each source knows how to parse its own refs)
-      const classificationsBySource = new Map<Source, SessionClassification[]>();
-      for (const [source, sourceRefs] of refsBySource) {
-        const sorted = sourceRefs.toSorted(
-          (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
-        );
-        const classifications = await classifyAll(sorted, {
-          ledger,
-          source,
-          anonymize: { uploadId, ownerEmail: session.email },
-        });
-        classificationsBySource.set(source, classifications);
-      }
-
-      // Merge for confirmation + summary
-      const allClassifications = [...classificationsBySource.values()].flat();
-      const allBuckets = bucketize(allClassifications);
-      const allCandidates: SessionClassification[] = sortByMtimeDesc([
-        ...allBuckets.new,
-        ...allBuckets.updated,
-      ]);
-      const willUpload =
-        flags.limit !== undefined ? allCandidates.slice(0, flags.limit) : allCandidates;
-
-      const activeSources = [...refsBySource.keys()];
-      const displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
-
-      // Opt-in git-context resolution: only run the (expensive) git pass when
-      // linking is active. The builder folds in the link-prs precedence and
-      // assembles the `prLinking` summary from these raw git facts.
-      const gitBySession = new Map<string, GitContext>();
-      let gitContext: { sessionsWithContext: number; repositories: string[] } | undefined;
-      if (linkActive) {
-        const repositories = await this.resolveBatchGitContext(willUpload, gitBySession);
-        gitContext = { sessionsWithContext: gitBySession.size, repositories };
-      }
-
-      const projectRows = buildProjectRows(willUpload, groups);
-      const summary = buildUploadSummary({
-        buckets: allBuckets,
-        willUpload,
-        policyVersion: POLICY_VERSION,
-        endpoint,
-        sourceKind: displaySourceKind,
-        linkPrs: { flagValue: flags["link-prs"], configValue: configLinkPrs },
-        ...(gitContext ? { gitContext } : {}),
-        ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
-        ...(projectRows.length > 0 ? { projects: projectRows } : {}),
-      });
-      const prLinking = summary.prLinking;
-
-      if (mode === "text") {
-        process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
-      }
-
-      if (flags["dry-run"]) {
-        if (flags.inspect) {
-          await writeInspectionDir(flags.inspect, !!flags.force, willUpload, summary, gitBySession);
-        }
-        if (mode === "text") {
-          process.stdout.write(
-            `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
-          );
-          if (flags.inspect) {
-            process.stdout.write(
-              `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.frog("jq .")}${color.dim(" before transmitting.")}\n`,
-            );
-          } else {
-            process.stdout.write(
-              `${color.dim("  Tip: add ")}${color.frog("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
-            );
-          }
-        }
-        const result = {
-          command: "upload" as const,
-          ok: true as const,
-          manifestId: "dry-run",
-          actualSessionCount: 0,
-          expectedSessionCount: Math.max(1, willUpload.length),
-          redactionPolicyVersion: POLICY_VERSION,
-          sourceKind: displaySourceKind,
-          endpoint: endpoint.url,
-          dashboardUrl: `${endpoint.url}/dry-run`,
-          classification: {
-            discovered: summary.discovered,
-            unchanged: summary.unchanged,
-            new: summary.new,
-            updated: summary.updated,
-          },
-          limited: summary.limited ?? { active: false },
-          ...(prLinking
-            ? {
-                gitContext: {
-                  active: true,
-                  sessionsWithContext: prLinking.sessionsWithContext,
-                  repositories: prLinking.repositories,
-                },
-              }
-            : {}),
-          selection: selectionReport,
-          dryRun: true,
-        };
-        if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
-        return;
-      }
-
-      if (willUpload.length === 0) {
-        const result = {
-          command: "upload" as const,
-          ok: true as const,
-          manifestId: "noop",
-          actualSessionCount: 0,
-          expectedSessionCount: 1,
-          redactionPolicyVersion: POLICY_VERSION,
-          sourceKind: displaySourceKind,
-          endpoint: endpoint.url,
-          dashboardUrl: `${endpoint.url}/dashboard`,
-          classification: {
-            discovered: summary.discovered,
-            unchanged: summary.unchanged,
-            new: summary.new,
-            updated: summary.updated,
-          },
-          limited: summary.limited ?? { active: false },
-          selection: selectionReport,
-          noop: true,
-        };
-        if (mode === "text") {
-          process.stdout.write(`${color.dim("No new or updated sessions. Nothing to upload.")}\n`);
-        }
-        if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
-        return;
-      }
-
-      if (!flags.yes) {
-        const ok = await confirm({
-          message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
-          default: true,
-        });
-        if (!ok) {
-          process.stderr.write(color.dim("Aborted. 0 bytes sent.\n"));
-          process.exit(EXIT.OK);
-        }
-      }
-
-      // Run a separate pipeline per source — each source gets its own manifest
+      // Shared accumulators — set inside the sessions block, read by the context
+      // block and the final output section.
       let totalAcked = 0;
       let lastManifestId = "";
       let lastDashboardUrl = `${endpoint.url}/dashboard`;
-      for (const [source, _classifications] of classificationsBySource) {
-        const sourceCandidates = willUpload.filter((c) => c.ref.sourceKind === source.kind);
-        if (sourceCandidates.length === 0) continue;
+      let contextUploadResult:
+        | { manifestId: string; sessionId: string; capturedAt: string; byteSize: number }
+        | undefined;
 
-        const jobs = await buildJobsForSource(sourceCandidates, source, gitBySession);
-        const gitContextEvent = prLinking
-          ? {
-              active: true,
-              sessionsWithContext: prLinking.sessionsWithContext,
-              repositories: prLinking.repositories,
-            }
-          : undefined;
+      // Session-summary variables — populated inside the sessions block and used
+      // in the final JSON output. Declared here so they're in scope after the block.
+      let summary: ReturnType<typeof buildUploadSummary> | undefined;
+      let prLinking: ReturnType<typeof buildUploadSummary>["prLinking"];
+      let selectionReport: ReturnType<typeof buildSelectionReport> | undefined;
+      let willUpload: SessionClassification[] = [];
+      let displaySourceKind = "multi";
 
-        // Declared MCP inventory (names-only, fail-open): `claude mcp list` is
-        // Claude Code's vocabulary, so only that source's manifest carries it.
-        const mcpServers = source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
+      if (uploadSessions) {
+        const homeDir = process.env["FRUGL_HOME_DIR"];
+        const discoverOpts = homeDir ? { homeDir } : undefined;
 
-        let pipelineResult;
-        try {
-          pipelineResult = await runUploadPipeline({
-            cloud,
-            jobs,
+        if (mode === "text") process.stderr.write(color.dim("Scanning sessions…\n"));
+
+        // 1) Detect which providers have sessions on this machine.
+        const detected = await detectProviders(discoverOpts);
+        const supportedDetected = detected.filter((d) => d.descriptor.supported);
+        if (supportedDetected.length === 0) {
+          const names = detected.map((d) => d.descriptor.displayName).join(", ");
+          throw new NoSessionsError(
+            detected.length === 0
+              ? "No sessions found. Make sure at least one AI coding tool (Claude Code, Cursor, Codex, or Gemini) has been used on this machine."
+              : `Detected ${names}, but none are supported for upload yet.`,
+          );
+        }
+
+        const interactive = isInteractive({
+          json: flags.json,
+          yes: flags.yes,
+          confirm: flags.confirm,
+          isTTY: Boolean(process.stdin.isTTY),
+        });
+
+        const groups: ProjectGroup[] = [];
+        let selection: Selection;
+
+        if (uploadConfig) {
+          // Config-driven scope: derive all supported providers' projects, then
+          // filter by the config's providers + project include/exclude globs.
+          for (const d of supportedDetected) {
+            const descriptor = getProvider(d.descriptor.id);
+            if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
+              continue;
+            const providerRefs = await descriptor.source.discover(discoverOpts);
+            groups.push(...descriptor.deriveProjects(providerRefs));
+          }
+          selection = resolveConfigSelection(uploadConfig, detected, groups);
+        } else {
+          // 2) Choose providers — interactive picker, or auto-select-all when not.
+          const selectedProviderIds = await selectProviders(detected, { interactive });
+          if (selectedProviderIds.length === 0) {
+            if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
+            process.exit(EXIT.OK);
+          }
+          // 3) Discover sessions for the selected providers, grouped by project.
+          for (const id of selectedProviderIds) {
+            const descriptor = getProvider(id);
+            if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
+              continue;
+            const providerRefs = await descriptor.source.discover(discoverOpts);
+            groups.push(...descriptor.deriveProjects(providerRefs));
+          }
+          // 4) Choose projects — all preselected; deselect to exclude from upload.
+          const selectedProjectIds = await selectProjects(groups, { interactive });
+          selection = { providerIds: selectedProviderIds, projectIds: selectedProjectIds };
+        }
+        selectionReport = buildSelectionReport(detected, groups, selection);
+
+        const refs = applySelection(groups, selection);
+        if (refs.length === 0) {
+          if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
+          process.exit(EXIT.OK);
+        }
+
+        const uploadId = randomUUID();
+        // Group refs by source for per-source pipeline
+        const refsBySource = new Map<Source, SessionRef[]>();
+        for (const ref of refs) {
+          const source = getSourceByKind(ref.sourceKind);
+          if (!source) continue;
+          const existing = refsBySource.get(source) ?? [];
+          existing.push(ref);
+          refsBySource.set(source, existing);
+        }
+
+        const ledger = new Ledger({ endpointUrl: endpoint.url, userId: session.userId });
+        const resumeStore = new ResumeStore({ endpointUrl: endpoint.url, userId: session.userId });
+
+        // Classify per source (each source knows how to parse its own refs)
+        const classificationsBySource = new Map<Source, SessionClassification[]>();
+        for (const [source, sourceRefs] of refsBySource) {
+          const sorted = sourceRefs.toSorted(
+            (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
+          );
+          const classifications = await classifyAll(sorted, {
             ledger,
-            resumeStore,
-            reporter,
-            concurrency,
-            policyVersion: POLICY_VERSION,
-            cliVersion: getCliVersion(),
-            sourceKind: source.kind,
-            endpointUrl: endpoint.url,
-            userId: session.userId,
-            ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
-            ...(mcpServers ? { mcpServers } : {}),
+            source,
+            anonymize: { uploadId, ownerEmail: session.email },
           });
-        } catch (err) {
-          if (err instanceof StaleResumeError) {
-            if (mode === "text") {
-              process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
+          classificationsBySource.set(source, classifications);
+        }
+
+        // Merge for confirmation + summary
+        const allClassifications = [...classificationsBySource.values()].flat();
+        const allBuckets = bucketize(allClassifications);
+        const allCandidates: SessionClassification[] = sortByMtimeDesc([
+          ...allBuckets.new,
+          ...allBuckets.updated,
+        ]);
+        willUpload =
+          flags.limit !== undefined ? allCandidates.slice(0, flags.limit) : allCandidates;
+
+        const activeSources = [...refsBySource.keys()];
+        displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
+
+        // Opt-in git-context resolution: only run the (expensive) git pass when
+        // linking is active. The builder folds in the link-prs precedence and
+        // assembles the `prLinking` summary from these raw git facts.
+        const gitBySession = new Map<string, GitContext>();
+        let gitContext: { sessionsWithContext: number; repositories: string[] } | undefined;
+        if (linkActive) {
+          const repositories = await this.resolveBatchGitContext(willUpload, gitBySession);
+          gitContext = { sessionsWithContext: gitBySession.size, repositories };
+        }
+
+        const projectRows = buildProjectRows(willUpload, groups);
+        summary = buildUploadSummary({
+          buckets: allBuckets,
+          willUpload,
+          policyVersion: POLICY_VERSION,
+          endpoint,
+          sourceKind: displaySourceKind,
+          linkPrs: { flagValue: flags["link-prs"], configValue: configLinkPrs },
+          ...(gitContext ? { gitContext } : {}),
+          ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
+          ...(projectRows.length > 0 ? { projects: projectRows } : {}),
+        });
+        prLinking = summary.prLinking;
+
+        if (mode === "text") {
+          process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
+        }
+
+        if (flags["dry-run"]) {
+          if (flags.inspect) {
+            await writeInspectionDir(
+              flags.inspect,
+              !!flags.force,
+              willUpload,
+              summary,
+              gitBySession,
+            );
+          }
+          if (mode === "text") {
+            process.stdout.write(
+              `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
+            );
+            if (flags.inspect) {
+              process.stdout.write(
+                `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.frog("jq .")}${color.dim(" before transmitting.")}\n`,
+              );
+            } else {
+              process.stdout.write(
+                `${color.dim("  Tip: add ")}${color.frog("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
+              );
             }
-            resumeStore.clear();
-            pipelineResult = await runUploadPipeline({
-              cloud,
-              jobs,
-              ledger,
-              resumeStore,
-              reporter,
-              concurrency,
-              policyVersion: POLICY_VERSION,
-              cliVersion: getCliVersion(),
-              sourceKind: source.kind,
-              endpointUrl: endpoint.url,
-              userId: session.userId,
-              ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
-              ...(mcpServers ? { mcpServers } : {}),
-            });
-          } else {
-            throw err;
+          }
+          const result = {
+            command: "upload" as const,
+            ok: true as const,
+            manifestId: "dry-run",
+            actualSessionCount: 0,
+            expectedSessionCount: Math.max(1, willUpload.length),
+            redactionPolicyVersion: POLICY_VERSION,
+            sourceKind: displaySourceKind,
+            endpoint: endpoint.url,
+            dashboardUrl: `${endpoint.url}/dry-run`,
+            classification: {
+              discovered: summary.discovered,
+              unchanged: summary.unchanged,
+              new: summary.new,
+              updated: summary.updated,
+            },
+            limited: summary.limited ?? { active: false },
+            ...(prLinking
+              ? {
+                  gitContext: {
+                    active: true,
+                    sessionsWithContext: prLinking.sessionsWithContext,
+                    repositories: prLinking.repositories,
+                  },
+                }
+              : {}),
+            selection: selectionReport,
+            dryRun: true,
+          };
+          if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
+          return;
+        }
+
+        if (willUpload.length === 0) {
+          if (!uploadContext) {
+            const result = {
+              command: "upload" as const,
+              ok: true as const,
+              manifestId: "noop",
+              actualSessionCount: 0,
+              expectedSessionCount: 1,
+              redactionPolicyVersion: POLICY_VERSION,
+              sourceKind: displaySourceKind,
+              endpoint: endpoint.url,
+              dashboardUrl: `${endpoint.url}/dashboard`,
+              classification: {
+                discovered: summary!.discovered,
+                unchanged: summary!.unchanged,
+                new: summary!.new,
+                updated: summary!.updated,
+              },
+              limited: summary!.limited ?? { active: false },
+              selection: selectionReport,
+              noop: true,
+            };
+            if (mode === "text") {
+              process.stdout.write(
+                `${color.dim("No new or updated sessions. Nothing to upload.")}\n`,
+              );
+            }
+            if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
+            return;
+          }
+          if (mode === "text") {
+            process.stdout.write(`${color.dim("No new or updated sessions.")}\n`);
           }
         }
 
-        totalAcked += pipelineResult.acked.length;
-        lastManifestId = pipelineResult.manifestId;
-        lastDashboardUrl = pipelineResult.dashboardUrl;
+        if (willUpload.length > 0) {
+          if (!flags.yes) {
+            const ok = await confirm({
+              message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
+              default: true,
+            });
+            if (!ok) {
+              process.stderr.write(color.dim("Aborted. 0 bytes sent.\n"));
+              process.exit(EXIT.OK);
+            }
+          }
+
+          // Run a separate pipeline per source — each source gets its own manifest
+          for (const [source, _classifications] of classificationsBySource) {
+            const sourceCandidates = willUpload.filter((c) => c.ref.sourceKind === source.kind);
+            if (sourceCandidates.length === 0) continue;
+
+            const jobs = await buildJobsForSource(sourceCandidates, source, gitBySession);
+            const gitContextEvent = prLinking
+              ? {
+                  active: true,
+                  sessionsWithContext: prLinking.sessionsWithContext,
+                  repositories: prLinking.repositories,
+                }
+              : undefined;
+
+            // Declared MCP inventory (names-only, fail-open): `claude mcp list` is
+            // Claude Code's vocabulary, so only that source's manifest carries it.
+            const mcpServers =
+              source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
+
+            let pipelineResult;
+            try {
+              pipelineResult = await runUploadPipeline({
+                cloud,
+                jobs,
+                ledger,
+                resumeStore,
+                reporter,
+                concurrency,
+                policyVersion: POLICY_VERSION,
+                cliVersion: getCliVersion(),
+                sourceKind: source.kind,
+                endpointUrl: endpoint.url,
+                userId: session.userId,
+                ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+                ...(mcpServers ? { mcpServers } : {}),
+              });
+            } catch (err) {
+              if (err instanceof StaleResumeError) {
+                if (mode === "text") {
+                  process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
+                }
+                resumeStore.clear();
+                pipelineResult = await runUploadPipeline({
+                  cloud,
+                  jobs,
+                  ledger,
+                  resumeStore,
+                  reporter,
+                  concurrency,
+                  policyVersion: POLICY_VERSION,
+                  cliVersion: getCliVersion(),
+                  sourceKind: source.kind,
+                  endpointUrl: endpoint.url,
+                  userId: session.userId,
+                  ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+                  ...(mcpServers ? { mcpServers } : {}),
+                });
+              } else {
+                throw err;
+              }
+            }
+
+            totalAcked += pipelineResult.acked.length;
+            lastManifestId = pipelineResult.manifestId;
+            lastDashboardUrl = pipelineResult.dashboardUrl;
+          }
+        } // end if (willUpload.length > 0)
+      } // end if (uploadSessions)
+
+      // Context snapshot upload — runs after sessions (or alone with --context).
+      if (uploadContext && !flags["dry-run"]) {
+        if (mode === "text") process.stderr.write(color.dim("Capturing context snapshot…\n"));
+        const ctxHomeDir = process.env["FRUGL_HOME_DIR"];
+        const capture = captureContext("claude-code");
+        const ctxAnon = anonymize(capture.text, {
+          uploadId: capture.capturedAt,
+          ownerEmail: session.email,
+          ...(ctxHomeDir !== undefined ? { homeDir: ctxHomeDir } : {}),
+        });
+        const ctxMcpServers = captureDeclaredMcpServers();
+        const ctxUpload = await uploadContextSnapshot({
+          cloud,
+          cliVersion: getCliVersion(),
+          sourceKind: "claude-code",
+          policyVersion: POLICY_VERSION,
+          capturedAt: capture.capturedAt,
+          anonymization: ctxAnon,
+          ...(ctxMcpServers ? { mcpServers: ctxMcpServers } : {}),
+        });
+        contextUploadResult = {
+          manifestId: ctxUpload.manifestId,
+          sessionId: ctxUpload.sessionId,
+          capturedAt: capture.capturedAt,
+          byteSize: ctxAnon.byteSize,
+        };
+        if (lastDashboardUrl === `${endpoint.url}/dashboard`) {
+          lastDashboardUrl = ctxUpload.dashboardUrl;
+        }
+        if (mode === "text") {
+          process.stdout.write(
+            `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
+          );
+        }
       }
 
       // CLI→web handoff (006): decorate the final dashboard link with a
@@ -501,6 +585,29 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           );
         }
       }
+
+      // Context-only path: emit a compact JSON output and exit.
+      if (!uploadSessions && contextUploadResult !== undefined) {
+        if (mode === "json") {
+          process.stdout.write(
+            `${JSON.stringify({
+              command: "upload" as const,
+              ok: true as const,
+              endpoint: endpoint.url,
+              dashboardUrl: handoff.dashboardUrl,
+              ...(handoff.active
+                ? { handoff: { active: true as const, expiresAt: handoff.expiresAt } }
+                : handoff.reason === "disabled-default"
+                  ? {}
+                  : { handoff: { active: false as const, reason: handoff.reason } }),
+              context: contextUploadResult,
+            })}\n`,
+          );
+        }
+        return;
+      }
+
+      if (summary === undefined || selectionReport === undefined) return;
 
       const finalSummary = {
         command: "upload" as const,
@@ -537,6 +644,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               },
             }
           : {}),
+        ...(contextUploadResult ? { context: contextUploadResult } : {}),
       };
       if (mode === "json") process.stdout.write(`${JSON.stringify(finalSummary)}\n`);
     } catch (err) {
