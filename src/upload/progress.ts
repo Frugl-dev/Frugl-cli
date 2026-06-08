@@ -88,15 +88,20 @@ export interface ProgressReporter {
   }): void;
 }
 
+function ts(): string {
+  return new Date().toISOString();
+}
+
+function emitJson(event: ProgressEvent): void {
+  process.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
+function emitText(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 export function createProgressReporter(mode: OutputMode): ProgressReporter {
   let seq = 0;
-  const ts = (): string => new Date().toISOString();
-  const emitJson = (event: ProgressEvent): void => {
-    process.stdout.write(`${JSON.stringify(event)}\n`);
-  };
-  const emitText = (line: string): void => {
-    process.stderr.write(`${line}\n`);
-  };
 
   // Human-mode state: reset per pipeline in uploadStart. JSON mode ignores all of this.
   let total = 0;

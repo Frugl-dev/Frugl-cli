@@ -13,6 +13,25 @@ import {
 } from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
 
+async function promptCode(): Promise<string> {
+  const code = await input({
+    message: "Invite code:",
+    validate: (v) => v.trim().length > 0 || "Enter an invite code",
+  });
+  return code.trim();
+}
+
+function promptName(): Promise<string> {
+  return input({
+    message: "Organization name (try a different one):",
+    validate: (v) => (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+  });
+}
+
+function label(outcome: "existing" | "created" | "joined"): string {
+  return outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
+}
+
 export default class Setup extends Command {
   static override description =
     "Authenticate and set up your organization in one step. Idempotent — safe to re-run.";
@@ -105,22 +124,7 @@ export default class Setup extends Command {
       // for the field that failed, then the flow retries. setup reprompts in
       // both modes (it has no pre-flow JSON guard), so the prompts are built in
       // text mode regardless of the output mode used for rendering.
-      const promptCode = async (): Promise<string> => {
-        const code = await input({
-          message: "Invite code:",
-          validate: (v) => v.trim().length > 0 || "Enter an invite code",
-        });
-        return code.trim();
-      };
-      const promptName = (): Promise<string> =>
-        input({
-          message: "Organization name (try a different one):",
-          validate: (v) =>
-            (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-        });
       const email = session.email;
-      const label = (outcome: "existing" | "created" | "joined"): string =>
-        outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
       const spec: OrgSetupPresentation = {
         command: "setup",
         reprompt: { name: promptName, code: promptCode },

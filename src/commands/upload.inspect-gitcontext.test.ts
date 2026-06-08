@@ -73,8 +73,10 @@ describe(
 
       // The planted credential token appears in NONE of the inspection files (SC-003).
       const files = await readdir(outDir);
-      for (const file of files) {
-        const contents = await readFile(path.join(outDir, file), "utf8");
+      const allContents = await Promise.all(
+        files.map((file) => readFile(path.join(outDir, file), "utf8")),
+      );
+      for (const contents of allContents) {
         expect(contents).not.toContain(TOKEN);
       }
     });

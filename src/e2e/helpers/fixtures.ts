@@ -31,26 +31,26 @@ export async function writeTestSessions(
   const projectDir = path.join(homeDir, ".claude", "projects", projName);
   await mkdir(projectDir, { recursive: true });
 
-  const sessions: TestSession[] = [];
-  for (let i = 0; i < count; i++) {
-    const sessionId = randomUUID();
-    const filePath = path.join(projectDir, `${sessionId}.jsonl`);
-    const records = [
-      {
-        sessionId,
-        type: "user",
-        message: `Hello from session ${i}`,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        sessionId,
-        type: "assistant",
-        message: `Response ${i}`,
-        timestamp: new Date().toISOString(),
-      },
-    ];
-    await writeFile(filePath, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
-    sessions.push({ sessionId, filePath });
-  }
-  return sessions;
+  return Promise.all(
+    Array.from({ length: count }, async (_, i) => {
+      const sessionId = randomUUID();
+      const filePath = path.join(projectDir, `${sessionId}.jsonl`);
+      const records = [
+        {
+          sessionId,
+          type: "user",
+          message: `Hello from session ${i}`,
+          timestamp: new Date().toISOString(),
+        },
+        {
+          sessionId,
+          type: "assistant",
+          message: `Response ${i}`,
+          timestamp: new Date().toISOString(),
+        },
+      ];
+      await writeFile(filePath, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+      return { sessionId, filePath };
+    }),
+  );
 }

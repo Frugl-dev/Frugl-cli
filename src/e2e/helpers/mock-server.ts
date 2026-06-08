@@ -34,24 +34,30 @@ export class MockServer {
       const url = (req.url ?? "/").split("?")[0]!;
       const method = req.method ?? "GET";
       const body = await readBody(req);
+      let matched: { route: Route; match: RegExpMatchArray } | undefined;
       for (const route of this.routes) {
         if (route.method !== method) continue;
         const match = url.match(route.pattern);
         if (!match) continue;
-        const params: Record<string, string> = {};
-        route.paramNames.forEach((name, i) => {
-          params[name] = decodeURIComponent(match[i + 1] ?? "");
-        });
-        try {
-          await route.handler(req, res, params, body);
-        } catch (err) {
-          if (!res.headersSent) {
-            res.writeHead(500).end(String(err));
-          }
-        }
+        matched = { route, match };
+        break;
+      }
+      if (!matched) {
+        res.writeHead(404).end("not found");
         return;
       }
-      res.writeHead(404).end("not found");
+      const { route, match } = matched;
+      const params: Record<string, string> = {};
+      route.paramNames.forEach((name, i) => {
+        params[name] = decodeURIComponent(match[i + 1] ?? "");
+      });
+      try {
+        await route.handler(req, res, params, body);
+      } catch (err) {
+        if (!res.headersSent) {
+          res.writeHead(500).end(String(err));
+        }
+      }
     });
   }
 

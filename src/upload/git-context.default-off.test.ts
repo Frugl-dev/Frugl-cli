@@ -63,7 +63,7 @@ describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
       expect(s.git_context).toBeUndefined();
     }
     // The final --json summary carries no gitContext block when off.
-    const summary = JSON.parse(stdout.trim().split("\n").filter(Boolean).at(-1)!);
+    const summary = JSON.parse(stdout.trim().split("\n").findLast(Boolean)!);
     expect(summary.gitContext).toBeUndefined();
   });
 

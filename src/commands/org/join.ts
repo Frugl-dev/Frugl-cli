@@ -13,6 +13,13 @@ import {
 } from "../../org/presenter.js";
 import { color, symbol } from "../../lib/theme.js";
 
+function badCode(problem: string) {
+  return {
+    warn: `${color.warn(`${symbol.warn} ${problem}`)}`,
+    abort: problem,
+  };
+}
+
 export default class OrgJoin extends Command {
   static override description = "Join an existing org with an invite code from a teammate.";
 
@@ -41,10 +48,6 @@ export default class OrgJoin extends Command {
       // slug-taken outcome, so `name` is omitted and the presenter guards it as
       // "unexpected result". The text warn keeps its colored "⚠ …" prefix while
       // JSON aborts with the plain problem string.
-      const badCode = (problem: string) => ({
-        warn: `${color.warn(`${symbol.warn} ${problem}`)}`,
-        abort: problem,
-      });
       const spec: OrgSetupPresentation = {
         command: "org join",
         reprompt: { code: () => this.promptCode() },

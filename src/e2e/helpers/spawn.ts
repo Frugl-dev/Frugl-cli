@@ -2,9 +2,9 @@ import { spawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const BIN = resolve(__dirname, "../../../bin/dev.js");
-const TSX = resolve(__dirname, "../../../node_modules/.bin/tsx");
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const BIN = resolve(moduleDir, "../../../bin/dev.js");
+const TSX = resolve(moduleDir, "../../../node_modules/.bin/tsx");
 
 export interface RunResult {
   exitCode: number;
@@ -38,7 +38,7 @@ export async function runCli(args: string[], opts: RunOptions = {}): Promise<Run
   });
 
   const timeoutMs = opts.timeoutMs ?? 20_000;
-  const exitCode = await new Promise<number>((resolve, reject) => {
+  const exitCode = await new Promise<number>((done, reject) => {
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
       reject(
@@ -49,7 +49,7 @@ export async function runCli(args: string[], opts: RunOptions = {}): Promise<Run
     }, timeoutMs);
     child.on("close", (code) => {
       clearTimeout(timeout);
-      resolve(code ?? 1);
+      done(code ?? 1);
     });
     child.on("error", (err) => {
       clearTimeout(timeout);

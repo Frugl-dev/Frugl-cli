@@ -2,8 +2,8 @@ import type { OrgSetupPrompts, OrgSetupSuccess } from "./flow.js";
 import type { OutputMode } from "../lib/output-mode.js";
 import { UsageError } from "../lib/errors.js";
 
-// The command supplies the inquirer prompt; the presenter decides WHEN to call
-// it (text-mode retry) versus when to hard-fail instead (JSON mode).
+// The command supplies the inquirer prompt; the presenter decides whether to
+// reprompt (text-mode retry) versus hard-fail instead (JSON mode).
 export type Reprompt = () => Promise<string>;
 
 // Per-branch copy. `warn` is the stderr line shown before a text-mode reprompt
@@ -43,6 +43,10 @@ export interface OrgSetupPresentation {
   };
 }
 
+function guard(copy: BranchCopy): never {
+  throw new UsageError(copy.abort);
+}
+
 // Build the OrgSetupPrompts port for runOrgSetupFlow from a declarative spec.
 // Each handler maps a non-terminal result branch to either "warn + reprompt"
 // (text mode, when the command supplies a reprompt source) or a UsageError
@@ -54,12 +58,6 @@ export function makeOrgSetupPrompts(spec: OrgSetupPresentation, mode: OutputMode
     if (mode === "json") throw new UsageError(copy.abort);
     process.stderr.write(`${copy.warn}\n`);
     return reprompt();
-  };
-
-  // A branch the command's intent can never reach: an "unexpected result"
-  // abort in either mode.
-  const guard = (copy: BranchCopy): never => {
-    throw new UsageError(copy.abort);
   };
 
   const name = spec.reprompt?.name;
