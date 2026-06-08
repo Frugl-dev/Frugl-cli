@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { exec } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 export type OAuthProvider = "google" | "github";
 
@@ -30,6 +31,11 @@ export function startBrowserLogin(opts: {
 }): Promise<BrowserLoginResult> {
   const { provider, endpointUrl, timeoutMs = 5 * 60 * 1000 } = opts;
 
+  // One-time nonce bound to this invocation. The server echoes it back in the
+  // localhost redirect; mismatches (e.g. a stale or cross-origin callback) are
+  // rejected before the token is accepted, preventing unauthorised PAT delivery.
+  const state = randomBytes(16).toString("hex");
+
   return new Promise<BrowserLoginResult>((resolve, reject) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", `http://localhost`);
@@ -41,6 +47,7 @@ export function startBrowserLogin(opts: {
       const token = url.searchParams.get("token");
       const email = url.searchParams.get("email");
       const userId = url.searchParams.get("userId");
+      const returnedState = url.searchParams.get("state");
 
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(
@@ -55,6 +62,10 @@ export function startBrowserLogin(opts: {
         reject(new Error("OAuth callback missing required fields"));
         return;
       }
+      if (returnedState !== state) {
+        reject(new Error("OAuth state mismatch — possible CSRF. Run 'frugl login' to try again."));
+        return;
+      }
       resolve({ token, email, userId });
     });
 
@@ -65,7 +76,7 @@ export function startBrowserLogin(opts: {
         return;
       }
       const port = addr.port;
-      const cliCallbackPath = `/api/auth/cli-callback?port=${port}`;
+      const cliCallbackPath = `/api/auth/cli-callback?port=${port}&state=${state}`;
       const oauthUrl =
         `${endpointUrl}/api/auth/oauth/${provider}` +
         `?redirect_to=${encodeURIComponent(cliCallbackPath)}`;

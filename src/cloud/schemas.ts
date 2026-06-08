@@ -122,9 +122,17 @@ export const handoffRequestSchema = z.object({
   redirect_to: z
     .string()
     .min(1)
-    .refine((p) => p.startsWith("/") && !p.startsWith("//") && !p.includes("://"), {
-      message: "redirect_to must be a relative path",
-    }),
+    .refine(
+      (p) => {
+        if (!p.startsWith("/") || p.includes("://")) return false;
+        try {
+          return new URL(p, "https://placeholder.invalid").origin === "https://placeholder.invalid";
+        } catch {
+          return false;
+        }
+      },
+      { message: "redirect_to must be a relative path" },
+    ),
 });
 export type HandoffRequest = z.infer<typeof handoffRequestSchema>;
 
