@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { input, password, select } from "@inquirer/prompts";
-import { CloudHttpError } from "../cloud/client.js";
+import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import type { Endpoint } from "../cloud/endpoints.js";
 import { AuthService } from "../auth/auth-service.js";
 import { cloudIdentityClient } from "../auth/identity-client.js";
@@ -23,6 +23,7 @@ import {
   resolveHandoffPreference,
   type HandoffResult,
 } from "../cloud/handoff.js";
+import { startBrowserLogin } from "../auth/browser-login.js";
 
 async function promptInviteCode(): Promise<string> {
   const inviteCode = await input({
@@ -54,6 +55,14 @@ Exit codes:
       description:
         "Store a pre-issued access token for non-interactive use (CI / hooks) instead of the email OTP flow.",
     }),
+    google: Flags.boolean({
+      description: "Sign in with Google (opens browser).",
+      exclusive: ["github", "token"],
+    }),
+    github: Flags.boolean({
+      description: "Sign in with GitHub (opens browser).",
+      exclusive: ["google", "token"],
+    }),
     ...COMMON_FLAGS,
   };
 
@@ -67,6 +76,31 @@ Exit codes:
     if (flags.token) {
       await this.loginWithToken(flags.token, endpoint, mode);
       return;
+    }
+
+    // Browser-based OAuth: opens Google or GitHub sign-in in the default browser,
+    // waits for the local callback carrying a freshly-minted PAT, then persists it.
+    const oauthProvider = flags.google ? "google" : flags.github ? "github" : null;
+    if (oauthProvider) {
+      await this.loginWithBrowser(oauthProvider, endpoint, mode);
+      return;
+    }
+
+    // Interactive: let the user pick a sign-in method before anything else.
+    // Non-interactive (no TTY, --json, --email pre-supplied) skips straight to OTP.
+    if (mode !== "json" && process.stdout.isTTY && !flags.email) {
+      const method = await select({
+        message: "Sign in with:",
+        choices: [
+          { name: "Google", value: "google" },
+          { name: "GitHub", value: "github" },
+          { name: "Email (one-time code)", value: "otp" },
+        ],
+      });
+      if (method === "google" || method === "github") {
+        await this.loginWithBrowser(method, endpoint, mode);
+        return;
+      }
     }
 
     // AuthService owns the OTP flow; `client` (from buildCommandContext) is the
@@ -274,6 +308,60 @@ Exit codes:
       );
       this.printNextSteps(handoff);
       return;
+    } catch (err) {
+      handleCommandError(err, mode);
+    }
+  }
+
+  private async loginWithBrowser(
+    provider: "google" | "github",
+    endpoint: Endpoint,
+    mode: OutputMode,
+  ): Promise<void> {
+    try {
+      const { token, email, userId } = await startBrowserLogin({
+        provider,
+        endpointUrl: endpoint.url,
+      });
+
+      const auth = new AuthService({
+        endpointUrl: endpoint.url,
+        identity: cloudIdentityClient({
+          endpointUrl: endpoint.url,
+          endpointExplicit: endpoint.resolvedFrom !== "default",
+          cliVersion: getCliVersion(),
+        }),
+      });
+      const session = await auth.loginWithToken(token);
+
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({
+            command: "login",
+            ok: true,
+            email: session.email || email,
+            endpoint: session.endpointUrl,
+            userId: session.userId || userId,
+            provider,
+          })}\n`,
+        );
+        return;
+      }
+      process.stdout.write(
+        `${color.ok(`${symbol.tick} Signed in as ${session.email || email}`)}  ${color.dim(`(via ${provider})`)}\n`,
+      );
+      const authedClient = new CloudClient({
+        endpointUrl: endpoint.url,
+        cliVersion: getCliVersion(),
+        endpointExplicit: endpoint.resolvedFrom !== "default",
+        token,
+      });
+      const handoff = await requestHandoffUrl(
+        authedClient,
+        `${endpoint.url}/dashboard`,
+        resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
+      );
+      this.printNextSteps(handoff);
     } catch (err) {
       handleCommandError(err, mode);
     }
