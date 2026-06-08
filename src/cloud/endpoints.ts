@@ -1,6 +1,6 @@
 import { UsageError } from "../lib/errors.js";
 
-export const DEFAULT_ENDPOINT = "https://api.frugl.app";
+export const DEFAULT_ENDPOINT = "https://api.frugl.dev";
 
 export type EndpointSource = "flag" | "env" | "default";
 
