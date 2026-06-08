@@ -84,7 +84,7 @@ describe("buildCommandContext — endpoint precedence", () => {
 
   it("falls back to the default; endpointExplicit false", async () => {
     const ctx = await buildCommandContext({}, { auth: "none" });
-    expect(ctx.endpoint.url).toBe("https://api.frugl.app");
+    expect(ctx.endpoint.url).toBe("https://api.frugl.dev");
     expect(ctx.endpoint.resolvedFrom).toBe("default");
     expect(clientConstructions[0]?.endpointExplicit).toBe(false);
   });
