@@ -71,7 +71,11 @@ async function createStackUser(): Promise<StackUser> {
   const createRes = await adminFetch("/auth/v1/admin/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, email_confirm: true, password: randomUUID() }),
+    body: JSON.stringify({
+      email,
+      email_confirm: true,
+      password: randomUUID(),
+    }),
   });
   if (!createRes.ok) throw new Error(`createUser: ${createRes.status} ${await createRes.text()}`);
   const { id: userId } = (await createRes.json()) as { id: string };
@@ -103,7 +107,11 @@ async function createStackUser(): Promise<StackUser> {
   const orgRes = await adminFetch("/rest/v1/organizations", {
     method: "POST",
     headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ id: orgId, name: "E2E CLI Test Workspace", slug: orgSlug }),
+    body: JSON.stringify({
+      id: orgId,
+      name: "E2E CLI Test Workspace",
+      slug: orgSlug,
+    }),
   });
   if (!orgRes.ok) throw new Error(`createOrg: ${orgRes.status} ${await orgRes.text()}`);
 
@@ -250,9 +258,11 @@ describe.skipIf(!ENABLED)(
       injectAuth(stackUser.session);
       tmp = await makeTempDir();
       // 200 sessions across 4 projects
-      for (let proj = 0; proj < 4; proj++) {
-        await writeTestSessions(tmp.dir, 50, `sc003-project-${proj}`);
-      }
+      await Promise.all(
+        Array.from({ length: 4 }, (_, proj) =>
+          writeTestSessions(tmp.dir, 50, `sc003-project-${proj}`),
+        ),
+      );
     });
 
     afterAll(async () => {

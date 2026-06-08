@@ -83,7 +83,7 @@ describe("collectToolResultRecords", () => {
   it("emits exactly the five allowlisted keys per record (fail-closed shape)", async () => {
     seed({ sidecars: { "a.txt": PLANTED } });
     const { records } = await collectToolResultRecords(jsonlPath);
-    expect(Object.keys(records[0]!).sort()).toEqual([
+    expect(Object.keys(records[0]!).toSorted()).toEqual([
       "bytes",
       "chars",
       "file_id",

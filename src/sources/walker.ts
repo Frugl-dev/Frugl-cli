@@ -39,18 +39,19 @@ export async function discover(d: ProviderDescriptor, opts?: HomeOptions): Promi
   const files = await glob(d.layout.globs, { cwd: root, absolute: true, dot: false }).catch(
     () => [],
   );
-  const refs: SessionRef[] = [];
-  for (const file of files) {
-    const stats = await stat(file).catch(() => null);
-    if (!stats || !stats.isFile()) continue;
-    refs.push({
-      sourceKind: d.sourceKind,
-      absolutePath: path.resolve(file),
-      byteSizeOnDisk: stats.size,
-      mtimeMs: stats.mtimeMs,
-    });
-  }
-  return refs;
+  const settled = await Promise.all(
+    files.map(async (file) => {
+      const stats = await stat(file).catch(() => null);
+      if (!stats || !stats.isFile()) return null;
+      return {
+        sourceKind: d.sourceKind,
+        absolutePath: path.resolve(file),
+        byteSizeOnDisk: stats.size,
+        mtimeMs: stats.mtimeMs,
+      } as SessionRef;
+    }),
+  );
+  return settled.filter((r): r is SessionRef => r !== null);
 }
 
 // The single decode dispatch. NDJSON tolerates malformed lines via `_raw`;

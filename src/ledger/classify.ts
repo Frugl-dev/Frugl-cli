@@ -74,10 +74,10 @@ export async function classifyAll(
   refs: SessionRef[],
   ctx: ClassifyContext,
 ): Promise<SessionClassification[]> {
-  const results: SessionClassification[] = [];
+  const all = await Promise.all(refs.map((ref) => classifySession(ref, ctx)));
   const seen = new Set<string>();
-  for (const ref of refs) {
-    const result = await classifySession(ref, ctx);
+  const results: SessionClassification[] = [];
+  for (const result of all) {
     if (!seen.has(result.identity.sessionId)) {
       seen.add(result.identity.sessionId);
       results.push(result);
@@ -103,7 +103,7 @@ export function bucketize(items: SessionClassification[]): ClassifiedSet {
 }
 
 export function sortByMtimeDesc(items: SessionClassification[]): SessionClassification[] {
-  return [...items].sort((a, b) => {
+  return items.toSorted((a, b) => {
     const dt = b.ref.mtimeMs - a.ref.mtimeMs;
     if (dt !== 0) return dt;
     return a.ref.absolutePath.localeCompare(b.ref.absolutePath);

@@ -42,6 +42,18 @@ function spyReporter(): { reporter: ProgressReporter; calls: ReporterCall[] } {
   return { reporter, calls };
 }
 
+function entryFor(job: SessionUploadJob): ManifestEntryState {
+  return {
+    sessionId: job.sessionId,
+    identityDerivation: "native",
+    contentHash: job.anonymizationResult.contentHashHex,
+    byteSize: job.anonymizationResult.byteSize,
+    sourceFilePath: job.sourceFilePath,
+    rawContentHashAtFirstRun: job.rawContentHashAtFirstRun,
+    status: "pending",
+  };
+}
+
 describe("SessionUpload", () => {
   let tempDir: string;
   let stateCwd: string;
@@ -62,18 +74,6 @@ describe("SessionUpload", () => {
       sourceFilePath: filePath,
       anonymizationResult: fakeAnonResult(text),
       rawContentHashAtFirstRun: createHash("sha256").update(text).digest("hex"),
-    };
-  }
-
-  function entryFor(job: SessionUploadJob): ManifestEntryState {
-    return {
-      sessionId: job.sessionId,
-      identityDerivation: "native",
-      contentHash: job.anonymizationResult.contentHashHex,
-      byteSize: job.anonymizationResult.byteSize,
-      sourceFilePath: job.sourceFilePath,
-      rawContentHashAtFirstRun: job.rawContentHashAtFirstRun,
-      status: "pending",
     };
   }
 

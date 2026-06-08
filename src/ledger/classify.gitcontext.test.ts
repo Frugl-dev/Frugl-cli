@@ -40,7 +40,7 @@ describe("ledger: --link-prs does not churn the ledger (SC-007)", { timeout: 30_
       env,
     });
     expect(first.exitCode).toBe(EXIT.OK);
-    const firstResult = JSON.parse(first.stdout.trim().split("\n").filter(Boolean).at(-1)!);
+    const firstResult = JSON.parse(first.stdout.trim().split("\n").findLast(Boolean)!);
     expect(firstResult.actualSessionCount).toBe(1);
 
     const second = await runCli(
@@ -50,7 +50,7 @@ describe("ledger: --link-prs does not churn the ledger (SC-007)", { timeout: 30_
       },
     );
     expect(second.exitCode).toBe(EXIT.OK);
-    const secondResult = JSON.parse(second.stdout.trim().split("\n").filter(Boolean).at(-1)!);
+    const secondResult = JSON.parse(second.stdout.trim().split("\n").findLast(Boolean)!);
     // Unchanged → no re-upload, despite --link-prs now being on.
     expect(secondResult.noop).toBe(true);
     expect(secondResult.classification.unchanged).toBe(1);

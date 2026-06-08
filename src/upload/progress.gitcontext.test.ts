@@ -6,6 +6,14 @@ import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
 import { makeTempDir, type TempDir } from "../e2e/helpers/fixtures.js";
 import { makeGitRepo, writeGitSession } from "../e2e/helpers/git-fixtures.js";
 
+function parseLines(stdout: string): Record<string, unknown>[] {
+  return stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as Record<string, unknown>);
+}
+
 // FR-016 / SC-006: the --json additions are strictly additive — exact documented
 // key sets when on, and omitted entirely when off (byte-for-byte default stream).
 describe("--json gitContext additive contract (FR-016)", { timeout: 30_000 }, () => {
@@ -33,14 +41,6 @@ describe("--json gitContext additive contract (FR-016)", { timeout: 30_000 }, ()
     await server.close();
   });
 
-  function parseLines(stdout: string): Record<string, unknown>[] {
-    return stdout
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as Record<string, unknown>);
-  }
-
   it("--link-prs: upload-start + final summary gitContext have exactly the documented keys", async () => {
     const { exitCode, stdout } = await runCli(
       ["upload", "--yes", "--link-prs", "--json", "--endpoint", server.url],
@@ -50,14 +50,14 @@ describe("--json gitContext additive contract (FR-016)", { timeout: 30_000 }, ()
     const lines = parseLines(stdout);
 
     const start = lines.find((l) => l["event"] === "upload-start")!;
-    expect(Object.keys(start["gitContext"] as object).sort()).toEqual([
+    expect(Object.keys(start["gitContext"] as object).toSorted()).toEqual([
       "active",
       "repositories",
       "sessionsWithContext",
     ]);
 
     const summary = lines.at(-1)!;
-    expect(Object.keys(summary["gitContext"] as object).sort()).toEqual([
+    expect(Object.keys(summary["gitContext"] as object).toSorted()).toEqual([
       "active",
       "repositories",
       "sessionsWithContext",

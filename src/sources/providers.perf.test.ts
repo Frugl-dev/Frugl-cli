@@ -19,9 +19,9 @@ describe("detection + discovery performance (SC-005)", { timeout: 30_000 }, () =
   });
 
   it("detects + groups 200 projects in well under 3 seconds", async () => {
-    for (let i = 0; i < 200; i++) {
-      await writeTestSessions(home, 1, `-Users-me-proj${i}`);
-    }
+    await Promise.all(
+      Array.from({ length: 200 }, (_, i) => writeTestSessions(home, 1, `-Users-me-proj${i}`)),
+    );
 
     const started = Date.now();
     const detected = await detectProviders({ homeDir: home });

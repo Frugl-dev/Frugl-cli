@@ -40,6 +40,6 @@ describe("frugl-config (linkPrs)", () => {
 
   it("stores only the boolean preference (no repository data)", () => {
     setLinkPrs(true, { cwd: dir });
-    expect(Object.keys(readConfig({ cwd: dir })).sort()).toEqual(["linkPrs", "schemaVersion"]);
+    expect(Object.keys(readConfig({ cwd: dir })).toSorted()).toEqual(["linkPrs", "schemaVersion"]);
   });
 });

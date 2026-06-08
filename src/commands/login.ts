@@ -24,6 +24,21 @@ import {
   type HandoffResult,
 } from "../cloud/handoff.js";
 
+async function promptInviteCode(): Promise<string> {
+  const inviteCode = await input({
+    message: "Invite code:",
+    validate: (v) => v.trim().length > 0 || "Enter an invite code",
+  });
+  return inviteCode.trim();
+}
+
+function promptOrgName(): Promise<string> {
+  return input({
+    message: "Organization name (try a different one):",
+    validate: (v) => (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+  });
+}
+
 export default class Login extends Command {
   static override description = `Sign in with an email one-time code; token persisted in OS keychain.
 
@@ -205,19 +220,6 @@ Exit codes:
       // reprompts for the field that failed. (This section is text-only — JSON
       // mode returned above before reaching the org fork, so the prompts and
       // rendering run in text mode.)
-      const promptInviteCode = async (): Promise<string> => {
-        const inviteCode = await input({
-          message: "Invite code:",
-          validate: (v) => v.trim().length > 0 || "Enter an invite code",
-        });
-        return inviteCode.trim();
-      };
-      const promptOrgName = (): Promise<string> =>
-        input({
-          message: "Organization name (try a different one):",
-          validate: (v) =>
-            (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-        });
       const orgSetupSpec: OrgSetupPresentation = {
         command: "login",
         reprompt: { name: promptOrgName, code: promptInviteCode },

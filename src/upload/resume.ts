@@ -59,8 +59,11 @@ export interface ResumeStoreOptions {
   cwd?: string;
 }
 
+function sanitize(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "_");
+}
+
 function projectName(key: ResumeStoreKey): string {
-  const sanitize = (value: string): string => value.replace(/[^A-Za-z0-9._-]+/g, "_");
   return `${NAMESPACES.resume}__${sanitize(key.endpointUrl)}__${sanitize(key.userId)}`;
 }
 

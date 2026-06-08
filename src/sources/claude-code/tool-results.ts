@@ -43,25 +43,30 @@ export async function collectToolResultRecords(
     return { records: [], warnings: [] };
   }
 
-  const records: ToolResultFileRecord[] = [];
   const warnings: string[] = [];
   // Deterministic record order: the upload content hash covers these records,
   // so readdir order must not produce spurious "updated" classifications.
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!entry.isFile() || !entry.name.endsWith(".txt")) continue;
-    try {
-      const buf = await readFile(path.join(dir, entry.name));
-      records.push({
-        type: TOOL_RESULT_RECORD_TYPE,
-        schema: 1,
-        file_id: entry.name.slice(0, -".txt".length),
-        bytes: buf.byteLength,
-        // UTF-8 aware character count; the decoded text is discarded here.
-        chars: buf.toString("utf8").length,
-      });
-    } catch {
-      warnings.push(`skipped unreadable tool-result file: ${entry.name}`);
-    }
-  }
+  const candidates = entries
+    .toSorted((a, b) => a.name.localeCompare(b.name))
+    .filter((e) => e.isFile() && e.name.endsWith(".txt"));
+  const settled = await Promise.all(
+    candidates.map(async (entry) => {
+      try {
+        const buf = await readFile(path.join(dir, entry.name));
+        return {
+          type: TOOL_RESULT_RECORD_TYPE,
+          schema: 1,
+          file_id: entry.name.slice(0, -".txt".length),
+          bytes: buf.byteLength,
+          // UTF-8 aware character count; the decoded text is discarded here.
+          chars: buf.toString("utf8").length,
+        } as ToolResultFileRecord;
+      } catch {
+        warnings.push(`skipped unreadable tool-result file: ${entry.name}`);
+        return null;
+      }
+    }),
+  );
+  const records = settled.filter((r): r is ToolResultFileRecord => r !== null);
   return { records, warnings };
 }

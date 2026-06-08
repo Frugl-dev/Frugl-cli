@@ -535,9 +535,9 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       MockServer.wireHappyPath(server);
       tmp = await makeTempDir();
       // Write 200 synthetic sessions across 4 project dirs to simulate real usage
-      for (let proj = 0; proj < 4; proj++) {
-        await writeTestSessions(tmp.dir, 50, `project-${proj}`);
-      }
+      await Promise.all(
+        Array.from({ length: 4 }, (_, proj) => writeTestSessions(tmp.dir, 50, `project-${proj}`)),
+      );
       injectAuth(makeTestSession(server.url));
     });
 

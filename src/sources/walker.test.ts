@@ -195,8 +195,8 @@ describe("descriptor conformance", () => {
 
 // ── per-provider extractors (pure, no fs) ───────────────────────────────────────
 
-function ctx(ref: SessionRef, records: unknown[]) {
-  return { ref, records, firstRecord: records[0] ?? null };
+function ctx(sessionRef: SessionRef, records: unknown[]) {
+  return { ref: sessionRef, records, firstRecord: records[0] ?? null };
 }
 
 function refAt(absolutePath: string): SessionRef {
