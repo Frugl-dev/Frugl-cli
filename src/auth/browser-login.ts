@@ -42,9 +42,10 @@ export function startBrowserLogin(opts: {
       const email = url.searchParams.get("email");
       const userId = url.searchParams.get("userId");
 
-      res.writeHead(200, { "Content-Type": "text/html" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(
-        `<html><body style="font-family:sans-serif;text-align:center;padding:4rem">` +
+        `<html><head><meta charset="utf-8"></head>` +
+          `<body style="font-family:sans-serif;text-align:center;padding:4rem">` +
           `<h2>Signed in ✓</h2><p>You can close this tab and return to your terminal.</p>` +
           `</body></html>`,
       );
