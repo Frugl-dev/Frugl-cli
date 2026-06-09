@@ -17,6 +17,7 @@ import {
   type OrgSetupPresentation,
 } from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
+import { getLastLoginMethod, setLastLoginMethod } from "../lib/config.js";
 import { color, symbol } from "../lib/theme.js";
 import {
   requestHandoffUrl,
@@ -25,12 +26,29 @@ import {
 } from "../cloud/handoff.js";
 import { startBrowserLogin } from "../auth/browser-login.js";
 
+// Human labels for the three sign-in methods, used in the returning-user hint.
+const LOGIN_METHOD_LABEL = {
+  github: "GitHub",
+  google: "Google",
+  otp: "Email one-time code",
+} as const;
+
 async function promptInviteCode(): Promise<string> {
   const inviteCode = await input({
     message: "Invite code:",
     validate: (v) => v.trim().length > 0 || "Enter an invite code",
   });
   return inviteCode.trim();
+}
+
+// Persisting the last method is a best-effort convenience, never load-bearing —
+// a failed config write must not break an otherwise-successful sign-in.
+function rememberLoginMethod(method: "github" | "google" | "otp"): void {
+  try {
+    setLastLoginMethod(method);
+  } catch {
+    /* ignore — the remembered-default fast path is optional */
+  }
 }
 
 function promptOrgName(): Promise<string> {
@@ -89,12 +107,26 @@ Exit codes:
     // Interactive: let the user pick a sign-in method before anything else.
     // Non-interactive (no TTY, --json, --email pre-supplied) skips straight to OTP.
     if (mode !== "json" && process.stdout.isTTY && !flags.email) {
+      // Returning users get a remembered-default fast path: the picker
+      // pre-selects whatever they signed in with last time, so re-auth is a
+      // single ⏎. GitHub leads the list — devs live there.
+      const lastMethod = getLastLoginMethod();
+      if (lastMethod) {
+        process.stdout.write(
+          `${color.dim("  Welcome back — you used ")}${color.bold(LOGIN_METHOD_LABEL[lastMethod])}${color.dim(" last time.")}\n`,
+        );
+      }
       const method = await select({
         message: "Sign in with:",
+        default: lastMethod,
         choices: [
-          { name: "Google", value: "google" },
-          { name: "GitHub", value: "github" },
-          { name: "Email (one-time code)", value: "otp" },
+          {
+            name: "GitHub",
+            value: "github",
+            description: "Opens your browser · recommended for devs",
+          },
+          { name: "Google", value: "google", description: "Opens your browser" },
+          { name: "Email one-time code", value: "otp", description: "6-digit code, no password" },
         ],
       });
       if (method === "google" || method === "github") {
@@ -132,6 +164,7 @@ Exit codes:
       });
       const session = await auth.completeLogin(email, code);
       client.setToken(session.token);
+      rememberLoginMethod("otp");
 
       // Check whether the account already has an org.
       let orgContext: OrgMeResponse | null = null;
@@ -333,6 +366,28 @@ Exit codes:
         }),
       });
       const session = await auth.loginWithToken(token);
+      rememberLoginMethod(provider);
+
+      const authedClient = new CloudClient({
+        endpointUrl: endpoint.url,
+        cliVersion: getCliVersion(),
+        endpointExplicit: endpoint.resolvedFrom !== "default",
+        token,
+      });
+
+      // Resolve the active org so the success screen lands the whole flow on one
+      // surface (method → browser → token → org), matching the OTP path. A 409
+      // means the account has no org yet — not an error, just nothing to show.
+      let orgContext: OrgMeResponse | null = null;
+      try {
+        orgContext = await authedClient.call({
+          method: "GET",
+          path: "/api/orgs/me",
+          schema: orgMeResponseSchema,
+        });
+      } catch (err) {
+        if (!(err instanceof CloudHttpError && err.status === 409)) throw err;
+      }
 
       if (mode === "json") {
         process.stdout.write(
@@ -350,12 +405,11 @@ Exit codes:
       process.stdout.write(
         `${color.ok(`${symbol.tick} Signed in as ${session.email || email}`)}  ${color.dim(`(via ${provider})`)}\n`,
       );
-      const authedClient = new CloudClient({
-        endpointUrl: endpoint.url,
-        cliVersion: getCliVersion(),
-        endpointExplicit: endpoint.resolvedFrom !== "default",
-        token,
-      });
+      if (orgContext) {
+        process.stdout.write(
+          `${color.dim("  Active org: ")}${color.bold(orgContext.org.name)}  ${color.dim(`(role: ${orgContext.membership.role})`)}\n`,
+        );
+      }
       const handoff = await requestHandoffUrl(
         authedClient,
         `${endpoint.url}/dashboard`,
