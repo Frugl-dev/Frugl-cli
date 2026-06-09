@@ -58,9 +58,12 @@ describe("frugl upload — best-effort degradation (US4/SC-005)", { timeout: 30_
       projName: "p-missing",
     });
 
-    const { exitCode } = await runCli(["upload", "--yes", "--link-prs", "--endpoint", server.url], {
-      env: { FRUGL_HOME_DIR: home.dir },
-    });
+    const { exitCode } = await runCli(
+      ["upload", "--sessions", "--yes", "--link-prs", "--endpoint", server.url],
+      {
+        env: { FRUGL_HOME_DIR: home.dir },
+      },
+    );
     expect(exitCode).toBe(EXIT.OK); // never fatal (no new exit code)
 
     // All three sessions are in the manifest (none dropped because git failed)…
@@ -75,7 +78,7 @@ describe("frugl upload — best-effort degradation (US4/SC-005)", { timeout: 30_
     await writeGitSession(home.dir, { cwd: home.dir, projName: "p-none" });
 
     const { exitCode, stderr } = await runCli(
-      ["upload", "--yes", "--link-prs", "--endpoint", server.url],
+      ["upload", "--sessions", "--yes", "--link-prs", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -110,9 +113,12 @@ describe(
       // Only Claude Code sessions exist; the new provider dirs do not exist at all.
       await writeTestSessions(home.dir, 1, "claude-only-proj");
 
-      const { exitCode } = await runCli(["upload", "--yes", "--endpoint", server.url], {
-        env: { FRUGL_HOME_DIR: home.dir },
-      });
+      const { exitCode } = await runCli(
+        ["upload", "--sessions", "--yes", "--endpoint", server.url],
+        {
+          env: { FRUGL_HOME_DIR: home.dir },
+        },
+      );
       expect(exitCode).toBe(EXIT.OK);
     });
 
