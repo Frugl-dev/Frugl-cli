@@ -3,7 +3,7 @@ import { confirm } from "@inquirer/prompts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { color, symbol } from "../lib/theme.js";
+import { color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
@@ -46,6 +46,7 @@ import type { Selection } from "../select/selection.js";
 import type { Source, SessionRef } from "../sources/types.js";
 import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
 import {
+  AuthError,
   InspectDirError,
   NoSessionsError,
   printFruglError,
@@ -225,7 +226,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         const homeDir = process.env["FRUGL_HOME_DIR"];
         const discoverOpts = homeDir ? { homeDir } : undefined;
 
-        if (mode === "text") process.stderr.write(color.dim("Scanning sessions…\n"));
+        if (mode === "text")
+          process.stderr.write(color.dim("Sniffing out AI sessions on this machine…\n"));
 
         // 1) Detect which providers have sessions on this machine.
         const detected = await detectProviders(discoverOpts);
@@ -531,7 +533,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
       // Context snapshot upload — runs after sessions (or alone with --context).
       if (uploadContext && !flags["dry-run"]) {
-        if (mode === "text") process.stderr.write(color.dim("Capturing context snapshot…\n"));
+        if (mode === "text")
+          process.stderr.write(
+            color.dim("Snapshotting your context window — redacting locally…\n"),
+          );
         const ctxHomeDir = process.env["FRUGL_HOME_DIR"];
         const capture = captureContext("claude-code");
         const ctxAnon = anonymize(capture.text, {
@@ -563,6 +568,38 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
           );
         }
+      }
+
+      // The payoff. The one place upload lets itself celebrate — a receipt that
+      // makes the redaction story tangible: what was scrubbed on your machine,
+      // what actually left it, and the number that matters (0 raw secrets sent).
+      if (uploadSessions && totalAcked > 0 && mode === "text") {
+        let totalRedactions = 0;
+        for (const item of willUpload) {
+          if (item.kind === "unchanged") continue;
+          for (const v of Object.values(item.anonymizationResult.redactionsByCategory)) {
+            totalRedactions += v;
+          }
+        }
+        const bytes = summary ? formatBytes(summary.estimatedBytesCompressed) : "0 B";
+        const w = 28;
+        const rrow = (lbl: string, value: string): void => {
+          process.stdout.write(`    ${color.mute(lbl.padEnd(w))}${value}\n`);
+        };
+        process.stdout.write(`\n  ${color.frog(SIGIL)}  ${color.frog("nice.")}\n\n`);
+        process.stdout.write(`  ${color.mute("THIS BATCH")}\n`);
+        rrow(
+          "Redacted on your machine",
+          `${color.bold(totalRedactions.toLocaleString("en-US"))} ${color.dim("secrets")}`,
+        );
+        rrow("Left your laptop", color.bold(bytes));
+        rrow(
+          "Raw secrets transmitted",
+          `${color.frogBold("0 bytes")}   ${color.dim("← the number that matters")}`,
+        );
+        process.stdout.write(
+          `\n  ${color.dim("→ run ")}${color.frog("frugl recs")}${color.dim(" to see what's worth fixing.")}\n`,
+        );
       }
 
       // CLI→web handoff (006): decorate the final dashboard link with a
@@ -679,6 +716,56 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       }
       process.exit(EXIT.GENERIC_FAILURE);
     }
+
+    // Warm error — honest failure, zero blame. Cause · fix · reassurance, with
+    // the stable exit code preserved. The hero "you're not signed in" moment.
+    if (err instanceof AuthError && mode === "text") {
+      const e = process.stderr;
+      e.write(
+        `\n  ${color.warn(SIGIL)}   ${color.bold("Hold on — you're not signed in yet.")}\n\n`,
+      );
+      e.write(
+        `  ${color.dim("Frugl needs to know who you are before it sends anything. That's the")}\n`,
+      );
+      e.write(`  ${color.dim("whole reason nothing left your machine just now.")}\n\n`);
+      e.write(
+        `    ${color.frog("→")} ${color.frog("frugl login")}   ${color.dim("email code, about ten seconds.")}\n\n`,
+      );
+      e.write(
+        `  ${color.ok(symbol.tick)} ${color.dim("Nothing was uploaded.")}   ${color.ok(symbol.tick)} ${color.dim("No token written.")}\n\n`,
+      );
+      e.write(
+        `  ${color.dim("Exit 10 (AUTH_FAILURE) — same stable code your scripts already check.")}\n`,
+      );
+      process.exit(EXIT.AUTH_FAILURE);
+    }
+
+    // Warm empty state — nothing to upload is not an error to shout about. Only
+    // the truly-empty case; the "detected but unsupported" message stays generic.
+    if (err instanceof NoSessionsError && mode === "text" && !err.message.includes("supported")) {
+      const e = process.stderr;
+      e.write(`\n  ${color.frog(SIGIL)}   ${color.bold("Nothing to upload yet.")}\n\n`);
+      e.write(
+        `  ${color.dim("Frugl looked in the usual spots and came up empty-handed — no sessions found:")}\n`,
+      );
+      e.write(`    ${color.mute("·")} Claude Code   ${color.dim("~/.claude/projects")}\n`);
+      e.write(`    ${color.mute("·")} Codex         ${color.dim("~/.codex/sessions")}\n`);
+      e.write(
+        `    ${color.mute("·")} Cursor        ${color.dim("~/Library/Application Support/Cursor")}\n\n`,
+      );
+      e.write(
+        `  ${color.dim("That's expected on a fresh machine. Use an AI coding tool for a bit,")}\n`,
+      );
+      e.write(
+        `  ${color.dim("then run ")}${color.frog("frugl upload")}${color.dim(" again.")}\n\n`,
+      );
+      e.write(
+        `  ${color.dim("Tool in an odd spot? Point ")}${color.frog("FRUGL_HOME_DIR")}${color.dim(" at it.")}\n\n`,
+      );
+      e.write(`  ${color.dim("Exit 20 (NO_SESSIONS_FOUND)")}\n`);
+      process.exit(EXIT.NO_SESSIONS_FOUND);
+    }
+
     process.exit(printFruglError(err, mode));
   }
 

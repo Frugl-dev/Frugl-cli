@@ -87,6 +87,9 @@
     "bin": "frugl",
     "commands": "./dist/commands",
     "dirname": "frugl",
+    "hooks": {
+      "init": "./dist/hooks/init/hello"
+    },
     "topicSeparator": " "
   },
   "engines": {

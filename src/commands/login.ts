@@ -18,7 +18,7 @@ import {
 } from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
 import { getLastLoginMethod, setLastLoginMethod } from "../lib/config.js";
-import { color, symbol } from "../lib/theme.js";
+import { color, symbol, SIGIL } from "../lib/theme.js";
 import {
   requestHandoffUrl,
   resolveHandoffPreference,
@@ -471,5 +471,8 @@ Exit codes:
     process.stdout.write(
       `${color.dim("    ")}${color.frog("frugl upload")}${color.dim("                   upload your first batch")}\n`,
     );
+    // The brand closer — the same sign-off that threads through the hello and
+    // the upload payoff. "You're in." (cf. the web callback page).
+    process.stdout.write(`\n  ${color.frog(SIGIL)}  ${color.dim("You're in. Stay green.")}\n`);
   }
 }

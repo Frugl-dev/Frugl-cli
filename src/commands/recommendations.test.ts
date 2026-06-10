@@ -83,9 +83,9 @@ describe("frugl recommendations", () => {
       recommendations: [rec({ id: "r1", title: "Top" }), rec({ id: "r2", title: "Second" })],
     });
     await Recommendations.run([]);
-    expect(stdout).toContain("1.");
+    expect(stdout).toContain("#1");
     expect(stdout).toContain("Top");
-    expect(stdout).toContain("2.");
+    expect(stdout).toContain("#2");
     expect(stdout).toContain("Second");
   });
 
@@ -127,10 +127,10 @@ describe("frugl recommendations", () => {
     // humanized category tags
     expect(stdout).toContain("root context bloat");
     expect(stdout).toContain("wrong sized models");
-    // open count in the header
-    expect(stdout).toContain("2 open");
+    // warm "what to fix this week" header reflects the open count
+    expect(stdout).toContain("2 things worth fixing this week.");
     // total footer (312.40 + 208.00)
-    expect(stdout).toContain("Estimated total");
+    expect(stdout).toContain("on the table across the top 2");
     expect(stdout).toContain("~$520.40/mo");
     // top-item fix CTA
     expect(stdout).toContain("frugl recommendations --fix r1 | claude");
@@ -186,7 +186,7 @@ describe("frugl recommendations", () => {
   it("shows a helpful empty state with next steps", async () => {
     callMock.mockResolvedValue({ recommendations: [] });
     await Recommendations.run([]);
-    expect(stdout).toContain("No recommendations right now.");
+    expect(stdout).toContain("No recommendations yet");
     expect(stdout).toContain("frugl upload");
     expect(stdout).toContain("frugl recommendations --status dismissed");
   });
