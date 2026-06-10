@@ -59,7 +59,8 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       clearAuth(endpoint);
       const { exitCode, stderr } = await runCli(["upload", "--yes", "--endpoint", endpoint]);
       expect(exitCode).toBe(EXIT.AUTH_FAILURE);
-      expect(stderr).toMatch(/not logged in/i);
+      // upload reframes this warmly ("you're not signed in yet") via its bail().
+      expect(stderr).toMatch(/not (logged|signed) in/i);
     });
   });
 

@@ -10,7 +10,7 @@ import {
 import { EXIT } from "../lib/exit-codes.js";
 import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
 import { type OutputMode } from "../lib/output-mode.js";
-import { bar, color, symbol } from "../lib/theme.js";
+import { bar, color, symbol, SIGIL } from "../lib/theme.js";
 
 const STATUSES = ["open", "applied", "dismissed", "resolved", "all"] as const;
 
@@ -45,6 +45,8 @@ function impactLabel(label: string): string {
 export default class Recommendations extends Command {
   static override description =
     "List and rank cost-saving recommendations, and get a prompt to fix them.";
+
+  static override aliases = ["recs"];
 
   static override flags = {
     ...COMMON_FLAGS,
@@ -122,49 +124,84 @@ export default class Recommendations extends Command {
       return;
     }
 
+    // The reveal — "here's what to fix next." Warm header for the default
+    // "what should I fix this week?" run; a neutral, precise header when the
+    // user is filtering by an explicit status.
+    const isOpen = status === "open";
     const word = statusWord(status);
-    const count = `${recs.length}${word ? ` ${word}` : ""}`;
-    process.stdout.write(
-      `${color.bold("Cost-saving recommendations")} ${color.dim(`(ranked · ${count})`)}\n\n`,
-    );
+    const n = recs.length;
+    if (isOpen) {
+      const things = n === 1 ? "thing" : "things";
+      process.stdout.write(
+        `  ${color.frog(SIGIL)}  ${color.bold(`${n} ${things} worth fixing this week.`)}` +
+          `   ${color.dim("ranked by what they cost you.")}\n\n`,
+      );
+    } else {
+      const count = `${n}${word ? ` ${word}` : ""}`;
+      process.stdout.write(
+        `${color.bold("Cost-saving recommendations")} ${color.dim(`(ranked · ${count})`)}\n\n`,
+      );
+    }
+
     recs.forEach((r, i) => {
       const savings = color.frogBold(savingsCol(r.estimated_savings_usd));
       const flag = r.status === "applied" ? color.ok(" [applied]") : "";
-      process.stdout.write(`${color.dim(`${i + 1}.`)} ${savings} ${color.bold(r.title)}${flag}\n`);
       process.stdout.write(
-        `      ${color.mute(humanizeCategory(r.category))}   ${color.dim(`· ${r.description}`)}\n`,
+        `  ${color.frogBold(`#${i + 1}`)}  ${savings} ${color.bold(r.title)}${flag}\n`,
       );
-      process.stdout.write(`      ${color.dim(`id=${r.id}`)}\n\n`);
+      // Category tag in amber — the waste taxonomy, the meter color.
+      process.stdout.write(
+        `      ${color.warn(humanizeCategory(r.category))}   ${color.dim(`· ${r.description}`)}\n`,
+      );
+      // The top item gets the pipe-to-agent CTA; the rest carry their id.
+      if (i === 0) {
+        process.stdout.write(
+          `      ${color.dim("→ ")}${color.frog(`frugl recommendations --fix ${r.id} | claude`)}` +
+            `   ${color.dim("hand it straight to an agent")}\n\n`,
+        );
+      } else {
+        process.stdout.write(`      ${color.dim(`id=${r.id}`)}\n\n`);
+      }
     });
 
     const total = recs.reduce((sum, r) => sum + r.estimated_savings_usd, 0);
-    const plural = recs.length === 1 ? "recommendation" : "recommendations";
-    process.stdout.write(
-      `  ${color.dim("Estimated total  ")}${color.frogBold(`~${formatSavings(total)}/mo`)}` +
-        `  ${color.dim(`across ${recs.length} ${word ? `${word} ` : ""}${plural}`)}\n\n`,
-    );
-    const top = recs[0];
-    if (top) {
+    process.stdout.write(`  ${color.dim("─".repeat(42))}\n`);
+    if (isOpen) {
       process.stdout.write(
-        `${color.dim("Fix the top one: ")}${color.frog(`frugl recommendations --fix ${top.id} | claude`)}\n`,
+        `  ${color.frogBold(`~${formatSavings(total)}/mo`)}` +
+          `${color.dim(` on the table across the top ${n}. Start with `)}${color.bold("#1")}` +
+          `${color.dim(" — it's the biggest.")}\n`,
+      );
+    } else {
+      const plural = n === 1 ? "recommendation" : "recommendations";
+      process.stdout.write(
+        `  ${color.frogBold(`~${formatSavings(total)}/mo`)}` +
+          `${color.dim(` across ${n} ${word ? `${word} ` : ""}${plural}.`)}\n`,
       );
     }
   }
 
-  // Helpful empty state: why it's empty + the two ways forward.
+  // Warm empty state — no recommendations isn't an error. Why it's empty + the
+  // two ways forward, and a reminder that nothing to fix is a good place to be.
   private printEmpty(): void {
     const dot = color.mute("·");
-    process.stdout.write(`${color.dim("No recommendations right now.")}\n\n`);
     process.stdout.write(
-      `  ${color.dim("Either you're caught up, or Frugl hasn't analyzed a recent retro yet.")}\n\n`,
+      `  ${color.frog(SIGIL)}   ${color.bold("No recommendations yet — Frugl's still chewing.")}\n\n`,
+    );
+    process.stdout.write(
+      `  ${color.dim("Either you're caught up, or the analysis hasn't seen enough of a recent")}\n`,
+    );
+    process.stdout.write(
+      `  ${color.dim("retro yet — it runs server-side and lands when it's sure.")}\n\n`,
     );
     process.stdout.write(
       `  ${dot} New here? ${color.underline("frugl upload")}` +
         ` — recommendations land after your first retro.\n`,
     );
     process.stdout.write(
-      `  ${dot} Snoozed some? ${color.underline("frugl recommendations --status dismissed")} to see them.\n`,
+      `  ${dot} Snoozed some? ${color.underline("frugl recommendations --status dismissed")} to see them.\n\n`,
     );
+    process.stdout.write(`  ${color.dim("Nothing to fix is a good place to be. Stay green.")}\n`);
   }
 
   // The impact view (`--status applied`): baseline vs. now, realized savings,

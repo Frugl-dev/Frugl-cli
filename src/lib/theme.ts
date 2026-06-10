@@ -34,6 +34,12 @@ export const color = {
   underline: (s: string): string => pc.underline(s),
 } as const;
 
+// The frugl mascot — one emoticon, surfaced at the personality beats (the hello,
+// the upload payoff, the warm empty/error states) and otherwise kept off-screen.
+// Centralized so it's a single glyph to change. From the Claude Design "frugl,
+// with a pulse" pass.
+export const SIGIL = "₍𝄐 ̫𝄐₎";
+
 // Status glyphs, pre-colored for their conventional meaning.
 export const symbol = {
   tick: pc.green("✓"),
