@@ -8,7 +8,7 @@ import { ResumeStore, type ManifestEntryState, type ManifestState } from "./resu
 import { SessionUpload, type SessionUploadJob } from "./session-upload.js";
 import { InMemoryCloud } from "./in-memory-cloud.js";
 import { CloudPortError } from "./cloud-port.js";
-import { StaleResumeError, AnonymizationError } from "../lib/errors.js";
+import { StaleResumeError, AnonymizationError, AuthError } from "../lib/errors.js";
 import type { ProgressReporter } from "./progress.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
 
@@ -198,7 +198,7 @@ describe("SessionUpload", () => {
     expect(loadEntry("sess-409")?.lastFailureReason).toBe("conflict");
   });
 
-  it("presign 403 → presign-expired", async () => {
+  it("presign 403 (control-plane auth) → rethrows AuthError unretried (batch-abort)", async () => {
     const job = makeJob("sess-403", "record-403");
     const entry = entryFor(job);
     seedResume([entry]);
@@ -209,10 +209,28 @@ describe("SessionUpload", () => {
       failPresignWith: 403,
     });
     const { reporter } = spyReporter();
+    await expect(makeSession(cloud, reporter).attempt(entry, job)).rejects.toBeInstanceOf(
+      AuthError,
+    );
+    // Not retried (an auth failure repeats identically) and reset to pending
+    // so the next authenticated run resumes it.
+    expect(cloud.presignedSessions).toEqual(["sess-403"]);
+    expect(loadEntry("sess-403")?.status).toBe("pending");
+  });
+
+  it("PUT 403 (expired presigned URL) → re-presigns and retries the pair; persistent failure → presign-expired", async () => {
+    const job = makeJob("sess-put403", "record-put403");
+    const entry = entryFor(job);
+    seedResume([entry]);
+
+    const cloud = new InMemoryCloud({ manifestId: MANIFEST_ID, failPutWith: 403 });
+    const { reporter } = spyReporter();
     const outcome = await makeSession(cloud, reporter).attempt(entry, job);
 
+    // Each retry of the pair re-presigns: 3 attempts → 3 presigns.
+    expect(cloud.presignedSessions).toEqual(["sess-put403", "sess-put403", "sess-put403"]);
     expect(outcome).toMatchObject({ kind: "failed", reason: "presign-expired" });
-    expect(loadEntry("sess-403")?.lastFailureReason).toBe("presign-expired");
+    expect(loadEntry("sess-put403")?.lastFailureReason).toBe("presign-expired");
   });
 
   it("thrown SyntaxError → parse", async () => {

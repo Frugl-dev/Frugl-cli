@@ -55,15 +55,20 @@ describe("rule registry coherence", () => {
           "openai-key",
           "aws-key",
           "gcp-key",
+          "private-key",
           "github-token",
           "slack-webhook",
+          "jwt",
+          "connection-string",
+          "bearer-token",
+          "provider-token",
           "env-line",
           "home-path",
           "project-name",
           "third-party-email",
           "entropy-fallback",
         ],
-        "policyVersion": "v0.1",
+        "policyVersion": "v0.2",
       }
     `);
   });

@@ -46,6 +46,10 @@ export type ManifestState = z.infer<typeof manifestSchema>;
 export const resumeStateSchema = z.object({
   schemaVersion: z.literal(RESUME_SCHEMA_VERSION),
   manifest: manifestSchema,
+  // Aggregate { category: count } for the batch, persisted so a later run can
+  // still complete the manifest when this one dies after the last PUT but
+  // before completeManifest. Optional: absent in states written by older CLIs.
+  redactionTotals: z.record(z.string(), z.number().int().min(0)).optional(),
   beganAt: z.string().datetime(),
 });
 export type ResumeState = z.infer<typeof resumeStateSchema>;

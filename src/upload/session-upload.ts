@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { withRetry } from "../lib/retry.js";
-import { StaleResumeError } from "../lib/errors.js";
+import { AuthError, StaleResumeError, VersionGateError } from "../lib/errors.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
 import type { GitContext } from "./git-context.js";
-import { classifyFailure, type FailureReason } from "./failure-reasons.js";
+import { classifyFailure, PresignExpiredError, type FailureReason } from "./failure-reasons.js";
 import { CloudPortError, type UploadCloudPort } from "./cloud-port.js";
 import type { ProgressReporter } from "./progress.js";
 import { ResumeStore, type ManifestEntryState } from "./resume.js";
@@ -114,6 +114,14 @@ export class SessionUpload {
       if (err instanceof StaleResumeError) {
         throw err;
       }
+      // Auth and version-gate failures are batch-fatal, not per-session: every
+      // remaining session would fail identically, and the command-level handler
+      // owns their exit codes (10 / 50) and remedies. Reset the entry so the
+      // next authenticated run resumes it.
+      if (err instanceof AuthError || err instanceof VersionGateError) {
+        resume.updateEntry(entry.sessionId, (e) => ({ ...e, status: "pending" }));
+        throw err;
+      }
       // Isolate the failure: reset to pending so a re-run retries only this
       // session, and persist the classified reason so `frugl upload --report`
       // can explain the cause and remedy.
@@ -145,14 +153,7 @@ export class SessionUpload {
   // presign means the manifest is gone — surface it as a batch-aborting
   // StaleResumeError rather than a per-session failure.
   private async uploadOne(job: SessionUploadJob): Promise<void> {
-    // The cloud stores each session as NDJSON (.jsonl) and parses it line by
-    // line. The anonymized payload is the array of redacted records, so emit one
-    // JSON document per line rather than a single gzipped blob.
-    const payload = job.anonymizationResult.payload;
-    const ndjson = Array.isArray(payload)
-      ? payload.map((record) => JSON.stringify(record)).join("\n")
-      : JSON.stringify(payload);
-    const body = Buffer.from(ndjson, "utf8");
+    const body = sessionBodyBytes(job.anonymizationResult.payload);
 
     await withRetry(async () => {
       let presigned;
@@ -166,10 +167,28 @@ export class SessionUpload {
         await this.deps.cloud.putSessionBody(presigned.url, body, { ...presigned.headers });
       } catch (err) {
         if (isStaleStatus(err)) throw new StaleResumeError(this.deps.manifestId);
+        // A 403 from the STORAGE host means the presigned URL expired mid-batch
+        // (FR-029a/b). Re-wrap without the status so the surrounding withRetry
+        // re-presigns and retries the pair instead of treating it as a
+        // non-retryable auth failure.
+        if (err instanceof CloudPortError && err.status === 403) {
+          throw new PresignExpiredError(`presigned URL rejected: ${err.message}`, { cause: err });
+        }
         throw err;
       }
     });
   }
+}
+
+// The cloud stores each session as NDJSON (.jsonl) and parses it line by line.
+// The anonymized payload is the array of redacted records, so emit one JSON
+// document per line. This is THE serialization for both the PUT body and the
+// manifest's expected_bytes — they must never diverge.
+export function sessionBodyBytes(payload: unknown): Buffer {
+  const ndjson = Array.isArray(payload)
+    ? payload.map((record) => JSON.stringify(record)).join("\n")
+    : JSON.stringify(payload);
+  return Buffer.from(ndjson, "utf8");
 }
 
 function isStaleStatus(err: unknown): boolean {

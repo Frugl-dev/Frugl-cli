@@ -1,6 +1,17 @@
 import { AnonymizationError, NetworkError } from "../lib/errors.js";
 import { extractStatus } from "../lib/retry.js";
 
+// A presigned storage URL was rejected (expired / clock skew). Deliberately
+// carries NO `status` property: the original PUT 403 must not look like a
+// control-plane auth failure to `shouldRetry`, because the remedy is to
+// re-presign and retry the pair, not to abort.
+export class PresignExpiredError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PresignExpiredError";
+  }
+}
+
 // The fine-grained, human-readable reason a single session failed to upload.
 // One bad session never blocks the others (see pipeline.ts); each failure is
 // bucketed here so `frugl upload --report` can explain the cause and the fix.
@@ -79,6 +90,9 @@ export interface ClassifiedFailure {
 export function classifyFailure(err: unknown): ClassifiedFailure {
   if (err instanceof AnonymizationError) {
     return { reason: "anonymization", message: err.message };
+  }
+  if (err instanceof PresignExpiredError) {
+    return { reason: "presign-expired", message: err.message };
   }
   if (isParseError(err)) {
     return err instanceof Error ? { reason: "parse", message: err.message } : { reason: "parse" };

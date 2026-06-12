@@ -154,6 +154,17 @@ export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
   };
 }
 
+// The classification sub-object every upload result variant (dry-run, noop,
+// final) embeds — built here so the three emitters can't drift apart.
+export function buildClassification(s: UploadSummary): {
+  discovered: number;
+  unchanged: number;
+  new: number;
+  updated: number;
+} {
+  return { discovered: s.discovered, unchanged: s.unchanged, new: s.new, updated: s.updated };
+}
+
 function computeDateRange(
   items: SessionClassification[],
 ): { from: string; to: string } | undefined {

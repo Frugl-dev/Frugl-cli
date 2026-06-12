@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Command } from "@oclif/core";
 import { anonymize } from "../anonymize/index.js";
 import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
@@ -45,8 +46,11 @@ Exit codes:
       // is normalized and embedded secrets/emails are redacted; skill/MCP/agent
       // names and memory-file paths are preserved as config identifiers.
       const homeDir = process.env["FRUGL_HOME_DIR"];
+      // Local-only random salt. The pseudonym HMAC key must never equal a
+      // value that ships in the manifest (capturedAt does), or pseudonyms
+      // become dictionary-reversible by anyone holding the payload.
       const result = anonymize(capture.text, {
-        uploadId: capture.capturedAt,
+        uploadId: randomUUID(),
         ownerEmail: session.email,
         ...(homeDir !== undefined ? { homeDir } : {}),
       });
