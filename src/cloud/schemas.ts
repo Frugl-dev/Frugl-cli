@@ -100,13 +100,13 @@ export type CreateManifestResponse = z.infer<typeof createManifestResponseSchema
 export const presignResponseSchema = z.object({
   presigned_url: z.string().url(),
   method: z.literal("PUT"),
-  headers: z.record(z.string()),
+  headers: z.record(z.string(), z.string()),
   expires_at: z.string().min(1),
 });
 export type PresignResponse = z.infer<typeof presignResponseSchema>;
 
 export const completeUploadRequestSchema = z.object({
-  redaction_summary: z.record(z.number().int().min(0)),
+  redaction_summary: z.record(z.string(), z.number().int().min(0)),
 });
 export type CompleteUploadRequest = z.infer<typeof completeUploadRequestSchema>;
 

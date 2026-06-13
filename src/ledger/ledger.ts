@@ -15,7 +15,7 @@ export type LedgerEntry = z.infer<typeof ledgerEntrySchema>;
 
 export const ledgerShapeSchema = z.object({
   schemaVersion: z.literal(LEDGER_SCHEMA_VERSION),
-  entries: z.record(ledgerEntrySchema),
+  entries: z.record(z.string(), ledgerEntrySchema),
 });
 
 export type LedgerShape = z.infer<typeof ledgerShapeSchema>;
