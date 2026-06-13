@@ -19,6 +19,7 @@ import { Ledger } from "../ledger/ledger.js";
 import { ResumeStore } from "../upload/resume.js";
 import {
   buildUploadSummary,
+  buildClassification,
   formatSummaryForHuman,
   buildReport,
   formatReportHuman,
@@ -26,7 +27,12 @@ import {
   type ProjectSummaryRow,
 } from "../upload/upload-output.js";
 import { createProgressReporter } from "../upload/progress.js";
-import { runUploadPipeline, rawFileHash, type SessionUploadJob } from "../upload/pipeline.js";
+import {
+  runUploadPipeline,
+  finalizePendingManifest,
+  rawFileHash,
+  type SessionUploadJob,
+} from "../upload/pipeline.js";
 import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
 import { captureContext } from "../context/capture.js";
 import { uploadContextSnapshot } from "../context/upload.js";
@@ -244,7 +250,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         const interactive = isInteractive({
           json: flags.json,
           yes: flags.yes,
-          confirm: flags.confirm,
           isTTY: Boolean(process.stdin.isTTY),
         });
 
@@ -309,10 +314,15 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           const sorted = sourceRefs.toSorted(
             (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
           );
+          const homeDirOverride = process.env["FRUGL_HOME_DIR"];
           const classifications = await classifyAll(sorted, {
             ledger,
             source,
-            anonymize: { uploadId, ownerEmail: session.email },
+            anonymize: {
+              uploadId,
+              ownerEmail: session.email,
+              ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
+            },
           });
           classificationsBySource.set(source, classifications);
         }
@@ -392,12 +402,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             sourceKind: displaySourceKind,
             endpoint: endpoint.url,
             dashboardUrl: `${endpoint.url}/dry-run`,
-            classification: {
-              discovered: summary.discovered,
-              unchanged: summary.unchanged,
-              new: summary.new,
-              updated: summary.updated,
-            },
+            classification: buildClassification(summary),
             limited: summary.limited ?? { active: false },
             ...(prLinking
               ? {
@@ -415,6 +420,24 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           return;
         }
 
+        // A previous run may have PUT every session but died before (or during)
+        // completeManifest, leaving resume state with no pending work. Finish
+        // that handshake first — even when this run has nothing new — so those
+        // sessions actually become visible on the dashboard.
+        try {
+          const finalized = await finalizePendingManifest({ cloud, resumeStore });
+          if (finalized) {
+            lastManifestId = finalized.manifestId;
+            lastDashboardUrl = finalized.dashboardUrl;
+            if (mode === "text") {
+              process.stderr.write(color.dim("Completed a previously interrupted upload batch.\n"));
+            }
+          }
+        } catch {
+          // Completion is still failing transiently; the state is kept and the
+          // next run will retry. Never block this run's work on it.
+        }
+
         if (willUpload.length === 0) {
           if (!uploadContext) {
             const result = {
@@ -427,12 +450,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               sourceKind: displaySourceKind,
               endpoint: endpoint.url,
               dashboardUrl: `${endpoint.url}/dashboard`,
-              classification: {
-                discovered: summary!.discovered,
-                unchanged: summary!.unchanged,
-                new: summary!.new,
-                updated: summary!.updated,
-              },
+              classification: buildClassification(summary!),
               limited: summary!.limited ?? { active: false },
               selection: selectionReport,
               noop: true,
@@ -481,44 +499,32 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             const mcpServers =
               source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
 
+            const pipelineOptions = {
+              cloud,
+              jobs,
+              ledger,
+              resumeStore,
+              reporter,
+              concurrency,
+              policyVersion: POLICY_VERSION,
+              cliVersion: getCliVersion(),
+              sourceKind: source.kind,
+              endpointUrl: endpoint.url,
+              userId: session.userId,
+              ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+              ...(mcpServers ? { mcpServers } : {}),
+            };
+
             let pipelineResult;
             try {
-              pipelineResult = await runUploadPipeline({
-                cloud,
-                jobs,
-                ledger,
-                resumeStore,
-                reporter,
-                concurrency,
-                policyVersion: POLICY_VERSION,
-                cliVersion: getCliVersion(),
-                sourceKind: source.kind,
-                endpointUrl: endpoint.url,
-                userId: session.userId,
-                ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
-                ...(mcpServers ? { mcpServers } : {}),
-              });
+              pipelineResult = await runUploadPipeline(pipelineOptions);
             } catch (err) {
               if (err instanceof StaleResumeError) {
                 if (mode === "text") {
                   process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
                 }
                 resumeStore.clear();
-                pipelineResult = await runUploadPipeline({
-                  cloud,
-                  jobs,
-                  ledger,
-                  resumeStore,
-                  reporter,
-                  concurrency,
-                  policyVersion: POLICY_VERSION,
-                  cliVersion: getCliVersion(),
-                  sourceKind: source.kind,
-                  endpointUrl: endpoint.url,
-                  userId: session.userId,
-                  ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
-                  ...(mcpServers ? { mcpServers } : {}),
-                });
+                pipelineResult = await runUploadPipeline(pipelineOptions);
               } else {
                 throw err;
               }
@@ -539,8 +545,11 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           );
         const ctxHomeDir = process.env["FRUGL_HOME_DIR"];
         const capture = captureContext("claude-code");
+        // Local-only random salt. The pseudonym HMAC key must never equal a
+        // value that ships in the manifest (capturedAt does), or pseudonyms
+        // become dictionary-reversible by anyone holding the payload.
         const ctxAnon = anonymize(capture.text, {
-          uploadId: capture.capturedAt,
+          uploadId: randomUUID(),
           ownerEmail: session.email,
           ...(ctxHomeDir !== undefined ? { homeDir: ctxHomeDir } : {}),
         });
@@ -665,12 +674,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           : handoff.reason === "disabled-default"
             ? {}
             : { handoff: { active: false as const, reason: handoff.reason } }),
-        classification: {
-          discovered: summary.discovered,
-          unchanged: summary.unchanged,
-          new: summary.new,
-          updated: summary.updated,
-        },
+        classification: buildClassification(summary),
         limited: summary.limited ?? { active: false },
         ...(prLinking
           ? {

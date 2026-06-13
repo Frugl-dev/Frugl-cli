@@ -12,8 +12,12 @@ export class FruglError extends Error {
 }
 
 export class AuthError extends FruglError {
-  constructor(message: string) {
+  // The originating HTTP status (401/403) when the failure came off the wire.
+  // `shouldRetry` reads it to suppress pointless retries of auth failures.
+  readonly status?: number;
+  constructor(message: string, status?: number) {
     super(message, EXIT.AUTH_FAILURE);
+    if (status !== undefined) this.status = status;
   }
 }
 
@@ -42,6 +46,8 @@ export class EndpointError extends FruglError {
 }
 
 export class VersionGateError extends FruglError {
+  // Always raised by an HTTP 426; carried so `shouldRetry` never retries it.
+  readonly status = 426;
   readonly currentVersion: string;
   readonly requiredVersion: string;
   constructor(currentVersion: string, requiredVersion: string) {

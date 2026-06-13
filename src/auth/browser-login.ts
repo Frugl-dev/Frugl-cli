@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { color } from "../lib/theme.js";
 
 export type OAuthProvider = "google" | "github";
@@ -63,26 +64,60 @@ function renderCallbackPage(email: string | null): string {
 </body></html>`;
 }
 
+// Launch the platform browser WITHOUT a shell. The URL embeds the (env/flag
+// controlled) endpoint, so routing it through `exec`'s shell would turn an
+// endpoint like https://x.com/$(…) into command execution.
 function openBrowser(url: string): void {
-  const cmd =
-    process.platform === "darwin"
-      ? `open "${url}"`
-      : process.platform === "win32"
-        ? `start "" "${url}"`
-        : `xdg-open "${url}"`;
-  exec(cmd);
+  if (process.platform === "darwin") {
+    execFile("open", [url]);
+  } else if (process.platform === "win32") {
+    // `start` is a cmd builtin and re-parses metacharacters; rundll32's URL
+    // handler takes the URL as a plain argument instead.
+    execFile("rundll32", ["url.dll,FileProtocolHandler", url]);
+  } else {
+    execFile("xdg-open", [url]);
+  }
+}
+
+// Constant-time string comparison for the state nonce.
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+function renderErrorPage(message: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Frugl — sign-in failed</title></head>
+<body style="margin:0">
+<div style="height:100vh;background:#f4f2ec;font-family:system-ui,-apple-system,'Geist',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 32px">
+  <h1 style="margin:0;font-size:44px;font-weight:900;letter-spacing:-0.03em;color:#191921">Sign-in failed.</h1>
+  <p style="margin:20px 0 0;max-width:460px;font-size:18px;line-height:1.5;color:#5f5b66">${escapeHtml(message)} Head back to your terminal and run <code>frugl login</code> again.</p>
+</div>
+</body></html>`;
 }
 
 // Starts a temporary local HTTP server on a random port, opens the browser to
 // the Frugl OAuth flow, and waits up to `timeoutMs` (default 5 min) for the
 // CLI callback redirect carrying the minted PAT. Resolves with the token on
 // success; rejects on timeout or if the user closes the terminal.
+//
+// CSRF/fixation defense: a single-use random `state` nonce travels with the
+// browser through the cloud's cli-callback route and must come back verbatim.
+// A request with a missing or wrong state is answered 403 and — crucially —
+// does NOT consume the server, so a local attacker can neither inject their
+// own token nor burn the legitimate callback's one shot.
 export function startBrowserLogin(opts: {
   provider: OAuthProvider;
   endpointUrl: string;
   timeoutMs?: number;
+  // Injectable for tests; defaults to launching the platform browser.
+  openUrl?: (url: string) => void;
 }): Promise<BrowserLoginResult> {
-  const { provider, endpointUrl, timeoutMs = 5 * 60 * 1000 } = opts;
+  const { provider, endpointUrl, timeoutMs = 5 * 60 * 1000, openUrl = openBrowser } = opts;
+  const expectedState = randomBytes(32).toString("base64url");
 
   return new Promise<BrowserLoginResult>((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -92,19 +127,28 @@ export function startBrowserLogin(opts: {
         return;
       }
 
+      const state = url.searchParams.get("state");
+      if (!state || !safeEqual(state, expectedState)) {
+        res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(renderErrorPage("This sign-in attempt could not be verified."));
+        return;
+      }
+
       const token = url.searchParams.get("token");
       const email = url.searchParams.get("email");
       const userId = url.searchParams.get("userId");
 
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(renderCallbackPage(email));
       server.close();
       clearTimeout(timer);
 
       if (!token || !email || !userId) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(renderErrorPage("The sign-in response was incomplete."));
         reject(new Error("OAuth callback missing required fields"));
         return;
       }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(renderCallbackPage(email));
       resolve({ token, email, userId });
     });
 
@@ -115,12 +159,12 @@ export function startBrowserLogin(opts: {
         return;
       }
       const port = addr.port;
-      const cliCallbackPath = `/api/auth/cli-callback?port=${port}`;
+      const cliCallbackPath = `/api/auth/cli-callback?port=${port}&state=${expectedState}`;
       const oauthUrl =
         `${endpointUrl}/api/auth/oauth/${provider}` +
         `?redirect_to=${encodeURIComponent(cliCallbackPath)}`;
 
-      openBrowser(oauthUrl);
+      openUrl(oauthUrl);
       // A live waiting state — the terminal stays alive, says exactly what it's
       // waiting for, and resumes itself the second the user approves. Fallback
       // URL and the escape hatch stay visible throughout. Mirrors the design.

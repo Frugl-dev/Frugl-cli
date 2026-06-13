@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import { NetworkError, FruglError, StaleResumeError } from "../lib/errors.js";
+import { AnonymizationError, NetworkError, FruglError, StaleResumeError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { ProgressReporter } from "./progress.js";
@@ -8,6 +8,7 @@ import { CloudPortError, type UploadCloudPort } from "./cloud-port.js";
 import {
   SessionUpload,
   rawFileHash,
+  sessionBodyBytes,
   type SessionOutcome,
   type SessionUploadJob,
 } from "./session-upload.js";
@@ -53,14 +54,22 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
   }
 
   const existing = opts.resumeStore.load();
-  const manifestState = existing
-    ? reconcileExistingManifest(existing, opts.jobs)
-    : await createManifest(opts);
+  const resumed = existing ? reconcileExistingManifest(existing, opts) : null;
+  if (existing && !resumed) {
+    // The saved manifest doesn't cover this batch (new sessions since the
+    // failed run, a different source, or a different binary). Resuming it is
+    // impossible and keeping it would wedge every future upload, so start
+    // fresh. Already-acked sessions are protected by the ledger (they
+    // classify as unchanged and are not in this batch).
+    opts.resumeStore.clear();
+  }
+  const manifestState = resumed ?? (await createManifest(opts));
 
   opts.resumeStore.save({
     schemaVersion: 1,
     manifest: manifestState,
-    beganAt: existing?.beganAt ?? new Date().toISOString(),
+    redactionTotals: aggregateRedactions(opts.jobs),
+    beganAt: resumed && existing ? existing.beganAt : new Date().toISOString(),
   });
 
   opts.reporter.uploadStart({
@@ -124,7 +133,7 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
 
         // On resume, re-check the source file before attempting; a vanished or
         // modified file is skipped, not uploaded.
-        if (existing) {
+        if (resumed) {
           const skipReason = await session.skipIfUnresumable(entry);
           if (skipReason !== null) {
             skipped.push({ sessionId: entry.sessionId, reason: skipReason });
@@ -143,9 +152,14 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
   );
 
   if (failures.length > 0) {
-    throw new NetworkError(
-      `Upload incomplete: ${failures.length} session(s) failed after retries. Re-run 'frugl upload' to resume.`,
-    );
+    const message = `Upload incomplete: ${failures.length} session(s) failed after retries. Re-run 'frugl upload' to resume.`;
+    // The exit code should reflect the dominant failure class: a batch where
+    // every failure was local redaction (fail-closed, nothing sent) is exit 30,
+    // not a fake "network error".
+    if (failures.every((f) => f.reason === "anonymization")) {
+      throw new AnonymizationError(message);
+    }
+    throw new NetworkError(message);
   }
 
   let complete;
@@ -202,6 +216,14 @@ function toWireGitContext(ctx: GitContext): {
 }
 
 async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
+  // expected_bytes must describe the bytes the cloud will actually receive —
+  // the NDJSON PUT body — not the JSON-array serialization byteSize reports.
+  const bodyBytes = new Map(
+    opts.jobs.map((job) => [
+      job.sessionId,
+      sessionBodyBytes(job.anonymizationResult.payload).byteLength,
+    ]),
+  );
   const { uploadId } = await opts.cloud.createManifest({
     cli_version: opts.cliVersion,
     redaction_policy_version: opts.policyVersion,
@@ -211,7 +233,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
     sessions: opts.jobs.map((job) => ({
       session_id: job.sessionId,
       format_version: job.formatVersion,
-      expected_bytes: job.anonymizationResult.byteSize,
+      expected_bytes: bodyBytes.get(job.sessionId)!,
       ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
       ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
     })),
@@ -228,7 +250,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
       sessionId: job.sessionId,
       identityDerivation: job.identityDerivation,
       contentHash: job.anonymizationResult.contentHashHex,
-      byteSize: job.anonymizationResult.byteSize,
+      byteSize: bodyBytes.get(job.sessionId)!,
       sourceFilePath: job.sourceFilePath,
       rawContentHashAtFirstRun: job.rawContentHashAtFirstRun,
       status: "pending",
@@ -236,15 +258,56 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
   };
 }
 
-function reconcileExistingManifest(state: ResumeState, jobs: SessionUploadJob[]): ManifestState {
-  const known = new Set(state.manifest.entries.map((e) => e.sessionId));
-  for (const job of jobs) {
-    if (!known.has(job.sessionId)) {
-      throw new FruglError(
-        `Resume state references unknown manifest ${state.manifest.manifestId}; session ${job.sessionId} is not part of the in-flight manifest.`,
-        EXIT.GENERIC_FAILURE,
-      );
-    }
+// Resume the saved manifest only when it actually covers this batch: same
+// source, same endpoint+user, and every job present in its entries. Anything
+// else returns null and the caller starts a fresh manifest — a mismatch must
+// never be fatal, or one failed batch wedges every future upload.
+function reconcileExistingManifest(
+  state: ResumeState,
+  opts: PipelineOptions,
+): ManifestState | null {
+  const { manifest } = state;
+  if (
+    manifest.sourceKind !== opts.sourceKind ||
+    manifest.endpointUrl !== opts.endpointUrl ||
+    manifest.userId !== opts.userId
+  ) {
+    return null;
   }
-  return state.manifest;
+  const known = new Set(manifest.entries.map((e) => e.sessionId));
+  for (const job of opts.jobs) {
+    if (!known.has(job.sessionId)) return null;
+  }
+  return manifest;
+}
+
+// A previous run PUT every session but died before (or during) completeManifest,
+// so the resume state lingers with no pending work. Finish the handshake now:
+// complete using the persisted redaction totals, or drop the state if the cloud
+// already forgot the manifest. Returns the completion when one happened.
+// Throws only on a still-transient completion failure (state is kept).
+export async function finalizePendingManifest(opts: {
+  cloud: UploadCloudPort;
+  resumeStore: ResumeStore;
+}): Promise<{ manifestId: string; dashboardUrl: string } | null> {
+  const existing = opts.resumeStore.load();
+  if (!existing) return null;
+  const unfinished = existing.manifest.entries.some(
+    (e) => e.status === "pending" || e.status === "in-flight",
+  );
+  if (unfinished) return null;
+  try {
+    const complete = await opts.cloud.completeManifest(
+      existing.manifest.manifestId,
+      existing.redactionTotals ?? {},
+    );
+    opts.resumeStore.clear();
+    return complete;
+  } catch (err) {
+    if (err instanceof CloudPortError && (err.status === 404 || err.status === 410)) {
+      opts.resumeStore.clear();
+      return null;
+    }
+    throw err;
+  }
 }

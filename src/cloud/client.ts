@@ -155,6 +155,7 @@ export class CloudClient {
     if (response.status === 401 || response.status === 403) {
       throw new AuthError(
         `Authentication failed (${response.status}). Run 'frugl login' to re-authenticate.`,
+        response.status,
       );
     }
     if (!response.ok) {

@@ -10,18 +10,21 @@ export function redactClaudePaths(
   ctx: RuleContext,
 ): { output: string; counts: Partial<Record<RedactionCategory, number>> } {
   const counts: Partial<Record<RedactionCategory, number>> = {};
-  const home = ctx.homeDir ?? homedir();
-  if (!home) return { output: input, counts };
+  // ctx.homeDir (e.g. FRUGL_HOME_DIR pointing at a relocated tool dir) is an
+  // ADDITIONAL home prefix, never a replacement: the user's real home must be
+  // redacted regardless of any override.
+  const homes = [...new Set([ctx.homeDir, homedir()].filter((h): h is string => Boolean(h)))];
+  if (homes.length === 0) return { output: input, counts };
 
-  const escapedHome = escapeRegExp(home);
-  const homeRegex = new RegExp(`${escapedHome}([${escapeRegExp(PATH_SEP)}/]?[^\\s"']*)`, "g");
-
-  const output = input.replace(homeRegex, (_match, rest: string) => {
-    counts["home-path"] = (counts["home-path"] ?? 0) + 1;
-    const replaced =
-      rest.length === 0 ? "<HOME>" : `<HOME>${replaceProjectSegments(rest, ctx, counts)}`;
-    return replaced;
-  });
+  let output = input;
+  for (const home of homes) {
+    const escapedHome = escapeRegExp(home);
+    const homeRegex = new RegExp(`${escapedHome}([${escapeRegExp(PATH_SEP)}/]?[^\\s"']*)`, "g");
+    output = output.replace(homeRegex, (_match, rest: string) => {
+      counts["home-path"] = (counts["home-path"] ?? 0) + 1;
+      return rest.length === 0 ? "<HOME>" : `<HOME>${replaceProjectSegments(rest, ctx, counts)}`;
+    });
+  }
   return { output, counts };
 }
 

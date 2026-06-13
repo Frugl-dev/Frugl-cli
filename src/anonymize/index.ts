@@ -75,7 +75,9 @@ function walk(
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value)) {
-      out[key] = walk(val, ctx, counts);
+      // Keys pass through the same rules as values: tool results keyed by
+      // absolute paths (or worse) must not bypass redaction structurally.
+      out[redactString(key, ctx, counts)] = walk(val, ctx, counts);
     }
     return out;
   }

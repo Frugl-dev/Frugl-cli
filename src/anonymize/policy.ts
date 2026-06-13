@@ -1,14 +1,19 @@
 import { RULES } from "./rules/registry.js";
 
-export const POLICY_VERSION = "v0.1" as const;
+export const POLICY_VERSION = "v0.2" as const;
 
 export type RedactionCategory =
   | "anthropic-key"
   | "openai-key"
   | "aws-key"
   | "gcp-key"
+  | "private-key"
   | "github-token"
   | "slack-webhook"
+  | "jwt"
+  | "connection-string"
+  | "bearer-token"
+  | "provider-token"
   | "env-line"
   | "home-path"
   | "project-name"

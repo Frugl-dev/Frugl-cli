@@ -198,6 +198,43 @@ describe("anonymize", () => {
     expect(payload.sessions[0]!.message.model).toBe("claude-opus-4-8");
   });
 
+  it("anonymizes object KEYS, not just values", () => {
+    const home = "/Users/alice";
+    const fixture = {
+      toolUseResult: {
+        [`${home}/.claude/projects/acme-secret/main.ts`]: "edited",
+        [PLANTED["third-party-email"]]: "sent",
+      },
+    };
+    const result = anonymize(fixture, {
+      uploadId: "u-keys",
+      ownerEmail: OWNER_EMAIL,
+      homeDir: home,
+    });
+    const serialized = JSON.stringify(result.payload);
+    expect(serialized).not.toContain(home);
+    expect(serialized).not.toContain(PLANTED["third-party-email"]);
+    const keys = Object.keys((result.payload as { toolUseResult: object }).toolUseResult);
+    expect(keys.some((k) => k.startsWith("<HOME>"))).toBe(true);
+  });
+
+  it("redacts the real home even when an explicit homeDir override is supplied", () => {
+    const realHome = (process.env["HOME"] ?? "") || null;
+    // The override points elsewhere; both prefixes must be redacted.
+    const override = "/opt/relocated-claude";
+    const fixture = {
+      text: `override file ${override}/sessions/a.jsonl and real file ${realHome}/code/app.ts`,
+    };
+    const result = anonymize(fixture, {
+      uploadId: "u-homes",
+      ownerEmail: OWNER_EMAIL,
+      homeDir: override,
+    });
+    const serialized = JSON.stringify(result.payload);
+    expect(serialized).not.toContain(override);
+    expect(realHome !== null && serialized.includes(realHome)).toBe(false);
+  });
+
   it("redacts home prefix in Cursor, Codex, and Gemini session paths", () => {
     const home = "/Users/bob";
     const fixture = {

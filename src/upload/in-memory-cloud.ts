@@ -1,5 +1,18 @@
 import type { CreateManifestRequest } from "../cloud/schemas.js";
+import { AuthError, VersionGateError } from "../lib/errors.js";
 import { CloudPortError, type PresignResult, type UploadCloudPort } from "./cloud-port.js";
+
+// Mirror the production control-plane mapping (CloudClient.handleResponse):
+// 401/403 surface as AuthError and 426 as VersionGateError BEFORE any
+// CloudPortError wrapping. A fake that throws status-carrying CloudPortErrors
+// for these would let tests pass on behavior production can never exhibit.
+function controlPlaneError(status: number, message: string): unknown {
+  if (status === 401 || status === 403) {
+    return new AuthError(`Authentication failed (${status}). ${message}`, status);
+  }
+  if (status === 426) return new VersionGateError("0.0.0-test", "test");
+  return new CloudPortError(message, { status });
+}
 
 // In-memory `UploadCloudPort` for tests. Fakes the *port* surface — not the HTTP
 // wire — so it stays valid as the wire contract evolves. Failure knobs drive
@@ -40,9 +53,10 @@ export class InMemoryCloud implements UploadCloudPort {
       if (thrown !== undefined) throw thrown;
     }
     if (this.opts.failPresign?.has(sessionId)) {
-      throw new CloudPortError(`forced presign failure for ${sessionId}`, {
-        status: this.opts.failPresignWith ?? 500,
-      });
+      throw controlPlaneError(
+        this.opts.failPresignWith ?? 500,
+        `forced presign failure for ${sessionId}`,
+      );
     }
     return {
       url: `https://put/${encodeURIComponent(sessionId)}`,
@@ -69,9 +83,10 @@ export class InMemoryCloud implements UploadCloudPort {
     _redactionSummary: Record<string, number>,
   ): Promise<{ manifestId: string; dashboardUrl: string }> {
     if (this.opts.failCompleteWith !== undefined) {
-      throw new CloudPortError(`complete failed: HTTP ${this.opts.failCompleteWith}`, {
-        status: this.opts.failCompleteWith,
-      });
+      throw controlPlaneError(
+        this.opts.failCompleteWith,
+        `complete failed: HTTP ${this.opts.failCompleteWith}`,
+      );
     }
     return { manifestId, dashboardUrl: `/dashboard?upload=${manifestId}` };
   }
