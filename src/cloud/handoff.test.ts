@@ -35,7 +35,7 @@ function stubClient(impl: { grant?: { code: string; expires_at: string }; error?
       if (impl.error !== undefined) return Promise.reject(impl.error);
       // The schema parse is the client's job in production; mirror it here so
       // the stub honors the same contract surface.
-      return Promise.resolve(handoffResponseSchema.parse(impl.grant));
+      return Promise.resolve(handoffResponseSchema.parse(impl.grant)) as never;
     },
   };
   return { client, calls };
