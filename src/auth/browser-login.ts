@@ -27,9 +27,12 @@ function escapeHtml(s: string): string {
 const FROG_SVG = readFileSync(new URL("../../brand/frugl-icon.svg", import.meta.url), "utf8");
 
 // The branded "You're in." landing page. Cream surface, frog mark + check badge,
-// a confident headline, then it points the user back to the terminal and closes
-// itself. Mirrors the design's CallbackPage.
-function renderCallbackPage(email: string | null): string {
+// a confident headline, then it sends the (already web-authenticated) browser on
+// to the dashboard. New accounts with no org are bounced to onboarding by the
+// cloud middleware — so we always aim at /dashboard and let the cloud route.
+// A visible button is the manual fallback if the auto-redirect is blocked.
+// Mirrors the design's CallbackPage.
+function renderCallbackPage(email: string | null, dashboardUrl: string): string {
   const who = email
     ? `Signed in as <span style="color:#191921;font-weight:600">${escapeHtml(email)}</span>. `
     : "";
@@ -47,10 +50,11 @@ function renderCallbackPage(email: string | null): string {
   </div>
   <div style="font-size:13px;font-weight:500;letter-spacing:0.22em;text-transform:uppercase;color:#1f9d5c;margin-bottom:18px">Signed in</div>
   <h1 style="margin:0;font-size:66px;font-weight:900;letter-spacing:-0.035em;line-height:1;color:#191921">You&rsquo;re in.</h1>
-  <p style="margin:20px 0 0;max-width:460px;font-size:19px;line-height:1.5;color:#5f5b66">${who}Head back to your terminal — Frugl is already wrapping up.</p>
-  <div style="position:absolute;bottom:26px;left:0;right:0;font-size:12px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:#a8a39a">This tab closes itself in a moment&nbsp;&nbsp;·&nbsp;&nbsp;frugl.dev</div>
+  <p style="margin:20px 0 0;max-width:460px;font-size:19px;line-height:1.5;color:#5f5b66">${who}Taking you to your dashboard&hellip;</p>
+  <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;margin-top:30px;padding:14px 28px;border-radius:12px;background:#1f9d5c;color:#fff;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 6px 18px rgba(15,98,56,0.28)">Go to your dashboard&nbsp;&rarr;</a>
+  <div style="position:absolute;bottom:26px;left:0;right:0;font-size:12px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:#a8a39a">Redirecting in a moment&nbsp;&nbsp;·&nbsp;&nbsp;frugl.dev</div>
 </div>
-<script>setTimeout(function(){window.close()},2500)</script>
+<script>setTimeout(function(){window.location.href=${JSON.stringify(dashboardUrl)}},3000)</script>
 </body></html>`;
 }
 
@@ -138,7 +142,7 @@ export function startBrowserLogin(opts: {
         return;
       }
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(renderCallbackPage(email));
+      res.end(renderCallbackPage(email, `${endpointUrl}/dashboard`));
       resolve({ token, email, userId });
     });
 

@@ -62,7 +62,12 @@ describe("startBrowserLogin", () => {
       state,
     });
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("You&rsquo;re in.");
+    const html = await res.text();
+    expect(html).toContain("You&rsquo;re in.");
+    // The web-authenticated tab is sent on to the dashboard (the cloud routes a
+    // no-org account to onboarding from there) — both auto-redirect and a button.
+    expect(html).toContain("https://cloud.test/dashboard");
+    expect(html).toContain("window.location.href");
     await expect(promise).resolves.toEqual({
       token: "pat_secret",
       email: "dev@example.com",
