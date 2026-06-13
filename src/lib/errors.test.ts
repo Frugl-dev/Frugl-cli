@@ -4,7 +4,6 @@ import {
   AuthError,
   EndpointError,
   type FruglError,
-  InspectDirError,
   KeychainError,
   NetworkError,
   NoSessionsError,
@@ -42,7 +41,6 @@ describe("EXIT frozen contract (FR-037)", () => {
       NETWORK_FAILURE: 40,
       ENDPOINT_UNREACHABLE: 41,
       VERSION_GATE_FAILURE: 50,
-      INSPECT_DIR_EXISTS: 60,
     });
   });
 
@@ -54,7 +52,6 @@ describe("EXIT frozen contract (FR-037)", () => {
     [new NetworkError("x"), EXIT.NETWORK_FAILURE],
     [new EndpointError("x"), EXIT.ENDPOINT_UNREACHABLE],
     [new VersionGateError("1.0.0", "2.0.0"), EXIT.VERSION_GATE_FAILURE],
-    [new InspectDirError("x"), EXIT.INSPECT_DIR_EXISTS],
     [new UsageError("x"), EXIT.USAGE],
   ];
 

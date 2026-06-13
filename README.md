@@ -78,13 +78,12 @@ before sending anything:
 
 ```bash
 frugl upload --dry-run                     # discover + anonymize; transmit zero bytes
-frugl upload --dry-run --inspect ./out     # also write the redacted output to ./out
-frugl upload --confirm                     # upload without prompting
+frugl upload --yes                         # upload without prompting
 ```
 
-Non-interactive runs (`--yes`/`--confirm`, `--format json`/`--format minimal`,
-or no TTY such as CI) skip the prompts and select every detected supported
-provider and all of its projects automatically.
+Non-interactive runs (`--yes`, `--format json`/`--format minimal`, or no TTY
+such as CI) skip the prompts and select every detected supported provider and
+all of its projects automatically.
 
 After a successful upload, the printed dashboard link carries a **single-use,
 ~60-second sign-in code** (`?handoff=…`) so opening it lands you on your

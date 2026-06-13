@@ -29,7 +29,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { EXIT } from "../lib/exit-codes.js";
 import { runCli } from "./helpers/spawn.js";
@@ -182,17 +181,14 @@ describe.skipIf(!ENABLED)(
       expect(stdout).toContain(stackUser.email);
     });
 
-    it("dry-run --inspect writes inspection dir without any network call (exit 0)", async () => {
-      const inspectDir = path.join(tmp.dir, "inspect-out");
+    it("dry-run anonymizes without any network call (exit 0)", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--inspect", inspectDir, "--endpoint", endpoint],
+        ["upload", "--dry-run", "--format", "json", "--endpoint", endpoint],
         { env: env() },
       );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
       expect(result.dryRun).toBe(true);
-      const { existsSync } = await import("node:fs");
-      expect(existsSync(path.join(inspectDir, "redaction-summary.json"))).toBe(true);
     });
 
     it("upload --yes succeeds and returns a manifest ID (exit 0)", async () => {
