@@ -1,29 +1,58 @@
+<div align="center">
+  <img src="./brand/frugl-icon.svg" alt="Frugl" width="92" height="92" />
+
 # `frugl` — the Frugl CLI
 
-Public, open-source command-line tool that uploads anonymized AI-coding
-session logs from your machine to **hosted Frugl** for retrospective waste
-analysis. The anonymizer runs **locally**, before any byte leaves your
-machine.
+**Find the waste in your AI coding sessions — without your code ever leaving your machine.**
+
+[Website](https://frugl.dev) · [Dashboard](https://app.frugl.dev) · [Report a bug](https://github.com/Frugl-dev/Frugl-cli/issues)
+
+</div>
+
+---
+
+Frugl reads the session logs your AI coding assistants already write to disk
+(Claude Code today; Codex, Cursor, and Gemini detected and coming soon),
+**anonymizes them locally**, and uploads them to [hosted Frugl](https://app.frugl.dev)
+for retrospective waste analysis. You get a dashboard and ranked, cost-saving
+recommendations — "you reload the same 40k-token file every session," "this agent
+loops on a failing test" — so your team spends fewer tokens getting the same work done.
+
+The catch every team worries about: _your raw prompts and code never leave your
+machine._ The anonymizer runs **locally, before any byte is transmitted**, and it
+[**fails closed**](#why-open-source) — if redaction can't complete, nothing uploads.
+That's also why this CLI is open source: you can read exactly what it does to your
+data before you trust it with any.
+
+## Quick start
 
 ```bash
-npm install -g frugl          # or: npx frugl <command>
-frugl login                   # email one-time code; token stored in OS keychain
-                              #   first-time accounts are prompted to create or join an org
-frugl whoami                  # show signed-in identity + active org and role
-frugl org                     # show your active org (alias: frugl org ls)
-frugl org create              # start a new org (you become the owner)
-frugl org join <code>         # accept an invite code from a teammate
-frugl upload --dry-run        # discover + anonymize; transmit zero bytes
-frugl upload --dry-run --inspect ./out   # also write redacted output to ./out
-frugl upload --confirm        # upload anonymized sessions to the cloud
-frugl context                 # capture + upload a timestamped context snapshot
-frugl logout                  # invalidate session, forget token
+npm install -g frugl                 # or run ad-hoc with: npx frugl <command>
+
+frugl setup                          # sign in + create/join an org in one step
+frugl upload                         # discover, anonymize, and upload your sessions
+frugl recommendations                # see ranked, cost-saving fixes
 ```
 
-For the full contributor and verifier walk-through (including how to run the
-CLI against the sibling local Docker stack and how to verify the trust gate
-yourself with planted secrets), see
-[`specs/001-cli-ingest-client/quickstart.md`](./specs/001-cli-ingest-client/quickstart.md).
+That's the whole loop: **setup → upload → act on recommendations.** Everything
+below is the detail.
+
+## Commands
+
+| Command                 | What it does                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `frugl setup`           | Authenticate **and** create/join an org in one idempotent step. Safe to re-run. |
+| `frugl login`           | Sign in with an emailed one-time code; token stored in the OS keychain.         |
+| `frugl logout`          | Revoke this device's session and forget the local token.                        |
+| `frugl whoami`          | Show the signed-in identity, active org, and role.                              |
+| `frugl upload`          | Discover, anonymize, and upload local AI-coding sessions.                       |
+| `frugl recommendations` | List and rank cost-saving recommendations; print a fix prompt.                  |
+| `frugl context`         | Capture + upload a timestamped context-window snapshot.                         |
+| `frugl org`             | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                     |
+| `frugl hook install`    | Auto-upload from a Claude Code hook when a session ends.                        |
+
+Every command supports `--json` for machine-readable output and `--help` for
+the full flag list.
 
 ## Guided upload
 
@@ -38,34 +67,68 @@ before sending anything:
    any you don't want to upload (a scratch dir, a client repo under NDA, …).
 3. **Upload** — only the sessions you kept selected are anonymized and uploaded.
 
+```bash
+frugl upload --dry-run                     # discover + anonymize; transmit zero bytes
+frugl upload --dry-run --inspect ./out     # also write the redacted output to ./out
+frugl upload --confirm                     # upload without prompting
+```
+
 Non-interactive runs (`--yes`/`--confirm`, `--json`, or no TTY such as CI)
 skip the prompts and select every detected supported provider and all of its
 projects automatically.
 
 After a successful upload, the printed dashboard link carries a **single-use,
 ~60-second sign-in code** (`?handoff=…`) so opening it lands you on your
-dashboard already signed in — no second login. Privacy notes: the code is not
-your CLI token, dies on first use or expiry, and is **off by default in
-non-interactive runs** (CI, pipes, `--json`); pass `--handoff` to opt in there,
-or `--no-handoff` to keep it out of any printed output (shared or recorded
-terminals). If the link has expired, the web login returns you to the same
-dashboard page afterwards.
+dashboard already signed in — no second login. The code is **not** your CLI
+token, dies on first use or expiry, and is **off by default in non-interactive
+runs** (CI, pipes, `--json`); pass `--handoff` to opt in there, or `--no-handoff`
+to keep it out of any printed output (shared or recorded terminals). If the link
+has expired, the web login returns you to the same dashboard page afterwards.
+
+## Recommendations
+
+Once you've uploaded a few sessions, Frugl ranks where your team is burning
+tokens and hands you a ready-to-paste prompt to fix each one:
+
+```bash
+frugl recommendations                  # list, ranked by estimated savings
+frugl recommendations --fix <id>       # print the fix prompt for one recommendation
+frugl recommendations --apply <id>     # mark it applied
+frugl recommendations --dismiss <id>   # snooze it for 30 days
+```
+
+## Continuous uploads (Claude Code hook)
+
+Don't want to remember to run `frugl upload`? Install a Claude Code hook that
+fires a headless upload every time a session ends:
+
+```bash
+frugl hook install            # writes ./.claude/settings.json (this project)
+frugl hook install --global   # writes ~/.claude/settings.json (everywhere)
+frugl hook status             # show whether the hook is installed
+frugl hook uninstall          # remove it
+```
+
+The hook runs the same local anonymizer as a manual upload. It needs a token
+available headlessly — `frugl setup` first.
 
 ## Organizations
 
 Every Frugl account belongs to exactly one org — the team whose AI retros you
-share. A brand-new account is prompted right after `frugl login` to **create**
-an org (you become the owner) or **join** an existing one with an invite code.
-Until you do, `frugl upload` is blocked.
+share. `frugl setup` handles this for you; a brand-new account is prompted to
+**create** an org (you become the owner) or **join** an existing one with an
+invite code. Until you belong to an org, `frugl upload` is blocked.
 
 ```bash
-frugl org                     # show your active org, role, and member count
-frugl org create --name "Acme Corp"   # non-interactive create (slug auto-derived)
-frugl org join pop_inv_…      # redeem an invite code from a teammate
+frugl org                              # show your active org, role, and member count
+frugl org create --name "Acme Corp"    # non-interactive create (slug auto-derived)
+frugl org join pop_inv_…               # redeem an invite code from a teammate
+frugl org use <slug>                   # switch the active org for uploads
+frugl org invites                      # how to get an invite code
 ```
 
-Invite codes come from a teammate (org owners/admins generate them on the
-dashboard); accept one with `frugl org join <code>`.
+Invite codes come from a teammate — org owners and admins generate them on the
+dashboard.
 
 ## Context snapshots
 
@@ -100,10 +163,16 @@ exits non-zero, uploads nothing, and **never blocks the next run**.
 ## Why open source?
 
 The CLI sees raw session content before redaction. You should be able to
-read its source — especially the anonymizer — before trusting it with
-that data. The full redaction policy lives under `src/anonymize/` with
-vitest tests asserting that planted secrets across every category are
-removed (SC-001).
+read its source — especially the anonymizer — before trusting it with that
+data. The full redaction policy lives under `src/anonymize/` with vitest tests
+asserting that planted secrets across every category are removed (SC-001).
+Redaction is **fail-closed**: if the anonymizer can't finish, the upload aborts
+rather than risk sending unredacted bytes.
+
+For the full contributor and verifier walk-through — including how to run the
+CLI against the sibling local Docker stack and verify the trust gate yourself
+with planted secrets — see
+[`specs/001-cli-ingest-client/quickstart.md`](./specs/001-cli-ingest-client/quickstart.md).
 
 ## Sibling repos
 
@@ -116,9 +185,9 @@ This is one of three repos that make up the cloud product
 
 ## Stack
 
-TypeScript · Node ≥ 20 · `@oclif/core` for command framework · `@inquirer/prompts`
-for interactive input · OS keychain via `@napi-rs/keyring` for token
-storage · `zod` for cloud-contract validation · `p-retry` + `p-limit`
+TypeScript · Node ≥ 20 · `@oclif/core` for the command framework ·
+`@inquirer/prompts` for interactive input · OS keychain via `@napi-rs/keyring`
+for token storage · `zod` for cloud-contract validation · `p-retry` + `p-limit`
 for bounded retry and concurrency · `conf` for cross-platform state
 persistence · vitest · oxlint · oxfmt · pnpm.
 
@@ -147,8 +216,8 @@ The local stack itself (Supabase + MinIO) is brought up from the
 `frugl` ships to npm as a compiled oclif CLI. `pnpm build` compiles `src/` to
 `dist/` (preserving the per-command file layout oclif discovers at runtime) and
 generates `oclif.manifest.json`. The published tarball contains only
-`bin/run.js`, `dist/`, the manifest, `README.md`, and `LICENSE` (see the `files`
-field) — never `src/`, tests, or `bin/dev.js`.
+`bin/run.js`, `dist/`, the manifest, `brand/`, `README.md`, and `LICENSE` (see
+the `files` field) — never `src/`, tests, or `bin/dev.js`.
 
 Inspect exactly what would be published without uploading anything:
 
@@ -160,8 +229,7 @@ Publishing is automated by [`.github/workflows/release.yml`](./.github/workflows
 
 1. Bump `version` in `package.json` and commit on `main`.
 2. Create a GitHub Release whose tag matches the version (e.g. `v0.1.0`).
-3. The workflow runs the full verify suite, then `npm publish --provenance
---access public`.
+3. The workflow runs the full verify suite, then `npm publish --provenance --access public`.
 
 One-time setup: add an automation **`NPM_TOKEN`** secret to the repo
 (npmjs.com → Access Tokens → Granular/Automation token with publish rights for
@@ -180,3 +248,5 @@ This repo inherits the constitution at
 `../frugl/.specify/memory/constitution.md`. Anonymization specifically is
 governed by Principle VI ("Fail-Closed Anonymization, IaC Source-of-Truth,
 Honest Failures").
+</content>
+</invoke>
