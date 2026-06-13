@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="92" height="92" role="img" aria-label="Frugl" style="display:block;filter:drop-shadow(0 10px 24px rgba(15,98,56,0.22))">
+  <defs>
+    <radialGradient id="frugl-app-skin" cx="38%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#4cc285"/>
+      <stop offset="55%" stop-color="#1f9d5c"/>
+      <stop offset="100%" stop-color="#0f6238"/>
+    </radialGradient>
+  </defs>
+  <circle cx="9.5" cy="10" r="6" fill="url(#frugl-app-skin)"/>
+  <circle cx="22.5" cy="10" r="6" fill="url(#frugl-app-skin)"/>
+  <path d="M4 17.5 C4 11.5 9 8.5 16 8.5 C23 8.5 28 11.5 28 17.5 L28 21.5 C28 27.5 23 30.5 16 30.5 C9 30.5 4 27.5 4 21.5 Z" fill="url(#frugl-app-skin)"/>
+  <circle cx="9.5" cy="9.4" r="3.3" fill="#ffffff"/>
+  <circle cx="22.5" cy="9.4" r="3.3" fill="#ffffff"/>
+  <circle cx="10.2" cy="9.8" r="1.7" fill="#11261b"/>
+  <circle cx="23.2" cy="9.8" r="1.7" fill="#11261b"/>
+  <circle cx="9.4" cy="8.7" r="0.6" fill="#ffffff"/>
+  <circle cx="22.4" cy="8.7" r="0.6" fill="#ffffff"/>
+  <ellipse cx="11" cy="17" rx="3" ry="4" fill="#ffffff" fill-opacity="0.18"/>
+  <path d="M11 23 C13.3 25.5 18.7 25.5 21 23" stroke="#0c4d2c" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+</svg>

@@ -26,6 +26,7 @@
   },
   "files": [
     "bin/run.js",
+    "brand",
     "dist",
     "oclif.manifest.json",
     "README.md",

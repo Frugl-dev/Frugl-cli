@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { color } from "../lib/theme.js";
 
@@ -20,21 +21,10 @@ function escapeHtml(s: string): string {
   );
 }
 
-// The Frugl frog mark, inlined so the callback page is fully self-contained
-// (the local server serves no static assets).
-const FROG_SVG = `<svg viewBox="0 0 32 32" width="92" height="92" role="img" aria-label="Frugl" style="display:block;filter:drop-shadow(0 10px 24px rgba(15,98,56,0.22))">
-  <defs><radialGradient id="skin" cx="40%" cy="26%" r="82%">
-    <stop offset="0%" stop-color="#4cc285"/><stop offset="55%" stop-color="#1f9d5c"/><stop offset="100%" stop-color="#0f6238"/>
-  </radialGradient></defs>
-  <circle cx="10" cy="10" r="5.6" fill="url(#skin)"/><circle cx="22" cy="10" r="5.6" fill="url(#skin)"/>
-  <path d="M3 17 C3 11 8 8 16 8 C24 8 29 11 29 17 L29 19.5 C29 26 23.5 29 16 29 C8.5 29 3 26 3 19.5 Z" fill="url(#skin)"/>
-  <ellipse cx="16" cy="21" rx="9" ry="5.5" fill="#fff" fill-opacity="0.10"/>
-  <circle cx="10" cy="9.6" r="3.1" fill="#fff"/><circle cx="22" cy="9.6" r="3.1" fill="#fff"/>
-  <circle cx="10.6" cy="10.2" r="1.6" fill="#11261b"/><circle cx="22.6" cy="10.2" r="1.6" fill="#11261b"/>
-  <circle cx="9.5" cy="8.8" r="0.6" fill="#fff"/><circle cx="21.5" cy="8.8" r="0.6" fill="#fff"/>
-  <circle cx="13.6" cy="15.4" r="0.75" fill="#0c4d2c"/><circle cx="18.4" cy="15.4" r="0.75" fill="#0c4d2c"/>
-  <path d="M8.5 19.5 Q16 26.5 23.5 19.5" stroke="#0c4d2c" stroke-width="1.7" fill="none" stroke-linecap="round"/>
-</svg>`;
+// Read the Frugl frog mark from the brand asset so the callback page stays in
+// sync with the canonical icon. The file is inlined at startup; the local auth
+// server serves no static assets.
+const FROG_SVG = readFileSync(new URL("../../brand/frugl-icon.svg", import.meta.url), "utf8");
 
 // The branded "You're in." landing page. Cream surface, frog mark + check badge,
 // a confident headline, then it points the user back to the terminal and closes
