@@ -29,13 +29,14 @@ data before you trust it with any.
 ```bash
 npm install -g frugl                 # or run ad-hoc with: npx frugl <command>
 
-frugl setup                          # sign in + create/join an org in one step
+frugl login                          # sign in (GitHub, Google, or email code)
+                                     #   first-time accounts are walked through
+                                     #   creating or joining an org, right here
 frugl upload                         # discover, anonymize, and upload your sessions
-frugl recommendations                # see ranked, cost-saving fixes
 ```
 
-That's the whole loop: **setup → upload → act on recommendations.** Everything
-below is the detail.
+Then open the dashboard link the upload prints to see where your team is
+burning tokens. Everything below is the detail.
 
 ## Commands
 
@@ -248,5 +249,3 @@ This repo inherits the constitution at
 `../frugl/.specify/memory/constitution.md`. Anonymization specifically is
 governed by Principle VI ("Fail-Closed Anonymization, IaC Source-of-Truth,
 Honest Failures").
-</content>
-</invoke>
