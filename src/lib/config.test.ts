@@ -8,6 +8,9 @@ import {
   readConfig,
   getLastLoginMethod,
   setLastLoginMethod,
+  getPendingAuthFailure,
+  recordPendingAuthFailure,
+  clearPendingAuthFailure,
 } from "./config.js";
 
 let dir: string;
@@ -79,5 +82,57 @@ describe("frugl-config (lastLoginMethod)", () => {
     );
     expect(() => getLastLoginMethod({ cwd: dir })).not.toThrow();
     expect(getLastLoginMethod({ cwd: dir })).toBeUndefined();
+  });
+});
+
+describe("frugl-config (pendingAuthFailure)", () => {
+  const ENDPOINT = "https://app.frugl.dev";
+
+  it("is undefined on a fresh store", () => {
+    expect(getPendingAuthFailure({ cwd: dir })).toBeUndefined();
+  });
+
+  it("records an endpoint with a timestamp, then reads it back", () => {
+    recordPendingAuthFailure(ENDPOINT, { cwd: dir });
+    const pending = getPendingAuthFailure({ cwd: dir });
+    expect(pending?.endpoint).toBe(ENDPOINT);
+    expect(() => new Date(pending?.at ?? "").toISOString()).not.toThrow();
+  });
+
+  it("clears the breadcrumb when the endpoint matches", () => {
+    recordPendingAuthFailure(ENDPOINT, { cwd: dir });
+    clearPendingAuthFailure(ENDPOINT, { cwd: dir });
+    expect(getPendingAuthFailure({ cwd: dir })).toBeUndefined();
+  });
+
+  it("does NOT clear a breadcrumb recorded against a different endpoint", () => {
+    recordPendingAuthFailure(ENDPOINT, { cwd: dir });
+    clearPendingAuthFailure("https://staging.frugl.dev", { cwd: dir });
+    expect(getPendingAuthFailure({ cwd: dir })?.endpoint).toBe(ENDPOINT);
+  });
+
+  it("co-exists with other preferences without clobbering them", () => {
+    setLinkPrs(true, { cwd: dir });
+    setLastLoginMethod("github", { cwd: dir });
+    recordPendingAuthFailure(ENDPOINT, { cwd: dir });
+    expect(getLinkPrs({ cwd: dir })).toBe(true);
+    expect(getLastLoginMethod({ cwd: dir })).toBe("github");
+    // Clearing the breadcrumb leaves the rest intact.
+    clearPendingAuthFailure(ENDPOINT, { cwd: dir });
+    expect(getLinkPrs({ cwd: dir })).toBe(true);
+    expect(getLastLoginMethod({ cwd: dir })).toBe("github");
+    expect(getPendingAuthFailure({ cwd: dir })).toBeUndefined();
+  });
+
+  it("ignores a malformed stored breadcrumb, falling back to defaults", () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, "frugl-config.json"),
+      JSON.stringify({
+        data: { schemaVersion: 1, linkPrs: false, pendingAuthFailure: { endpoint: "not-a-url" } },
+      }),
+    );
+    expect(() => getPendingAuthFailure({ cwd: dir })).not.toThrow();
+    expect(getPendingAuthFailure({ cwd: dir })).toBeUndefined();
   });
 });

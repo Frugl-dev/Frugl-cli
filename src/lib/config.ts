@@ -9,11 +9,24 @@ const CONFIG_SCHEMA_VERSION = 1 as const;
 export const loginMethodSchema = z.enum(["github", "google", "otp"]);
 export type LoginMethod = z.infer<typeof loginMethodSchema>;
 
+// A breadcrumb dropped when a non-interactive run (the Claude Code hook, CI)
+// fails authentication. The background upload has no human watching its stderr,
+// so we persist the failure here and surface it the next time the user runs an
+// interactive, auth-requiring command — turning a silent dead token into a
+// visible "run frugl login". Keyed by endpoint so a failure on one endpoint
+// never nags about another. Cleared on the next successful login.
+export const pendingAuthFailureSchema = z.object({
+  endpoint: z.string().url(),
+  at: z.string().datetime(),
+});
+export type PendingAuthFailure = z.infer<typeof pendingAuthFailureSchema>;
+
 export const fruglConfigSchema = z.object({
   schemaVersion: z.literal(CONFIG_SCHEMA_VERSION),
   linkPrs: z.boolean(),
-  // Optional so configs written before this field existed still validate.
+  // Optional so configs written before these fields existed still validate.
   lastLoginMethod: loginMethodSchema.optional(),
+  pendingAuthFailure: pendingAuthFailureSchema.optional(),
 });
 
 export type FruglConfig = z.infer<typeof fruglConfigSchema>;
@@ -63,4 +76,26 @@ export function getLastLoginMethod(options: ConfigStoreOptions = {}): LoginMetho
 
 export function setLastLoginMethod(value: LoginMethod, options: ConfigStoreOptions = {}): void {
   writeConfig({ lastLoginMethod: value }, options);
+}
+
+export function getPendingAuthFailure(
+  options: ConfigStoreOptions = {},
+): PendingAuthFailure | undefined {
+  return readConfig(options).pendingAuthFailure;
+}
+
+// Record that a non-interactive run failed auth for `endpoint`. Stamped with the
+// current time so the eventual warning can say how long ago it happened.
+export function recordPendingAuthFailure(endpoint: string, options: ConfigStoreOptions = {}): void {
+  writeConfig({ pendingAuthFailure: { endpoint, at: new Date().toISOString() } }, options);
+}
+
+// Clear the breadcrumb after a successful login. No-op unless the stored failure
+// is for this same endpoint, so logging into endpoint A never silences a pending
+// failure recorded against endpoint B.
+export function clearPendingAuthFailure(endpoint: string, options: ConfigStoreOptions = {}): void {
+  const current = readConfig(options).pendingAuthFailure;
+  if (current?.endpoint === endpoint) {
+    writeConfig({ pendingAuthFailure: undefined }, options);
+  }
 }

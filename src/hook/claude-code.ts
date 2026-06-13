@@ -11,7 +11,7 @@ import { UsageError } from "../lib/errors.js";
 export type HookScope = "project" | "global";
 
 const SESSION_END_EVENT = "SessionEnd";
-export const UPLOAD_COMMAND = "frugl upload --yes --json";
+export const UPLOAD_COMMAND = "frugl upload --sessions --yes --json";
 const FRUGL_COMMAND_RE = /\bfrugl\s+upload\b/;
 
 export interface HookFsOptions {
