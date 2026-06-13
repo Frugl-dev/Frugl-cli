@@ -1,6 +1,19 @@
 import { AuthError } from "../lib/errors.js";
+import { clearPendingAuthFailure } from "../lib/config.js";
 import type { IdentityClient } from "./identity-client.js";
 import { SessionStore, type AuthSession } from "./session-store.js";
+
+// Clear the background-auth-failure breadcrumb after a fresh session lands. Any
+// successful login means the token is good again, so the next interactive
+// command should stop nagging. Best-effort: a config write failure must never
+// fail an otherwise-successful login.
+function clearAuthFailureBreadcrumb(endpointUrl: string): void {
+  try {
+    clearPendingAuthFailure(endpointUrl);
+  } catch {
+    /* ignore — the breadcrumb is a convenience, not a contract */
+  }
+}
 
 export interface AuthServiceOptions {
   endpointUrl: string;
@@ -47,6 +60,7 @@ export class AuthService {
       loggedInAt: new Date().toISOString(),
     };
     await this.sessions.save(session);
+    clearAuthFailureBreadcrumb(this.endpointUrl);
     return session;
   }
 
@@ -63,6 +77,7 @@ export class AuthService {
       loggedInAt: new Date().toISOString(),
     };
     await this.sessions.save(session);
+    clearAuthFailureBreadcrumb(this.endpointUrl);
     return session;
   }
 

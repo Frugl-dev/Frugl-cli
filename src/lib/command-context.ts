@@ -3,8 +3,10 @@ import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
+import { getPendingAuthFailure } from "./config.js";
 import { isFruglError, printFruglError } from "./errors.js";
 import { resolveDebug, resolveOutputMode, type OutputMode } from "./output-mode.js";
+import { color, symbol } from "./theme.js";
 
 export interface CommandFlags {
   json?: boolean | undefined;
@@ -60,6 +62,10 @@ export async function buildCommandContext<A extends AuthMode>(
     env: process.env["FRUGL_ENDPOINT"],
   });
 
+  // Surface a prior background auth failure (hook/CI) the moment the user runs an
+  // interactive command that needs auth — before we try, and fail, the same way.
+  if (opts.auth !== "none") warnPendingAuthFailure(mode, endpoint.url);
+
   let session: AuthSession | null;
   if (opts.auth === "require") {
     session = await requireAuthSession(endpoint.url);
@@ -78,6 +84,39 @@ export async function buildCommandContext<A extends AuthMode>(
   });
 
   return { mode, endpoint, client, session: session as SessionFor<A> };
+}
+
+// Human-friendly "how long ago" for the pending-failure warning. Coarse on
+// purpose — the user only needs to know it's stale, not the exact second.
+function describeAgo(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "recently";
+  const min = Math.round(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} hr ago`;
+  const d = Math.round(hr / 24);
+  return `${d} day${d === 1 ? "" : "s"} ago`;
+}
+
+// Warn — once, on stderr — that a background run (the Claude Code hook or CI)
+// failed auth for this endpoint. Interactive text mode only: the hook itself
+// runs --json on a non-TTY, so it never nags about its own failure. Reading the
+// breadcrumb is best-effort; a config glitch must never block the command.
+function warnPendingAuthFailure(mode: OutputMode, endpointUrl: string): void {
+  if (mode !== "text" || !process.stdout.isTTY) return;
+  let pending: ReturnType<typeof getPendingAuthFailure>;
+  try {
+    pending = getPendingAuthFailure();
+  } catch {
+    return;
+  }
+  if (!pending || pending.endpoint !== endpointUrl) return;
+  process.stderr.write(
+    `${color.warn(`${symbol.warn} Your last automatic upload failed — the access token is no longer valid`)} ${color.dim(`(${describeAgo(pending.at)}).`)}\n` +
+      `${color.dim("  Run ")}${color.frog("frugl login")}${color.dim(" to reconnect; the Claude Code hook will resume on its own.")}\n\n`,
+  );
 }
 
 /**

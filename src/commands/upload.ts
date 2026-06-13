@@ -61,7 +61,7 @@ import {
 } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
-import { getLinkPrs } from "../lib/config.js";
+import { getLinkPrs, recordPendingAuthFailure, clearPendingAuthFailure } from "../lib/config.js";
 import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
 import { resolveDebug, resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
 
@@ -687,13 +687,33 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           : {}),
         ...(contextUploadResult ? { context: contextUploadResult } : {}),
       };
+      // A real upload round-tripped successfully (dry-run returned earlier), so
+      // the token is healthy — drop any stale background-failure breadcrumb left
+      // by an earlier hook run. Best-effort; never fail a good upload over it.
+      try {
+        clearPendingAuthFailure(endpoint.url);
+      } catch {
+        /* ignore — the breadcrumb is a convenience, not a contract */
+      }
+
       if (mode === "json") process.stdout.write(`${JSON.stringify(finalSummary)}\n`);
     } catch (err) {
-      this.bail(err, mode);
+      this.bail(err, mode, endpoint.url);
     }
   }
 
-  private bail(err: unknown, mode: OutputMode = "text"): never {
+  private bail(err: unknown, mode: OutputMode = "text", endpointUrl?: string): never {
+    // A background run (the Claude Code hook, CI) dies on auth with no human
+    // watching its stderr. Leave a breadcrumb so the next interactive command
+    // surfaces it. Best-effort; never let it mask the real error below.
+    if (err instanceof AuthError && endpointUrl) {
+      try {
+        recordPendingAuthFailure(endpointUrl);
+      } catch {
+        /* ignore — the breadcrumb is a convenience, not a contract */
+      }
+    }
+
     if (
       err instanceof CloudHttpError &&
       err.status === 409 &&
