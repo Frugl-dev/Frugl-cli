@@ -377,8 +377,9 @@ Exit codes:
 
       // Resolve the active org so the success screen lands the whole flow on one
       // surface (method → browser → token → org), matching the OTP path. A 409
-      // means the account has no org yet — not an error, just nothing to show.
+      // means the account has no org yet — prompt for setup like the OTP path.
       let orgContext: OrgMeResponse | null = null;
+      let orgRequired = false;
       try {
         orgContext = await authedClient.call({
           method: "GET",
@@ -386,30 +387,160 @@ Exit codes:
           schema: orgMeResponseSchema,
         });
       } catch (err) {
-        if (!(err instanceof CloudHttpError && err.status === 409)) throw err;
+        if (err instanceof CloudHttpError && err.status === 409) {
+          orgRequired = true;
+        } else {
+          throw err;
+        }
       }
 
       if (mode === "json") {
-        process.stdout.write(
-          `${JSON.stringify({
-            command: "login",
-            ok: true,
-            email: session.email || email,
-            endpoint: session.endpointUrl,
-            userId: session.userId || userId,
-            provider,
-          })}\n`,
-        );
+        const out: Record<string, unknown> = {
+          command: "login",
+          ok: true,
+          email: session.email || email,
+          endpoint: session.endpointUrl,
+          userId: session.userId || userId,
+          provider,
+        };
+        if (orgRequired) out["orgRequired"] = true;
+        process.stdout.write(`${JSON.stringify(out)}\n`);
         return;
       }
       process.stdout.write(
         `${color.ok(`${symbol.tick} Signed in as ${session.email || email}`)}  ${color.dim(`(via ${provider})`)}\n`,
       );
-      if (orgContext) {
-        process.stdout.write(
-          `${color.dim("  Active org: ")}${color.bold(orgContext.org.name)}  ${color.dim(`(role: ${orgContext.membership.role})`)}\n`,
+
+      if (!orgRequired) {
+        if (orgContext) {
+          process.stdout.write(
+            `${color.dim("  Active org: ")}${color.bold(orgContext.org.name)}  ${color.dim(`(role: ${orgContext.membership.role})`)}\n`,
+          );
+        }
+        const handoff = await requestHandoffUrl(
+          authedClient,
+          `${endpoint.url}/dashboard`,
+          resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
         );
+        this.printNextSteps(handoff);
+        return;
       }
+
+      // No org yet — every Frugl account belongs to one. Offer the fork.
+      process.stdout.write(
+        `\n${color.bold("You're new here — every Frugl account belongs to an org.")}\n`,
+      );
+      process.stdout.write(
+        color.dim(
+          "An org is the team whose AI retros you share. You can be in more than one later.\n\n",
+        ),
+      );
+
+      const choice = await select({
+        message: "What would you like to do?",
+        choices: [
+          {
+            name: "Create a new org",
+            value: "create",
+            description: "You become the owner. Invite teammates later.",
+          },
+          {
+            name: "Join an existing org",
+            value: "join",
+            description: "Paste an invite code from a teammate.",
+          },
+          {
+            name: "I'll decide later",
+            value: "later",
+            description: "Logs you in, but upload is blocked until you have one.",
+          },
+          {
+            name: "Log out — wrong account",
+            value: "logout",
+            description: "Forget this token; you'll be back at frugl login.",
+          },
+        ],
+      });
+
+      if (choice === "later") {
+        process.stdout.write(
+          `\n${color.dim("  No problem. Set one up anytime with ")}${color.frog("frugl org create")}${color.dim(" or ")}${color.frog("frugl org join <code>")}${color.dim(".")}\n`,
+        );
+        process.stdout.write(color.dim("  Upload stays blocked until then.\n"));
+        return;
+      }
+
+      if (choice === "logout") {
+        await clearAuthSession(endpoint.url);
+        process.stdout.write(
+          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.frog("frugl login")}${color.dim(" to sign in with a different account.")}\n`,
+        );
+        return;
+      }
+
+      let orgAction: OrgSetupAction;
+      if (choice === "create") {
+        const name = await input({
+          message: "Org name:",
+          validate: (v) =>
+            (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
+        });
+        orgAction = { action: "create", name, slug: deriveSlug(name) };
+      } else {
+        const inviteCode = await input({
+          message: "Invite code:",
+          validate: (v) => v.trim().length > 0 || "Enter an invite code",
+        });
+        orgAction = { action: "join", code: inviteCode.trim() };
+      }
+
+      const orgSetupSpec: OrgSetupPresentation = {
+        command: "login",
+        reprompt: { name: promptOrgName, code: promptInviteCode },
+        messages: {
+          slugTaken: (suggestion) => ({
+            warn: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
+            abort: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
+          }),
+          invalidCode: {
+            warn: `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}`,
+            abort: `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}`,
+          },
+          expiredCode: {
+            warn: `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}`,
+            abort: `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}`,
+          },
+        },
+        render: {
+          text: (r) => {
+            if (r.status === "created") {
+              return `\n${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(r.slug)}${color.dim(".")}\n`;
+            }
+            if (r.status === "joined") {
+              return `\n${color.ok(`${symbol.tick} Joined ${r.slug}`)}  ${color.dim("as member.")}\n`;
+            }
+            return `\n${color.ok(`${symbol.tick} Active org: ${r.orgName}`)}  ${color.dim(`(${r.slug})`)}\n`;
+          },
+          json: (r) => ({
+            command: "login",
+            ok: true,
+            slug: r.slug,
+            name: r.orgName,
+            outcome:
+              r.status === "already-setup"
+                ? "existing"
+                : r.status === "created"
+                  ? "created"
+                  : "joined",
+          }),
+        },
+      };
+      const result = await runOrgSetupFlow(
+        authedClient,
+        orgAction,
+        makeOrgSetupPrompts(orgSetupSpec, "text"),
+      );
+      renderOrgSetupResult(result, orgSetupSpec, "text");
       const handoff = await requestHandoffUrl(
         authedClient,
         `${endpoint.url}/dashboard`,
