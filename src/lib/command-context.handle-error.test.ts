@@ -6,7 +6,6 @@ import {
   AuthError,
   EndpointError,
   FruglError,
-  InspectDirError,
   KeychainError,
   NetworkError,
   NoSessionsError,
@@ -65,7 +64,6 @@ describe("handleCommandError — frozen exit-code contract (FR-037)", () => {
     [new NetworkError("x"), EXIT.NETWORK_FAILURE],
     [new EndpointError("x"), EXIT.ENDPOINT_UNREACHABLE],
     [new VersionGateError("1.0.0", "2.0.0"), EXIT.VERSION_GATE_FAILURE],
-    [new InspectDirError("x"), EXIT.INSPECT_DIR_EXISTS],
     [new UsageError("x"), EXIT.USAGE],
     [new FruglError("x", EXIT.GENERIC_FAILURE), EXIT.GENERIC_FAILURE],
   ];

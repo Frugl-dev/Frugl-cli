@@ -68,7 +68,7 @@ export const FAILURE_REASON_INFO: Record<FailureReason, FailureReasonInfo> = {
   anonymization: {
     reason: "anonymization",
     summary: "local redaction failed — nothing was sent",
-    remedy: "Fail-closed: inspect the source; --dry-run --inspect DIR shows the redaction.",
+    remedy: "Fail-closed: inspect the source; re-run with --dry-run to preview the redaction.",
     order: 4,
   },
   unknown: {

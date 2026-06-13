@@ -66,12 +66,6 @@ export class NoSessionsError extends FruglError {
   }
 }
 
-export class InspectDirError extends FruglError {
-  constructor(message: string) {
-    super(message, EXIT.INSPECT_DIR_EXISTS);
-  }
-}
-
 export class UsageError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.USAGE);

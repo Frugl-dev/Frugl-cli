@@ -1,7 +1,5 @@
 import { Args, Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
-import { mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
@@ -53,7 +51,6 @@ import type { Source, SessionRef } from "../sources/types.js";
 import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
 import {
   AuthError,
-  InspectDirError,
   NoSessionsError,
   printFruglError,
   StaleResumeError,
@@ -82,7 +79,6 @@ Exit codes:
  40   network error
  41   endpoint unreachable (--endpoint)
  50   version outdated — run: npm install -g frugl@latest
- 60   --inspect dir already exists
 
 Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
@@ -96,10 +92,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
   static override flags = {
     yes: Flags.boolean({ description: "Skip the interactive confirmation prompt." }),
     "dry-run": Flags.boolean({ description: "Anonymize but do not transmit." }),
-    inspect: Flags.string({
-      description: "With --dry-run: write redacted output to a local inspection dir.",
-    }),
-    force: Flags.boolean({ description: "Overwrite existing --inspect dir." }),
     endpoint: Flags.string({ description: "Override the API endpoint." }),
     token: Flags.string({
       description:
@@ -165,9 +157,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       process.exit(130);
     });
 
-    if (flags.inspect && !flags["dry-run"]) {
-      this.bail(new UsageError("--inspect requires --dry-run."), mode);
-    }
     if (flags.limit !== undefined && flags.limit <= 0) {
       this.bail(new UsageError("--limit must be a positive integer."), mode);
     }
@@ -374,28 +363,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
 
         if (flags["dry-run"]) {
-          if (flags.inspect) {
-            await writeInspectionDir(
-              flags.inspect,
-              !!flags.force,
-              willUpload,
-              summary,
-              gitBySession,
-            );
-          }
           if (mode !== "json") {
             process.stdout.write(
               `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
             );
-            if (flags.inspect) {
-              process.stdout.write(
-                `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.frog("jq .")}${color.dim(" before transmitting.")}\n`,
-              );
-            } else {
-              process.stdout.write(
-                `${color.dim("  Tip: add ")}${color.frog("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
-              );
-            }
           }
           const result = {
             command: "upload" as const,
@@ -964,79 +935,4 @@ async function buildJobsForSource(
     });
   }
   return jobs;
-}
-
-async function writeInspectionDir(
-  dir: string,
-  force: boolean,
-  items: SessionClassification[],
-  summary: ReturnType<typeof buildUploadSummary>,
-  gitBySession: Map<string, GitContext>,
-): Promise<void> {
-  const target = path.resolve(dir);
-  if (existsSync(target) && !force) {
-    throw new InspectDirError(
-      `--inspect directory already exists: ${target}. Use --force to overwrite.`,
-    );
-  }
-  await mkdir(target, { recursive: true });
-  const totals: Record<string, number> = {};
-  const sessions: unknown[] = [];
-  for (const item of items) {
-    if (item.kind === "unchanged") continue;
-    const fileBase = `${item.identity.sessionId}.payload.json`;
-    await writeFile(
-      path.join(target, fileBase),
-      JSON.stringify(item.anonymizationResult.payload, null, 2),
-    );
-    const counts = item.anonymizationResult.redactionsByCategory;
-    for (const [k, v] of Object.entries(counts)) {
-      totals[k] = (totals[k] ?? 0) + v;
-    }
-    sessions.push({
-      sessionId: item.identity.sessionId,
-      sourceKind: item.ref.sourceKind,
-      byteSizeBefore: item.ref.byteSizeOnDisk,
-      byteSizeAfter: item.anonymizationResult.byteSize,
-      counts: filterPositive(counts),
-    });
-  }
-  const summaryFile = {
-    redactionPolicyVersion: POLICY_VERSION,
-    sessions,
-    totals: filterPositive(totals),
-    summary,
-  };
-  await writeFile(
-    path.join(target, "redaction-summary.json"),
-    JSON.stringify(summaryFile, null, 2),
-  );
-
-  if (gitBySession.size > 0) {
-    const gitSessions = items
-      .filter((item) => item.kind !== "unchanged" && gitBySession.has(item.identity.sessionId))
-      .map((item) => ({
-        sessionId: item.identity.sessionId,
-        gitContext: gitBySession.get(item.identity.sessionId),
-      }));
-    await writeFile(
-      path.join(target, "git-context.json"),
-      JSON.stringify(
-        {
-          note: "Opt-in (--link-prs) git context — intentionally sent in clear, NOT redacted. Credential-free and path-free by construction.",
-          sessions: gitSessions,
-        },
-        null,
-        2,
-      ),
-    );
-  }
-}
-
-function filterPositive<T extends Record<string, number>>(obj: T): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v > 0) out[k] = v;
-  }
-  return out;
 }
