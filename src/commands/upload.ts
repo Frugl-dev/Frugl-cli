@@ -1,7 +1,5 @@
-import { Args, Command, Flags } from "@oclif/core";
+import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
-import { mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
@@ -53,7 +51,6 @@ import type { Source, SessionRef } from "../sources/types.js";
 import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
 import {
   AuthError,
-  InspectDirError,
   NoSessionsError,
   printFruglError,
   StaleResumeError,
@@ -82,24 +79,27 @@ Exit codes:
  40   network error
  41   endpoint unreachable (--endpoint)
  50   version outdated — run: npm install -g frugl@latest
- 60   --inspect dir already exists
 
 Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
-  static override args = {
-    manifestId: Args.string({
-      description: "With --report: the manifest to explain (defaults to the in-flight upload).",
-      required: false,
-    }),
-  };
+  // Positional targets pick *what* to upload: `sessions`, `context`, or both.
+  // Passing none uploads everything — no "neither = both" boolean to reason about.
+  // oclif has no native variadic *named* arg, so `strict = false` is what lets the
+  // command accept a target list; with `--report` the lone positional is instead
+  // the manifest id to explain (defaults to the in-flight upload).
+  static override strict = false;
+
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>                  # upload all targets (sessions + context)",
+    "<%= config.bin %> <%= command.id %> sessions         # only AI coding sessions",
+    "<%= config.bin %> <%= command.id %> context          # only a context snapshot",
+    "<%= config.bin %> <%= command.id %> sessions context # both, named explicitly",
+    "<%= config.bin %> <%= command.id %> --report         # explain the last upload's failures",
+  ];
 
   static override flags = {
     yes: Flags.boolean({ description: "Skip the interactive confirmation prompt." }),
     "dry-run": Flags.boolean({ description: "Anonymize but do not transmit." }),
-    inspect: Flags.string({
-      description: "With --dry-run: write redacted output to a local inspection dir.",
-    }),
-    force: Flags.boolean({ description: "Overwrite existing --inspect dir." }),
     endpoint: Flags.string({ description: "Override the API endpoint." }),
     token: Flags.string({
       description:
@@ -132,24 +132,27 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         "Explain the last upload's failures (grouped by reason, with remedies) instead of uploading.",
       default: false,
     }),
-    sessions: Flags.boolean({
-      description:
-        "Upload AI coding sessions. When neither --sessions nor --context is given, both are uploaded.",
-    }),
-    context: Flags.boolean({
-      description:
-        "Capture and upload a Claude Code context snapshot. When neither --sessions nor --context is given, both are uploaded.",
-    }),
   };
 
   async run(): Promise<void> {
-    const { flags, args } = await this.parse(Upload);
+    const { flags, argv } = await this.parse(Upload);
     const mode = resolveOutputMode({ format: flags.format });
     const reporter = createProgressReporter(mode);
 
-    const neither = !flags.sessions && !flags.context;
-    const uploadSessions = flags.sessions || neither;
-    const uploadContext = flags.context || neither;
+    // Positionals mean different things per mode: with `--report` the first one
+    // is a manifest id; otherwise they're the upload targets. Resolve targets
+    // only in the upload path so `frugl upload --report <id>` isn't rejected as
+    // an unknown target.
+    const positionals = argv as string[];
+    let uploadSessions = true;
+    let uploadContext = true;
+    if (!flags.report) {
+      try {
+        ({ uploadSessions, uploadContext } = resolveUploadTargets(positionals));
+      } catch (err) {
+        this.bail(err, mode);
+      }
+    }
 
     // Clear the live progress bar line and tell the user how to inspect
     // partial progress. Exit 130 is the Unix convention for Ctrl-C.
@@ -165,9 +168,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       process.exit(130);
     });
 
-    if (flags.inspect && !flags["dry-run"]) {
-      this.bail(new UsageError("--inspect requires --dry-run."), mode);
-    }
     if (flags.limit !== undefined && flags.limit <= 0) {
       this.bail(new UsageError("--limit must be a positive integer."), mode);
     }
@@ -211,7 +211,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         this.runReport({
           endpointUrl: endpoint.url,
           userId: session.userId,
-          requestedManifestId: args.manifestId,
+          requestedManifestId: positionals[0],
           mode,
         });
       }
@@ -374,28 +374,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
 
         if (flags["dry-run"]) {
-          if (flags.inspect) {
-            await writeInspectionDir(
-              flags.inspect,
-              !!flags.force,
-              willUpload,
-              summary,
-              gitBySession,
-            );
-          }
           if (mode !== "json") {
             process.stdout.write(
               `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
             );
-            if (flags.inspect) {
-              process.stdout.write(
-                `${color.ok(`${symbol.tick} Wrote ${flags.inspect}/`)}  ${color.dim("review with ")}${color.frog("jq .")}${color.dim(" before transmitting.")}\n`,
-              );
-            } else {
-              process.stdout.write(
-                `${color.dim("  Tip: add ")}${color.frog("--inspect ./out")}${color.dim(" to write the redacted payloads to disk and audit them.")}\n`,
-              );
-            }
           }
           const result = {
             command: "upload" as const,
@@ -966,77 +948,31 @@ async function buildJobsForSource(
   return jobs;
 }
 
-async function writeInspectionDir(
-  dir: string,
-  force: boolean,
-  items: SessionClassification[],
-  summary: ReturnType<typeof buildUploadSummary>,
-  gitBySession: Map<string, GitContext>,
-): Promise<void> {
-  const target = path.resolve(dir);
-  if (existsSync(target) && !force) {
-    throw new InspectDirError(
-      `--inspect directory already exists: ${target}. Use --force to overwrite.`,
-    );
+const UPLOAD_TARGETS = ["sessions", "context"] as const;
+type UploadTarget = (typeof UPLOAD_TARGETS)[number];
+
+// Map positional targets onto the two artifact kinds. No targets = upload
+// everything; otherwise each token must name a known kind. Duplicates are
+// harmless (set semantics), so `upload sessions sessions` is the same as
+// `upload sessions`.
+function resolveUploadTargets(positionals: string[]): {
+  uploadSessions: boolean;
+  uploadContext: boolean;
+} {
+  if (positionals.length === 0) {
+    return { uploadSessions: true, uploadContext: true };
   }
-  await mkdir(target, { recursive: true });
-  const totals: Record<string, number> = {};
-  const sessions: unknown[] = [];
-  for (const item of items) {
-    if (item.kind === "unchanged") continue;
-    const fileBase = `${item.identity.sessionId}.payload.json`;
-    await writeFile(
-      path.join(target, fileBase),
-      JSON.stringify(item.anonymizationResult.payload, null, 2),
-    );
-    const counts = item.anonymizationResult.redactionsByCategory;
-    for (const [k, v] of Object.entries(counts)) {
-      totals[k] = (totals[k] ?? 0) + v;
+  const selected = new Set<UploadTarget>();
+  for (const raw of positionals) {
+    if (!(UPLOAD_TARGETS as readonly string[]).includes(raw)) {
+      throw new UsageError(
+        `Unknown upload target '${raw}'. Valid targets: ${UPLOAD_TARGETS.join(", ")} (omit to upload all).`,
+      );
     }
-    sessions.push({
-      sessionId: item.identity.sessionId,
-      sourceKind: item.ref.sourceKind,
-      byteSizeBefore: item.ref.byteSizeOnDisk,
-      byteSizeAfter: item.anonymizationResult.byteSize,
-      counts: filterPositive(counts),
-    });
+    selected.add(raw as UploadTarget);
   }
-  const summaryFile = {
-    redactionPolicyVersion: POLICY_VERSION,
-    sessions,
-    totals: filterPositive(totals),
-    summary,
+  return {
+    uploadSessions: selected.has("sessions"),
+    uploadContext: selected.has("context"),
   };
-  await writeFile(
-    path.join(target, "redaction-summary.json"),
-    JSON.stringify(summaryFile, null, 2),
-  );
-
-  if (gitBySession.size > 0) {
-    const gitSessions = items
-      .filter((item) => item.kind !== "unchanged" && gitBySession.has(item.identity.sessionId))
-      .map((item) => ({
-        sessionId: item.identity.sessionId,
-        gitContext: gitBySession.get(item.identity.sessionId),
-      }));
-    await writeFile(
-      path.join(target, "git-context.json"),
-      JSON.stringify(
-        {
-          note: "Opt-in (--link-prs) git context — intentionally sent in clear, NOT redacted. Credential-free and path-free by construction.",
-          sessions: gitSessions,
-        },
-        null,
-        2,
-      ),
-    );
-  }
-}
-
-function filterPositive<T extends Record<string, number>>(obj: T): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v > 0) out[k] = v;
-  }
-  return out;
 }

@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import path from "node:path";
-import { mkdir } from "node:fs/promises";
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { EXIT } from "../lib/exit-codes.js";
@@ -17,18 +15,6 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
   // Usage errors – no auth, no server needed
   // ---------------------------------------------------------------------------
   describe("usage errors", () => {
-    it("--inspect without --dry-run → exit 2", async () => {
-      const { exitCode, stderr } = await runCli([
-        "upload",
-        "--inspect",
-        "./nowhere",
-        "--endpoint",
-        "http://127.0.0.1:1",
-      ]);
-      expect(exitCode).toBe(EXIT.USAGE);
-      expect(stderr).toMatch(/inspect.*dry-run/i);
-    });
-
     it("--limit 0 → exit 2", async () => {
       const { exitCode, stderr } = await runCli([
         "upload",
@@ -122,9 +108,9 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Dry-run inspection
+  // Dry-run
   // ---------------------------------------------------------------------------
-  describe("dry-run inspection", () => {
+  describe("dry-run", () => {
     // No actual server needed – dry-run exits before any network call.
     const endpoint = "http://127.0.0.1:59992";
     let tmp: TempDir;
@@ -140,19 +126,9 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       await tmp.cleanup();
     });
 
-    it("writes inspect dir and exits 0 with no network traffic", async () => {
-      const inspectDir = path.join(tmp.dir, "inspect-out");
+    it("anonymizes and exits 0 with dryRun:true, transmitting nothing", async () => {
       const { exitCode, stdout } = await runCli(
-        [
-          "upload",
-          "--dry-run",
-          "--format",
-          "json",
-          "--inspect",
-          inspectDir,
-          "--endpoint",
-          endpoint,
-        ],
+        ["upload", "--dry-run", "--format", "json", "--endpoint", endpoint],
         { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -160,30 +136,6 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
       expect(result.dryRun).toBe(true);
       expect(result.ok).toBe(true);
-      // Redaction summary written to inspect dir
-      const { existsSync } = await import("node:fs");
-      expect(existsSync(path.join(inspectDir, "redaction-summary.json"))).toBe(true);
-    });
-
-    it("→ exit 60 when inspect dir already exists without --force", async () => {
-      const existingDir = path.join(tmp.dir, "already-exists");
-      await mkdir(existingDir);
-      const { exitCode, stderr } = await runCli(
-        ["upload", "--dry-run", "--inspect", existingDir, "--endpoint", endpoint],
-        { env: { FRUGL_HOME_DIR: tmp.dir } },
-      );
-      expect(exitCode).toBe(EXIT.INSPECT_DIR_EXISTS);
-      expect(stderr).toMatch(/already exists/i);
-    });
-
-    it("--force overwrites an existing inspect dir", async () => {
-      const existingDir = path.join(tmp.dir, "force-overwrite");
-      await mkdir(existingDir);
-      const { exitCode } = await runCli(
-        ["upload", "--dry-run", "--inspect", existingDir, "--force", "--endpoint", endpoint],
-        { env: { FRUGL_HOME_DIR: tmp.dir } },
-      );
-      expect(exitCode).toBe(EXIT.OK);
     });
   });
 
@@ -211,7 +163,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("exits 0 and emits manifest ID + dashboard URL on stdout", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
+        ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: { FRUGL_HOME_DIR: tmp.dir },
         },
@@ -249,7 +201,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("first run uploads; second run reports no new or updated sessions", async () => {
       const env = { FRUGL_HOME_DIR: tmp.dir };
       const first = await runCli(
-        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
+        ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
         { env },
       );
       expect(first.exitCode).toBe(EXIT.OK);
@@ -257,7 +209,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       expect(firstResult.actualSessionCount).toBe(2);
 
       const second = await runCli(
-        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
+        ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env,
         },
@@ -294,7 +246,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const { exitCode, stdout } = await runCli(
         [
           "upload",
-          "--sessions",
+          "sessions",
           "--yes",
           "--limit",
           "2",
@@ -499,31 +451,19 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       expect(stdout).toContain("tester@frugl-e2e.example");
     });
 
-    it("step 2: dry-run + inspect writes dir, exit 0, no network", async () => {
-      const inspectDir = path.join(tmp.dir, "sc004-inspect");
+    it("step 2: dry-run anonymizes, exit 0, no network", async () => {
       const { exitCode, stdout } = await runCli(
-        [
-          "upload",
-          "--dry-run",
-          "--format",
-          "json",
-          "--inspect",
-          inspectDir,
-          "--endpoint",
-          server.url,
-        ],
+        ["upload", "--dry-run", "--format", "json", "--endpoint", server.url],
         { env: env() },
       );
       expect(exitCode).toBe(EXIT.OK);
       const result = JSON.parse(stdout.trim().split("\n").at(-1)!);
       expect(result.dryRun).toBe(true);
-      const { existsSync } = await import("node:fs");
-      expect(existsSync(path.join(inspectDir, "redaction-summary.json"))).toBe(true);
     });
 
     it("step 3: upload --yes uploads all 3 sessions", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
+        ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: env(),
         },
@@ -536,7 +476,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("step 4: second upload --yes is a noop", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
+        ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: env(),
         },
@@ -552,7 +492,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       const { exitCode, stdout } = await runCli(
         [
           "upload",
-          "--sessions",
+          "sessions",
           "--limit",
           "1",
           "--yes",
@@ -605,7 +545,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("uploads 200 sessions in ≤ 60 s (SC-003)", async () => {
       const start = performance.now();
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
+        ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: { FRUGL_HOME_DIR: tmp.dir },
           timeoutMs: 70_000,

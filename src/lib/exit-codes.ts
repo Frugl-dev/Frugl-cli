@@ -9,7 +9,6 @@ export const EXIT = {
   NETWORK_FAILURE: 40,
   ENDPOINT_UNREACHABLE: 41,
   VERSION_GATE_FAILURE: 50,
-  INSPECT_DIR_EXISTS: 60,
 } as const;
 
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
