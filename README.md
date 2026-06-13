@@ -51,8 +51,17 @@ burning tokens. Everything below is the detail.
 | `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                              |
 | `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                 |
 
-Every command supports `--json` for machine-readable output and `--help` for
-the full flag list.
+Every command supports `--format` to control output, and `--help` for the full
+flag list. The formats are:
+
+| `--format` | For                                                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| `default`  | Humans at an interactive terminal — colored, with hints and progress. The default.              |
+| `json`     | Scripts and pipelines — one machine-readable JSON object (or NDJSON stream) per result.         |
+| `minimal`  | Agents and CI logs — the same facts as `default` but plain text: no color, mascot, or spinners. |
+
+When `--format` is omitted, Frugl picks `minimal` if it detects CI (the `CI`
+env var or a known provider) and `default` otherwise.
 
 ## Guided upload
 
@@ -73,15 +82,15 @@ frugl upload --dry-run --inspect ./out     # also write the redacted output to .
 frugl upload --confirm                     # upload without prompting
 ```
 
-Non-interactive runs (`--yes`/`--confirm`, `--json`, or no TTY such as CI)
-skip the prompts and select every detected supported provider and all of its
-projects automatically.
+Non-interactive runs (`--yes`/`--confirm`, `--format json`/`--format minimal`,
+or no TTY such as CI) skip the prompts and select every detected supported
+provider and all of its projects automatically.
 
 After a successful upload, the printed dashboard link carries a **single-use,
 ~60-second sign-in code** (`?handoff=…`) so opening it lands you on your
 dashboard already signed in — no second login. The code is **not** your CLI
 token, dies on first use or expiry, and is **off by default in non-interactive
-runs** (CI, pipes, `--json`); pass `--handoff` to opt in there, or `--no-handoff`
+runs** (CI, pipes, `--format json`/`minimal`); pass `--handoff` to opt in there, or `--no-handoff`
 to keep it out of any printed output (shared or recorded terminals). If the link
 has expired, the web login returns you to the same dashboard page afterwards.
 
@@ -132,7 +141,7 @@ prefix is normalized, by the same local anonymizer the upload path uses
 
 ```bash
 frugl context                 # capture, anonymize, upload one snapshot
-frugl context --json          # machine-readable result (capturedAt, manifestId, …)
+frugl context --format json   # machine-readable result (capturedAt, manifestId, …)
 ```
 
 **Cadence (v1).** There is no built-in scheduler. To accumulate snapshots over

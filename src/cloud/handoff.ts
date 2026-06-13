@@ -31,8 +31,9 @@ export interface HandoffPreference {
 export const HANDOFF_TIMEOUT_MS = 3_000;
 
 // Precedence (research R-5): explicit flag wins; otherwise on only for
-// interactive text-mode runs — `--json`, piped stdout, and CI default off so
-// printed output never carries credential material unrequested (FR-010/011).
+// interactive default-format runs — the json/minimal formats, piped stdout, and
+// CI default off so printed output never carries credential material
+// unrequested (FR-010/011).
 export function resolveHandoffPreference(
   flagValue: boolean | undefined,
   isTTY: boolean,
@@ -40,7 +41,7 @@ export function resolveHandoffPreference(
 ): HandoffPreference {
   if (flagValue === false) return { active: false, source: "flag" };
   if (flagValue === true) return { active: true, source: "flag" };
-  return { active: isTTY && mode === "text", source: "default" };
+  return { active: isTTY && mode === "default", source: "default" };
 }
 
 // The narrow slice of CloudClient this module needs — keeps unit tests free of

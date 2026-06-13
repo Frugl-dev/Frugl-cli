@@ -52,7 +52,7 @@ describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
 
   it("default (no --link-prs): NO git field is attached, even for a session in a real repo (SC-001)", async () => {
     const { exitCode, stdout } = await runCli(
-      ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+      ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
       {
         env: { FRUGL_HOME_DIR: home.dir },
       },
@@ -85,7 +85,7 @@ describe("frugl upload — git-context opt-in wiring (US1/US2)", { timeout: 30_0
 
   it("--link-prs --json: upload-start + final summary carry an additive gitContext", async () => {
     const { exitCode, stdout } = await runCli(
-      ["upload", "--sessions", "--yes", "--link-prs", "--json", "--endpoint", server.url],
+      ["upload", "--sessions", "--yes", "--link-prs", "--format", "json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);

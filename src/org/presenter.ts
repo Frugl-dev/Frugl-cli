@@ -52,10 +52,11 @@ function guard(copy: BranchCopy): never {
 // (text mode, when the command supplies a reprompt source) or a UsageError
 // abort (JSON mode, or any mode for a branch the command's intent can't reach).
 export function makeOrgSetupPrompts(spec: OrgSetupPresentation, mode: OutputMode): OrgSetupPrompts {
-  // A branch the command can reach: warn to stderr + reprompt in text mode,
-  // hard-fail with the abort copy in JSON mode.
+  // A branch the command can reach: warn to stderr + reprompt in the default
+  // (interactive) format, hard-fail with the abort copy in any non-interactive
+  // format (json/minimal) since there's no terminal to reprompt at.
   const handle = (reprompt: Reprompt, copy: BranchCopy): Promise<string> => {
-    if (mode === "json") throw new UsageError(copy.abort);
+    if (mode !== "default") throw new UsageError(copy.abort);
     process.stderr.write(`${copy.warn}\n`);
     return reprompt();
   };

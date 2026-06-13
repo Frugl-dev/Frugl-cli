@@ -176,7 +176,7 @@ All exit codes are documented in `contracts/exit-codes.md` and pinned in `src/li
 | Non-interactive upload (CI / scripts)        | `frugl upload --confirm` (or `--yes`)                      |
 | Cap the batch at 1 session for testing       | `frugl upload --limit 1 --confirm`                         |
 | Tune concurrency                             | `frugl upload --concurrency 2 --confirm` (default 4)       |
-| Machine-readable progress for piping         | `frugl upload --json --confirm                             | jq -c` |
+| Machine-readable progress for piping         | `frugl upload --format json --confirm                      | jq -c` |
 | Point at a non-default endpoint              | `frugl upload --endpoint http://localhost:54321 --confirm` |
 
 ---

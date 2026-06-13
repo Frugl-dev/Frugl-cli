@@ -63,7 +63,12 @@ import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { getLinkPrs, recordPendingAuthFailure, clearPendingAuthFailure } from "../lib/config.js";
 import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
-import { resolveDebug, resolveOutputMode, type OutputMode } from "../lib/output-mode.js";
+import {
+  resolveDebug,
+  resolveOutputMode,
+  FORMAT_FLAG,
+  type OutputMode,
+} from "../lib/output-mode.js";
 
 export default class Upload extends Command {
   static override description = `Discover local AI-coding session sources, anonymize them, and batch-upload to hosted Frugl.
@@ -119,9 +124,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       // default in resolveHandoffPreference stays detectable (research R-5).
       allowNo: true,
       description:
-        "Append a single-use, short-lived sign-in code to the printed dashboard link so the browser lands signed in (--no-handoff to disable). Default: on for interactive runs, off for --json / non-TTY / CI.",
+        "Append a single-use, short-lived sign-in code to the printed dashboard link so the browser lands signed in (--no-handoff to disable). Default: on for interactive runs, off for --format json/minimal, non-TTY, or CI.",
     }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    format: FORMAT_FLAG,
     report: Flags.boolean({
       description:
         "Explain the last upload's failures (grouped by reason, with remedies) instead of uploading.",
@@ -139,7 +144,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
   async run(): Promise<void> {
     const { flags, args } = await this.parse(Upload);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
     const reporter = createProgressReporter(mode);
 
     const neither = !flags.sessions && !flags.context;
@@ -232,7 +237,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         const homeDir = process.env["FRUGL_HOME_DIR"];
         const discoverOpts = homeDir ? { homeDir } : undefined;
 
-        if (mode === "text")
+        if (mode !== "json")
           process.stderr.write(color.dim("Sniffing out AI sessions on this machine…\n"));
 
         // 1) Detect which providers have sessions on this machine.
@@ -248,7 +253,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
 
         const interactive = isInteractive({
-          json: flags.json,
+          mode,
           yes: flags.yes,
           isTTY: Boolean(process.stdin.isTTY),
         });
@@ -271,7 +276,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           // 2) Choose providers — interactive picker, or auto-select-all when not.
           const selectedProviderIds = await selectProviders(detected, { interactive });
           if (selectedProviderIds.length === 0) {
-            if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
+            if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
             process.exit(EXIT.OK);
           }
           // 3) Discover sessions for the selected providers, grouped by project.
@@ -290,7 +295,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         const refs = applySelection(groups, selection);
         if (refs.length === 0) {
-          if (mode === "text") process.stderr.write(color.dim("Nothing selected.\n"));
+          if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
           process.exit(EXIT.OK);
         }
 
@@ -364,7 +369,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         });
         prLinking = summary.prLinking;
 
-        if (mode === "text") {
+        if (mode !== "json") {
           process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
         }
 
@@ -378,7 +383,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               gitBySession,
             );
           }
-          if (mode === "text") {
+          if (mode !== "json") {
             process.stdout.write(
               `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
             );
@@ -429,7 +434,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           if (finalized) {
             lastManifestId = finalized.manifestId;
             lastDashboardUrl = finalized.dashboardUrl;
-            if (mode === "text") {
+            if (mode !== "json") {
               process.stderr.write(color.dim("Completed a previously interrupted upload batch.\n"));
             }
           }
@@ -455,7 +460,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               selection: selectionReport,
               noop: true,
             };
-            if (mode === "text") {
+            if (mode !== "json") {
               process.stdout.write(
                 `${color.dim("No new or updated sessions. Nothing to upload.")}\n`,
               );
@@ -463,7 +468,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
             return;
           }
-          if (mode === "text") {
+          if (mode !== "json") {
             process.stdout.write(`${color.dim("No new or updated sessions.")}\n`);
           }
         }
@@ -520,7 +525,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               pipelineResult = await runUploadPipeline(pipelineOptions);
             } catch (err) {
               if (err instanceof StaleResumeError) {
-                if (mode === "text") {
+                if (mode !== "json") {
                   process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
                 }
                 resumeStore.clear();
@@ -539,7 +544,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
       // Context snapshot upload — runs after sessions (or alone with --context).
       if (uploadContext && !flags["dry-run"]) {
-        if (mode === "text")
+        if (mode !== "json")
           process.stderr.write(
             color.dim("Snapshotting your context window — redacting locally…\n"),
           );
@@ -572,7 +577,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         if (lastDashboardUrl === `${endpoint.url}/dashboard`) {
           lastDashboardUrl = ctxUpload.dashboardUrl;
         }
-        if (mode === "text") {
+        if (mode !== "json") {
           process.stdout.write(
             `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
           );
@@ -582,7 +587,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       // The payoff. The one place upload lets itself celebrate — a receipt that
       // makes the redaction story tangible: what was scrubbed on your machine,
       // what actually left it, and the number that matters (0 raw secrets sent).
-      if (uploadSessions && totalAcked > 0 && mode === "text") {
+      if (uploadSessions && totalAcked > 0 && mode === "default") {
         let totalRedactions = 0;
         for (const item of willUpload) {
           if (item.kind === "unchanged") continue;
@@ -619,7 +624,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         lastDashboardUrl,
         resolveHandoffPreference(flags.handoff, Boolean(process.stdout.isTTY), mode),
       );
-      if (mode === "text") {
+      if (mode !== "json") {
         process.stdout.write(
           `${color.dim("  Dashboard: ")}${color.frog(color.underline(handoff.dashboardUrl))}\n`,
         );
@@ -702,7 +707,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     }
   }
 
-  private bail(err: unknown, mode: OutputMode = "text", endpointUrl?: string): never {
+  private bail(err: unknown, mode: OutputMode = "default", endpointUrl?: string): never {
     // A background run (the Claude Code hook, CI) dies on auth with no human
     // watching its stderr. Leave a breadcrumb so the next interactive command
     // surfaces it. Best-effort; never let it mask the real error below.
@@ -719,7 +724,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       err.status === 409 &&
       (err.body as Record<string, unknown>)?.error === "org_required"
     ) {
-      if (mode === "text") {
+      if (mode === "default") {
         process.stderr.write(
           `${color.err("frugl: You're signed in, but you're not in any org.")}\n\n`,
         );
@@ -743,7 +748,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
     // Warm error — honest failure, zero blame. Cause · fix · reassurance, with
     // the stable exit code preserved. The hero "you're not signed in" moment.
-    if (err instanceof AuthError && mode === "text") {
+    if (err instanceof AuthError && mode === "default") {
       const e = process.stderr;
       e.write(
         `\n  ${color.warn(SIGIL)}   ${color.bold("Hold on — you're not signed in yet.")}\n\n`,
@@ -766,7 +771,11 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
     // Warm empty state — nothing to upload is not an error to shout about. Only
     // the truly-empty case; the "detected but unsupported" message stays generic.
-    if (err instanceof NoSessionsError && mode === "text" && !err.message.includes("supported")) {
+    if (
+      err instanceof NoSessionsError &&
+      mode === "default" &&
+      !err.message.includes("supported")
+    ) {
       const e = process.stderr;
       e.write(`\n  ${color.frog(SIGIL)}   ${color.bold("Nothing to upload yet.")}\n\n`);
       e.write(

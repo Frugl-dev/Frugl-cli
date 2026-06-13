@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { isInstalled, settingsPath, type HookScope } from "../../hook/claude-code.js";
-import { resolveOutputMode } from "../../lib/output-mode.js";
+import { resolveOutputMode, FORMAT_FLAG } from "../../lib/output-mode.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class HookStatus extends Command {
@@ -10,12 +10,12 @@ export default class HookStatus extends Command {
     global: Flags.boolean({
       description: "Check ~/.claude/settings.json instead of ./.claude/settings.json.",
     }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    format: FORMAT_FLAG,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(HookStatus);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
     const scope: HookScope = flags.global ? "global" : "project";
     const file = settingsPath(scope);
     const installed = isInstalled(scope);

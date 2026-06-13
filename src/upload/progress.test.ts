@@ -44,7 +44,7 @@ describe("createProgressReporter", () => {
   });
 
   it("text mode: counts acked + skipped across the lifecycle on stderr", () => {
-    const reporter = createProgressReporter("text");
+    const reporter = createProgressReporter("default");
     reporter.uploadStart({
       manifestId: "mfst_1",
       expectedSessionCount: 3,
@@ -85,7 +85,7 @@ describe("createProgressReporter", () => {
   });
 
   it("text mode: a failure increments done and prints the reason", () => {
-    const reporter = createProgressReporter("text");
+    const reporter = createProgressReporter("default");
     reporter.uploadStart({
       manifestId: "mfst_2",
       expectedSessionCount: 1,

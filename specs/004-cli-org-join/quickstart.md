@@ -144,7 +144,7 @@ echo $?                              # 0  ← no-org is a reported state, not a 
 Machine-readable:
 
 ```bash
-frugl whoami --json | jq '.organization'
+frugl whoami --format json | jq '.organization'
 # { "id": "...", "name": "Acme Corp", "slug": "acme", "member_count": 7, "role": "member" }
 # or: null   (when no Membership)
 ```
@@ -191,7 +191,7 @@ frugl upload
 Under `--confirm` / `--yes`, the destination is still emitted (stderr in text mode, the `upload-start` event in `--json`) so non-interactive runs record where the batch went:
 
 ```bash
-frugl upload --confirm --json | jq -c 'select(.event=="upload-start") | .organization'
+frugl upload --confirm --format json | jq -c 'select(.event=="upload-start") | .organization'
 # { "id": "...", "slug": "acme" }
 ```
 

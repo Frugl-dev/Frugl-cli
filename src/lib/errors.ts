@@ -92,14 +92,15 @@ export function exitCodeName(code: number): string | undefined {
 }
 
 // Render an error to stderr in frugl's house style and return the exit code to
-// use. FruglErrors get a `frugl: <message>` line plus, in text mode, a dim
-// `Exit code N (NAME)` footer matching the design's error screens. Anything
-// else is reported as a generic failure. Never colorizes structured data —
-// picocolors auto-disables on non-TTY/NO_COLOR so piped output stays plain.
-export function printFruglError(err: unknown, mode: OutputMode = "text"): ExitCode {
+// use. FruglErrors get a `frugl: <message>` line plus, in the default format, a
+// dim `Exit code N (NAME)` footer matching the design's error screens. The
+// json/minimal formats omit the footer. Anything else is reported as a generic
+// failure. Never colorizes structured data — picocolors auto-disables on
+// non-TTY/NO_COLOR (and minimal forces plain) so piped output stays plain.
+export function printFruglError(err: unknown, mode: OutputMode = "default"): ExitCode {
   if (isFruglError(err)) {
     process.stderr.write(`${color.err(`frugl: ${err.message}`)}\n`);
-    if (mode === "text") {
+    if (mode === "default") {
       const name = exitCodeName(err.exitCode);
       process.stderr.write(
         `\n${color.dim(`  Exit code ${err.exitCode}${name ? `  (${name})` : ""}`)}\n`,

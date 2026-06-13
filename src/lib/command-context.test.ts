@@ -133,13 +133,18 @@ describe("buildCommandContext — token presence per AuthMode", () => {
 });
 
 describe("buildCommandContext — mode", () => {
-  it("resolves json mode from the flag", async () => {
-    const ctx = await buildCommandContext({ json: true }, { auth: "none" });
+  it("resolves json mode from the --format flag", async () => {
+    const ctx = await buildCommandContext({ format: "json" }, { auth: "none" });
     expect(ctx.mode).toBe("json");
   });
 
-  it("defaults to text mode", async () => {
+  it("resolves minimal mode from the --format flag", async () => {
+    const ctx = await buildCommandContext({ format: "minimal" }, { auth: "none" });
+    expect(ctx.mode).toBe("minimal");
+  });
+
+  it("defaults to the default format", async () => {
     const ctx = await buildCommandContext({}, { auth: "none" });
-    expect(ctx.mode).toBe("text");
+    expect(ctx.mode).toBe("default");
   });
 });

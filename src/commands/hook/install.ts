@@ -2,7 +2,7 @@ import { Command, Flags } from "@oclif/core";
 import { installHook, type HookScope } from "../../hook/claude-code.js";
 import { SessionStore } from "../../auth/session-store.js";
 import { resolveEndpoint } from "../../cloud/endpoints.js";
-import { resolveOutputMode } from "../../lib/output-mode.js";
+import { resolveOutputMode, FORMAT_FLAG } from "../../lib/output-mode.js";
 import { isFruglError, printFruglError } from "../../lib/errors.js";
 import { color, symbol } from "../../lib/theme.js";
 
@@ -14,12 +14,12 @@ export default class HookInstall extends Command {
     global: Flags.boolean({
       description: "Write ~/.claude/settings.json instead of ./.claude/settings.json.",
     }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    format: FORMAT_FLAG,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(HookInstall);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
     const scope: HookScope = flags.global ? "global" : "project";
 
     try {

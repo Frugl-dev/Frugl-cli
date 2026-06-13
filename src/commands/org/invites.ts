@@ -10,7 +10,7 @@ export default class OrgInvites extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(OrgInvites);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
 
     if (mode === "json") {
       process.stdout.write(

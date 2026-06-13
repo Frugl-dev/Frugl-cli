@@ -70,7 +70,10 @@ describe("printFruglError", () => {
       writes.push(String(chunk));
       return true;
     });
-    const code = printFruglError(new AuthError("Not logged in. Run 'frugl login' first."), "text");
+    const code = printFruglError(
+      new AuthError("Not logged in. Run 'frugl login' first."),
+      "default",
+    );
     spy.mockRestore();
 
     const out = plain(writes.join(""));

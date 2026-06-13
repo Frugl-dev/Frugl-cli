@@ -24,11 +24,13 @@ export default class OrgCreate extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(OrgCreate);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
 
     try {
-      if (mode === "json" && !flags.name) {
-        throw new UsageError("org create --json requires --name (cannot prompt in JSON mode).");
+      if (mode !== "default" && !flags.name) {
+        throw new UsageError(
+          "org create needs --name in a non-interactive format (--format json/minimal cannot prompt).",
+        );
       }
 
       const { client } = await authedClient(flags.endpoint);

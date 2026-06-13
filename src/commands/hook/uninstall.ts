@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { uninstallHook, type HookScope } from "../../hook/claude-code.js";
-import { resolveOutputMode } from "../../lib/output-mode.js";
+import { resolveOutputMode, FORMAT_FLAG } from "../../lib/output-mode.js";
 import { isFruglError, printFruglError } from "../../lib/errors.js";
 import { color, symbol } from "../../lib/theme.js";
 
@@ -11,12 +11,12 @@ export default class HookUninstall extends Command {
     global: Flags.boolean({
       description: "Operate on ~/.claude/settings.json instead of ./.claude/settings.json.",
     }),
-    json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+    format: FORMAT_FLAG,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(HookUninstall);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
     const scope: HookScope = flags.global ? "global" : "project";
 
     try {
