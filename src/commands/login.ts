@@ -375,9 +375,12 @@ Exit codes:
         token,
       });
 
-      // Resolve the active org so the success screen lands the whole flow on one
-      // surface (method → browser → token → org), matching the OTP path. A 409
-      // means the account has no org yet — prompt for setup like the OTP path.
+      // Resolve the active org purely to label the terminal (and carry the
+      // orgRequired flag in JSON). Onboarding itself is owned by the browser: the
+      // callback page has already sent this web-authenticated tab to /dashboard,
+      // where the cloud middleware bounces a no-org account into org setup. We do
+      // NOT prompt for org setup here — that would double up with the browser.
+      // A 409 just means "no org yet".
       let orgContext: OrgMeResponse | null = null;
       let orgRequired = false;
       try {
@@ -411,142 +414,21 @@ Exit codes:
         `${color.ok(`${symbol.tick} Signed in as ${session.email || email}`)}  ${color.dim(`(via ${provider})`)}\n`,
       );
 
-      if (!orgRequired) {
+      if (orgRequired) {
+        // New account: the browser is already on the onboarding screen.
+        process.stdout.write(
+          `\n${color.dim("  New here — finish setting up your org in the browser to start uploading.")}\n`,
+        );
+      } else {
         if (orgContext) {
           process.stdout.write(
             `${color.dim("  Active org: ")}${color.bold(orgContext.org.name)}  ${color.dim(`(role: ${orgContext.membership.role})`)}\n`,
           );
         }
-        const handoff = await requestHandoffUrl(
-          authedClient,
-          `${endpoint.url}/dashboard`,
-          resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
-        );
-        this.printNextSteps(handoff);
-        return;
+        process.stdout.write(`\n${color.dim("  Your browser is opening your dashboard…")}\n`);
       }
 
-      // No org yet — every Frugl account belongs to one. Offer the fork.
-      process.stdout.write(
-        `\n${color.bold("You're new here — every Frugl account belongs to an org.")}\n`,
-      );
-      process.stdout.write(
-        color.dim(
-          "An org is the team whose AI retros you share. You can be in more than one later.\n\n",
-        ),
-      );
-
-      const choice = await select({
-        message: "What would you like to do?",
-        choices: [
-          {
-            name: "Create a new org",
-            value: "create",
-            description: "You become the owner. Invite teammates later.",
-          },
-          {
-            name: "Join an existing org",
-            value: "join",
-            description: "Paste an invite code from a teammate.",
-          },
-          {
-            name: "I'll decide later",
-            value: "later",
-            description: "Logs you in, but upload is blocked until you have one.",
-          },
-          {
-            name: "Log out — wrong account",
-            value: "logout",
-            description: "Forget this token; you'll be back at frugl login.",
-          },
-        ],
-      });
-
-      if (choice === "later") {
-        process.stdout.write(
-          `\n${color.dim("  No problem. Set one up anytime with ")}${color.frog("frugl org create")}${color.dim(" or ")}${color.frog("frugl org join <code>")}${color.dim(".")}\n`,
-        );
-        process.stdout.write(color.dim("  Upload stays blocked until then.\n"));
-        return;
-      }
-
-      if (choice === "logout") {
-        await clearAuthSession(endpoint.url);
-        process.stdout.write(
-          `\n${color.ok(`${symbol.tick} Logged out.`)}  ${color.dim("Run ")}${color.frog("frugl login")}${color.dim(" to sign in with a different account.")}\n`,
-        );
-        return;
-      }
-
-      let orgAction: OrgSetupAction;
-      if (choice === "create") {
-        const name = await input({
-          message: "Org name:",
-          validate: (v) =>
-            (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-        });
-        orgAction = { action: "create", name, slug: deriveSlug(name) };
-      } else {
-        const inviteCode = await input({
-          message: "Invite code:",
-          validate: (v) => v.trim().length > 0 || "Enter an invite code",
-        });
-        orgAction = { action: "join", code: inviteCode.trim() };
-      }
-
-      const orgSetupSpec: OrgSetupPresentation = {
-        command: "login",
-        reprompt: { name: promptOrgName, code: promptInviteCode },
-        messages: {
-          slugTaken: (suggestion) => ({
-            warn: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
-            abort: `${color.warn(`${symbol.warn} That slug is already taken.`)} ${color.dim(`Try: ${suggestion}`)}`,
-          }),
-          invalidCode: {
-            warn: `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}`,
-            abort: `${color.warn(`${symbol.warn} Invite code not found.`)} ${color.dim("Check the code and try again.")}`,
-          },
-          expiredCode: {
-            warn: `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}`,
-            abort: `${color.warn(`${symbol.warn} That invite code has expired or been used up.`)}`,
-          },
-        },
-        render: {
-          text: (r) => {
-            if (r.status === "created") {
-              return `\n${color.ok(`${symbol.tick} Org created.`)}  ${color.dim("You're the owner of ")}${color.bold(r.slug)}${color.dim(".")}\n`;
-            }
-            if (r.status === "joined") {
-              return `\n${color.ok(`${symbol.tick} Joined ${r.slug}`)}  ${color.dim("as member.")}\n`;
-            }
-            return `\n${color.ok(`${symbol.tick} Active org: ${r.orgName}`)}  ${color.dim(`(${r.slug})`)}\n`;
-          },
-          json: (r) => ({
-            command: "login",
-            ok: true,
-            slug: r.slug,
-            name: r.orgName,
-            outcome:
-              r.status === "already-setup"
-                ? "existing"
-                : r.status === "created"
-                  ? "created"
-                  : "joined",
-          }),
-        },
-      };
-      const result = await runOrgSetupFlow(
-        authedClient,
-        orgAction,
-        makeOrgSetupPrompts(orgSetupSpec, "text"),
-      );
-      renderOrgSetupResult(result, orgSetupSpec, "text");
-      const handoff = await requestHandoffUrl(
-        authedClient,
-        `${endpoint.url}/dashboard`,
-        resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
-      );
-      this.printNextSteps(handoff);
+      this.printNextStepsBody();
     } catch (err) {
       handleCommandError(err, mode);
     }
@@ -592,6 +474,13 @@ Exit codes:
     if (handoff.active) {
       process.stdout.write(color.dim("             auto sign-in link — valid for ~60s\n"));
     }
+    this.printNextStepsBody();
+  }
+
+  // The "Next" command list and brand closer, shared by every successful sign-in.
+  // The browser path prints this without a handoff URL — the already-authenticated
+  // browser tab has carried the user straight to the dashboard.
+  private printNextStepsBody(): void {
     process.stdout.write(`\n${color.dim("  Next:")}\n`);
     process.stdout.write(
       `${color.dim("    ")}${color.frog("frugl hook install --global")}${color.dim("   auto-upload on session end")}\n`,
