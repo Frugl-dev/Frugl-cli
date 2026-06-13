@@ -51,13 +51,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.2.0",
+    "@inquirer/prompts": "^8.5.2",
     "@napi-rs/keyring": "^1.1.6",
     "@oclif/core": "^4.0.30",
-    "conf": "^13.0.0",
-    "env-paths": "^3.0.0",
-    "p-limit": "^6.1.0",
-    "p-retry": "^6.2.0",
+    "conf": "^15.1.0",
+    "env-paths": "^4.0.0",
+    "p-limit": "^7.3.0",
+    "p-retry": "^8.0.0",
     "picocolors": "^1.1.1",
     "picomatch": "^4.0.4",
     "semver": "^7.6.3",
@@ -65,7 +65,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^25.9.3",
     "@types/picomatch": "^4.0.3",
     "@types/retry": "^0.12.5",
     "@types/semver": "^7.5.8",
