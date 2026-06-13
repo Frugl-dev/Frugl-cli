@@ -14,9 +14,9 @@
 Frugl reads the session logs your AI coding assistants already write to disk
 (Claude Code today; Codex, Cursor, and Gemini detected and coming soon),
 **anonymizes them locally**, and uploads them to [hosted Frugl](https://app.frugl.dev)
-for retrospective waste analysis. You get a dashboard and ranked, cost-saving
-recommendations — "you reload the same 40k-token file every session," "this agent
-loops on a failing test" — so your team spends fewer tokens getting the same work done.
+for retrospective waste analysis. The dashboard shows where your team is burning
+tokens — "you reload the same 40k-token file every session," "this agent loops on
+a failing test" — so you can spend fewer tokens getting the same work done.
 
 The catch every team worries about: _your raw prompts and code never leave your
 machine._ The anonymizer runs **locally, before any byte is transmitted**, and it
@@ -29,28 +29,28 @@ data before you trust it with any.
 ```bash
 npm install -g frugl                 # or run ad-hoc with: npx frugl <command>
 
-frugl login                          # sign in (GitHub, Google, or email code)
-                                     #   first-time accounts are walked through
-                                     #   creating or joining an org, right here
+frugl setup                          # sign in + create/join an org in one step
 frugl upload                         # discover, anonymize, and upload your sessions
 ```
 
 Then open the dashboard link the upload prints to see where your team is
 burning tokens. Everything below is the detail.
 
+> `frugl login` works as a starting command too — for a first-time account it
+> walks you through creating or joining an org, same as `setup`.
+
 ## Commands
 
-| Command                 | What it does                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| `frugl setup`           | Authenticate **and** create/join an org in one idempotent step. Safe to re-run. |
-| `frugl login`           | Sign in with an emailed one-time code; token stored in the OS keychain.         |
-| `frugl logout`          | Revoke this device's session and forget the local token.                        |
-| `frugl whoami`          | Show the signed-in identity, active org, and role.                              |
-| `frugl upload`          | Discover, anonymize, and upload local AI-coding sessions.                       |
-| `frugl recommendations` | List and rank cost-saving recommendations; print a fix prompt.                  |
-| `frugl context`         | Capture + upload a timestamped context-window snapshot.                         |
-| `frugl org`             | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                     |
-| `frugl hook install`    | Auto-upload from a Claude Code hook when a session ends.                        |
+| Command              | What it does                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `frugl setup`        | Authenticate **and** create/join an org in one idempotent step. Safe to re-run.          |
+| `frugl login`        | Sign in (GitHub, Google, or email code); first-time accounts are set up with an org too. |
+| `frugl logout`       | Revoke this device's session and forget the local token.                                 |
+| `frugl whoami`       | Show the signed-in identity, active org, and role.                                       |
+| `frugl upload`       | Discover, anonymize, and upload local AI-coding sessions.                                |
+| `frugl context`      | Capture + upload a timestamped context-window snapshot.                                  |
+| `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                              |
+| `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                 |
 
 Every command supports `--json` for machine-readable output and `--help` for
 the full flag list.
@@ -85,18 +85,6 @@ token, dies on first use or expiry, and is **off by default in non-interactive
 runs** (CI, pipes, `--json`); pass `--handoff` to opt in there, or `--no-handoff`
 to keep it out of any printed output (shared or recorded terminals). If the link
 has expired, the web login returns you to the same dashboard page afterwards.
-
-## Recommendations
-
-Once you've uploaded a few sessions, Frugl ranks where your team is burning
-tokens and hands you a ready-to-paste prompt to fix each one:
-
-```bash
-frugl recommendations                  # list, ranked by estimated savings
-frugl recommendations --fix <id>       # print the fix prompt for one recommendation
-frugl recommendations --apply <id>     # mark it applied
-frugl recommendations --dismiss <id>   # snooze it for 30 days
-```
 
 ## Continuous uploads (Claude Code hook)
 
