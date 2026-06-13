@@ -14,9 +14,9 @@
 Frugl reads the session logs your AI coding assistants already write to disk
 (Claude Code today; Codex, Cursor, and Gemini detected and coming soon),
 **anonymizes them locally**, and uploads them to [hosted Frugl](https://app.frugl.dev)
-for retrospective waste analysis. You get a dashboard and ranked, cost-saving
-recommendations — "you reload the same 40k-token file every session," "this agent
-loops on a failing test" — so your team spends fewer tokens getting the same work done.
+for retrospective waste analysis. The dashboard shows where your team is burning
+tokens — "you reload the same 40k-token file every session," "this agent loops on
+a failing test" — so you can spend fewer tokens getting the same work done.
 
 The catch every team worries about: _your raw prompts and code never leave your
 machine._ The anonymizer runs **locally, before any byte is transmitted**, and it
@@ -40,17 +40,16 @@ burning tokens. Everything below is the detail.
 
 ## Commands
 
-| Command                 | What it does                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| `frugl setup`           | Authenticate **and** create/join an org in one idempotent step. Safe to re-run. |
-| `frugl login`           | Sign in with an emailed one-time code; token stored in the OS keychain.         |
-| `frugl logout`          | Revoke this device's session and forget the local token.                        |
-| `frugl whoami`          | Show the signed-in identity, active org, and role.                              |
-| `frugl upload`          | Discover, anonymize, and upload local AI-coding sessions.                       |
-| `frugl recommendations` | List and rank cost-saving recommendations; print a fix prompt.                  |
-| `frugl context`         | Capture + upload a timestamped context-window snapshot.                         |
-| `frugl org`             | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                     |
-| `frugl hook install`    | Auto-upload from a Claude Code hook when a session ends.                        |
+| Command              | What it does                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `frugl setup`        | Authenticate **and** create/join an org in one idempotent step. Safe to re-run.          |
+| `frugl login`        | Sign in (GitHub, Google, or email code); first-time accounts are set up with an org too. |
+| `frugl logout`       | Revoke this device's session and forget the local token.                                 |
+| `frugl whoami`       | Show the signed-in identity, active org, and role.                                       |
+| `frugl upload`       | Discover, anonymize, and upload local AI-coding sessions.                                |
+| `frugl context`      | Capture + upload a timestamped context-window snapshot.                                  |
+| `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                              |
+| `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                 |
 
 Every command supports `--json` for machine-readable output and `--help` for
 the full flag list.
@@ -85,18 +84,6 @@ token, dies on first use or expiry, and is **off by default in non-interactive
 runs** (CI, pipes, `--json`); pass `--handoff` to opt in there, or `--no-handoff`
 to keep it out of any printed output (shared or recorded terminals). If the link
 has expired, the web login returns you to the same dashboard page afterwards.
-
-## Recommendations
-
-Once you've uploaded a few sessions, Frugl ranks where your team is burning
-tokens and hands you a ready-to-paste prompt to fix each one:
-
-```bash
-frugl recommendations                  # list, ranked by estimated savings
-frugl recommendations --fix <id>       # print the fix prompt for one recommendation
-frugl recommendations --apply <id>     # mark it applied
-frugl recommendations --dismiss <id>   # snooze it for 30 days
-```
 
 ## Continuous uploads (Claude Code hook)
 
@@ -175,77 +162,7 @@ CLI against the sibling local Docker stack and verify the trust gate yourself
 with planted secrets — see
 [`specs/001-cli-ingest-client/quickstart.md`](./specs/001-cli-ingest-client/quickstart.md).
 
-## Sibling repos
+## Contributing
 
-This is one of three repos that make up the cloud product
-(`~/Documents/frugl/` on the maintainer's machine):
-
-- `frugl/` (private) — fullstack web app + processing pipelines.
-- `frugl-cli/` (this repo, public) — the CLI.
-- `frugl-site/` (public) — the marketing site.
-
-## Stack
-
-TypeScript · Node ≥ 20 · `@oclif/core` for the command framework ·
-`@inquirer/prompts` for interactive input · OS keychain via `@napi-rs/keyring`
-for token storage · `zod` for cloud-contract validation · `p-retry` + `p-limit`
-for bounded retry and concurrency · `conf` for cross-platform state
-persistence · vitest · oxlint · oxfmt · pnpm.
-
-## Development
-
-```bash
-pnpm install
-pnpm test               # vitest (anonymization fixtures are first-class)
-pnpm typecheck
-pnpm lint
-pnpm format:check
-pnpm dev <command>      # tsx-driven oclif dev entrypoint
-```
-
-Point the CLI at a local dev stack:
-
-```bash
-FRUGL_ENDPOINT=http://localhost:54321 pnpm dev login
-```
-
-The local stack itself (Supabase + MinIO) is brought up from the
-`frugl/` repo via `pnpm stack:up`.
-
-## Releasing
-
-`frugl` ships to npm as a compiled oclif CLI. `pnpm build` compiles `src/` to
-`dist/` (preserving the per-command file layout oclif discovers at runtime) and
-generates `oclif.manifest.json`. The published tarball contains only
-`bin/run.js`, `dist/`, the manifest, `brand/`, `README.md`, and `LICENSE` (see
-the `files` field) — never `src/`, tests, or `bin/dev.js`.
-
-Inspect exactly what would be published without uploading anything:
-
-```bash
-npm pack --dry-run      # runs prepack (build + manifest), lists tarball contents
-```
-
-Publishing is automated by [`.github/workflows/release.yml`](./.github/workflows/release.yml):
-
-1. Bump `version` in `package.json` and commit on `main`.
-2. Create a GitHub Release whose tag matches the version (e.g. `v0.1.0`).
-3. The workflow runs the full verify suite, then `npm publish --provenance --access public`.
-
-One-time setup: add an automation **`NPM_TOKEN`** secret to the repo
-(npmjs.com → Access Tokens → Granular/Automation token with publish rights for
-`frugl`). The workflow requests `id-token: write` so npm attaches a signed
-provenance attestation to the release.
-
-To publish manually instead (requires `npm login` locally):
-
-```bash
-npm publish --access public
-```
-
-## Governance
-
-This repo inherits the constitution at
-`../frugl/.specify/memory/constitution.md`. Anonymization specifically is
-governed by Principle VI ("Fail-Closed Anonymization, IaC Source-of-Truth,
-Honest Failures").
+Building, testing, releasing, and project governance live in
+[`DEVELOPMENT.md`](./DEVELOPMENT.md).
