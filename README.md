@@ -248,5 +248,3 @@ This repo inherits the constitution at
 `../frugl/.specify/memory/constitution.md`. Anonymization specifically is
 governed by Principle VI ("Fail-Closed Anonymization, IaC Source-of-Truth,
 Honest Failures").
-</content>
-</invoke>
