@@ -91,7 +91,7 @@ describe("makeOrgSetupPrompts — text mode", () => {
   it("warns the spec copy to stderr and returns the reprompt value, threading the suggestion", async () => {
     const nameStub = vi.fn<() => Promise<string>>(async () => "Acme HQ");
     const codeStub = vi.fn<() => Promise<string>>(async () => "GOODCODE");
-    const prompts = makeOrgSetupPrompts(fullSpec(nameStub, codeStub), "text");
+    const prompts = makeOrgSetupPrompts(fullSpec(nameStub, codeStub), "default");
     const { err, restore } = captureStreams();
 
     const name = await prompts.onSlugTaken("acme-1");
@@ -106,7 +106,7 @@ describe("makeOrgSetupPrompts — text mode", () => {
   it("warns and reprompts on invalid-code and expired-code", async () => {
     const nameStub = vi.fn<() => Promise<string>>(async () => "n");
     const codeStub = vi.fn<() => Promise<string>>(async () => "FRESH");
-    const prompts = makeOrgSetupPrompts(fullSpec(nameStub, codeStub), "text");
+    const prompts = makeOrgSetupPrompts(fullSpec(nameStub, codeStub), "default");
 
     const cap1 = captureStreams();
     const invalid = await prompts.onInvalidCode();
@@ -162,7 +162,7 @@ describe("makeOrgSetupPrompts — omitted-branch guard", () => {
     },
   } satisfies OrgSetupPresentation;
 
-  for (const mode of ["text", "json"] as const) {
+  for (const mode of ["default", "json"] as const) {
     it(`throws the abort copy for an omitted code branch in ${mode} mode`, () => {
       const prompts = makeOrgSetupPrompts(createOnly, mode);
       // The guard throws synchronously (a `never`); the flow awaits it, so the
@@ -190,7 +190,7 @@ describe("makeOrgSetupPrompts — omitted-branch guard", () => {
         json: (r: OrgSetupSuccess) => ({ slug: r.slug }),
       },
     } satisfies OrgSetupPresentation;
-    const prompts = makeOrgSetupPrompts(joinOnly, "text");
+    const prompts = makeOrgSetupPrompts(joinOnly, "default");
     expect(() => prompts.onSlugTaken("acme-1")).toThrow("Unexpected: slug-taken");
   });
 });
@@ -212,7 +212,7 @@ describe("renderOrgSetupResult", () => {
   for (const { status, result } of cases) {
     it(`renders ${status} to stdout in text mode (ANSI-stripped)`, () => {
       const { out, err, restore } = captureStreams();
-      renderOrgSetupResult(result, spec, "text");
+      renderOrgSetupResult(result, spec, "default");
       restore();
       expect(plain(out.join(""))).toBe(`text:${status}:${result.orgName}:${result.slug}\n`);
       expect(err.join("")).toBe("");
@@ -246,10 +246,10 @@ describe("wiring through runOrgSetupFlow", () => {
     const result = await runOrgSetupFlow(
       client,
       { action: "create", name: "Acme", slug: "acme" },
-      makeOrgSetupPrompts(spec, "text"),
+      makeOrgSetupPrompts(spec, "default"),
       { setup },
     );
-    renderOrgSetupResult(result, spec, "text");
+    renderOrgSetupResult(result, spec, "default");
     restore();
 
     // The slug-taken handler was consulted with the suggestion and warned.

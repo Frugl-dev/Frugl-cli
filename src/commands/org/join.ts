@@ -31,11 +31,13 @@ export default class OrgJoin extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(OrgJoin);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
 
     try {
-      if (mode === "json" && !args.code) {
-        throw new UsageError("org join --json requires the invite code as an argument.");
+      if (mode !== "default" && !args.code) {
+        throw new UsageError(
+          "org join needs the invite code as an argument in a non-interactive format (--format json/minimal).",
+        );
       }
 
       const { client } = await authedClient(flags.endpoint);

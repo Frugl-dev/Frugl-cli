@@ -50,8 +50,8 @@ delay > 3 s.
 
 ```sh
 frugl upload --yes --no-handoff        # plain URL, no issuance request on the wire
-frugl upload --yes --json              # default off: no `handoff` key, plain dashboardUrl
-frugl upload --yes --json --handoff    # opt-in: dashboardUrl carries ?handoff=,
+frugl upload --yes --format json              # default off: no `handoff` key, plain dashboardUrl
+frugl upload --yes --format json --handoff    # opt-in: dashboardUrl carries ?handoff=,
                                        # summary contains {"handoff":{"active":true,...}}
 frugl upload --yes 2>&1 | cat          # piped stdout (non-TTY) → default off
 ```

@@ -158,7 +158,7 @@ export default class Setup extends Command {
         },
       };
 
-      const result = await runOrgSetupFlow(client, orgAction, makeOrgSetupPrompts(spec, "text"));
+      const result = await runOrgSetupFlow(client, orgAction, makeOrgSetupPrompts(spec, "default"));
       renderOrgSetupResult(result, spec, mode);
       return;
     } catch (err) {

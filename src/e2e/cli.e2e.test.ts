@@ -143,7 +143,16 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("writes inspect dir and exits 0 with no network traffic", async () => {
       const inspectDir = path.join(tmp.dir, "inspect-out");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--json", "--inspect", inspectDir, "--endpoint", endpoint],
+        [
+          "upload",
+          "--dry-run",
+          "--format",
+          "json",
+          "--inspect",
+          inspectDir,
+          "--endpoint",
+          endpoint,
+        ],
         { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -202,7 +211,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("exits 0 and emits manifest ID + dashboard URL on stdout", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: { FRUGL_HOME_DIR: tmp.dir },
         },
@@ -240,7 +249,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("first run uploads; second run reports no new or updated sessions", async () => {
       const env = { FRUGL_HOME_DIR: tmp.dir };
       const first = await runCli(
-        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
         { env },
       );
       expect(first.exitCode).toBe(EXIT.OK);
@@ -248,7 +257,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       expect(firstResult.actualSessionCount).toBe(2);
 
       const second = await runCli(
-        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env,
         },
@@ -283,7 +292,17 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("uploads only N sessions when --limit N is passed", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--limit", "2", "--json", "--endpoint", server.url],
+        [
+          "upload",
+          "--sessions",
+          "--yes",
+          "--limit",
+          "2",
+          "--format",
+          "json",
+          "--endpoint",
+          server.url,
+        ],
         { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -342,7 +361,13 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       });
 
       it("emits a valid JSON object on stdout with ok:true", async () => {
-        const { exitCode, stdout } = await runCli(["whoami", "--json", "--endpoint", endpoint]);
+        const { exitCode, stdout } = await runCli([
+          "whoami",
+          "--format",
+          "json",
+          "--endpoint",
+          endpoint,
+        ]);
         expect(exitCode).toBe(EXIT.OK);
         const result = JSON.parse(stdout.trim());
         expect(result.ok).toBe(true);
@@ -352,7 +377,13 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
       it("emits ok:false when not logged in", async () => {
         clearAuth(endpoint);
-        const { exitCode, stdout } = await runCli(["whoami", "--json", "--endpoint", endpoint]);
+        const { exitCode, stdout } = await runCli([
+          "whoami",
+          "--format",
+          "json",
+          "--endpoint",
+          endpoint,
+        ]);
         expect(exitCode).toBe(EXIT.AUTH_FAILURE);
         const result = JSON.parse(stdout.trim());
         expect(result.ok).toBe(false);
@@ -377,7 +408,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
       it("emits JSON with dryRun:true as the last stdout line", async () => {
         const { exitCode, stdout } = await runCli(
-          ["upload", "--dry-run", "--json", "--endpoint", endpoint],
+          ["upload", "--dry-run", "--format", "json", "--endpoint", endpoint],
           { env: { FRUGL_HOME_DIR: tmp.dir } },
         );
         expect(exitCode).toBe(EXIT.OK);
@@ -429,7 +460,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("emits zero HTTP requests to the endpoint during --dry-run", async () => {
       requestCount = 0;
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--json", "--endpoint", recordingEndpoint],
+        ["upload", "--dry-run", "--format", "json", "--endpoint", recordingEndpoint],
         { env: { FRUGL_HOME_DIR: tmp.dir } },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -471,7 +502,16 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("step 2: dry-run + inspect writes dir, exit 0, no network", async () => {
       const inspectDir = path.join(tmp.dir, "sc004-inspect");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--dry-run", "--json", "--inspect", inspectDir, "--endpoint", server.url],
+        [
+          "upload",
+          "--dry-run",
+          "--format",
+          "json",
+          "--inspect",
+          inspectDir,
+          "--endpoint",
+          server.url,
+        ],
         { env: env() },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -483,7 +523,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("step 3: upload --yes uploads all 3 sessions", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: env(),
         },
@@ -496,7 +536,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
 
     it("step 4: second upload --yes is a noop", async () => {
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: env(),
         },
@@ -510,7 +550,17 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("step 5: --limit 1 uploads exactly 1 new session", async () => {
       await writeTestSessions(tmp.dir, 1, "sc004-new-project");
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--limit", "1", "--yes", "--json", "--endpoint", server.url],
+        [
+          "upload",
+          "--sessions",
+          "--limit",
+          "1",
+          "--yes",
+          "--format",
+          "json",
+          "--endpoint",
+          server.url,
+        ],
         { env: env() },
       );
       expect(exitCode).toBe(EXIT.OK);
@@ -555,7 +605,7 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
     it("uploads 200 sessions in ≤ 60 s (SC-003)", async () => {
       const start = performance.now();
       const { exitCode, stdout } = await runCli(
-        ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+        ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
         {
           env: { FRUGL_HOME_DIR: tmp.dir },
           timeoutMs: 70_000,

@@ -105,8 +105,9 @@ Exit codes:
     }
 
     // Interactive: let the user pick a sign-in method before anything else.
-    // Non-interactive (no TTY, --json, --email pre-supplied) skips straight to OTP.
-    if (mode !== "json" && process.stdout.isTTY && !flags.email) {
+    // Non-interactive (no TTY, --format json/minimal, --email pre-supplied)
+    // skips straight to OTP.
+    if (mode === "default" && process.stdout.isTTY && !flags.email) {
       // Returning users get a remembered-default fast path: the picker
       // pre-selects whatever they signed in with last time, so re-auth is a
       // single ⏎. GitHub leads the list — devs live there.
@@ -331,9 +332,9 @@ Exit codes:
       const result = await runOrgSetupFlow(
         client,
         orgAction,
-        makeOrgSetupPrompts(orgSetupSpec, "text"),
+        makeOrgSetupPrompts(orgSetupSpec, "default"),
       );
-      renderOrgSetupResult(result, orgSetupSpec, "text");
+      renderOrgSetupResult(result, orgSetupSpec, "default");
       const handoff = await requestHandoffUrl(
         client,
         `${endpoint.url}/dashboard`,

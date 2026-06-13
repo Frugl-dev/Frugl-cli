@@ -295,7 +295,7 @@ export default class Recommendations extends Command {
     mode: OutputMode,
     yes: boolean,
   ): Promise<void> {
-    if (!yes && mode !== "json") {
+    if (!yes && mode === "default") {
       const ok = await confirm({ message: `Mark recommendation ${id} as applied?`, default: true });
       if (!ok) return;
     }
@@ -319,7 +319,7 @@ export default class Recommendations extends Command {
     mode: OutputMode,
     yes: boolean,
   ): Promise<void> {
-    if (!yes && mode !== "json") {
+    if (!yes && mode === "default") {
       const ok = await confirm({
         message: `Dismiss recommendation ${id} for 30 days?`,
         default: true,

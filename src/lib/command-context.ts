@@ -5,11 +5,11 @@ import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/s
 import { getCliVersion } from "./cli-version.js";
 import { getPendingAuthFailure } from "./config.js";
 import { isFruglError, printFruglError } from "./errors.js";
-import { resolveDebug, resolveOutputMode, type OutputMode } from "./output-mode.js";
+import { resolveDebug, resolveOutputMode, FORMAT_FLAG, type OutputMode } from "./output-mode.js";
 import { color, symbol } from "./theme.js";
 
 export interface CommandFlags {
-  json?: boolean | undefined;
+  format?: string | undefined;
   endpoint?: string | undefined;
 }
 
@@ -56,7 +56,7 @@ export async function buildCommandContext<A extends AuthMode>(
   flags: CommandFlags,
   opts: { auth: A },
 ): Promise<CommandContext<A>> {
-  const mode = resolveOutputMode({ json: flags.json });
+  const mode = resolveOutputMode({ format: flags.format });
   const endpoint = resolveEndpoint({
     flag: flags.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
@@ -105,7 +105,7 @@ function describeAgo(iso: string): string {
 // runs --json on a non-TTY, so it never nags about its own failure. Reading the
 // breadcrumb is best-effort; a config glitch must never block the command.
 function warnPendingAuthFailure(mode: OutputMode, endpointUrl: string): void {
-  if (mode !== "text" || !process.stdout.isTTY) return;
+  if (mode !== "default" || !process.stdout.isTTY) return;
   let pending: ReturnType<typeof getPendingAuthFailure>;
   try {
     pending = getPendingAuthFailure();
@@ -140,5 +140,5 @@ export function handleCommandError(err: unknown, mode: OutputMode): never {
  */
 export const COMMON_FLAGS = {
   endpoint: Flags.string({ description: "Override the API endpoint" }),
-  json: Flags.boolean({ description: "Emit machine-readable JSON output", default: false }),
+  format: FORMAT_FLAG,
 };

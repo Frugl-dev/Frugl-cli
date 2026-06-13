@@ -69,7 +69,7 @@ describe("frugl recommendations", () => {
         rec({ id: "r2", title: "Second", estimated_savings_usd: 5 }),
       ],
     });
-    await Recommendations.run(["--json"]);
+    await Recommendations.run(["--format", "json"]);
     const out = JSON.parse(stdout);
     expect(out.ok).toBe(true);
     expect(out.recommendations.map((r: { id: string }) => r.id)).toEqual(["r1", "r2"]);
@@ -100,7 +100,7 @@ describe("frugl recommendations", () => {
 
   it("--apply posts to the apply endpoint", async () => {
     callMock.mockResolvedValue({ id: "r1", status: "applied", applied_at: "2026-05-30T00:00:00Z" });
-    await Recommendations.run(["--apply", "r1", "--yes", "--json"]);
+    await Recommendations.run(["--apply", "r1", "--yes", "--format", "json"]);
     expect(callMock).toHaveBeenCalledWith(
       expect.objectContaining({ method: "POST", path: "/api/recommendations/r1/apply" }),
     );
@@ -193,7 +193,7 @@ describe("frugl recommendations", () => {
 
   it("fails closed when not logged in (no API calls)", async () => {
     (loadAuthSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    await expect(Recommendations.run(["--json"])).rejects.toThrow("exit:10");
+    await expect(Recommendations.run(["--format", "json"])).rejects.toThrow("exit:10");
     expect(callMock).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(10);
   });

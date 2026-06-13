@@ -42,7 +42,10 @@ afterEach(() => {
 
 // Drive handleCommandError, catching the thrown exit sentinel so the test can
 // inspect the captured exit code + stderr.
-function run(err: unknown, mode: "text" | "json"): { exitCode: number | undefined; out: string } {
+function run(
+  err: unknown,
+  mode: "default" | "json",
+): { exitCode: number | undefined; out: string } {
   try {
     handleCommandError(err, mode);
   } catch (e) {
@@ -68,29 +71,29 @@ describe("handleCommandError — frozen exit-code contract (FR-037)", () => {
   ];
 
   it.each(cases)("%o exits with its declared code", (err, code) => {
-    expect(run(err, "text").exitCode).toBe(code);
+    expect(run(err, "default").exitCode).toBe(code);
   });
 
   it("CloudHttpError exits GENERIC_FAILURE (1)", () => {
-    const { exitCode: code } = run(new CloudHttpError(500, {}, "boom"), "text");
+    const { exitCode: code } = run(new CloudHttpError(500, {}, "boom"), "default");
     expect(code).toBe(EXIT.GENERIC_FAILURE);
   });
 
   it("an arbitrary Error is NOT swallowed — it propagates to oclif", () => {
     const arbitrary = new Error("plain error");
-    expect(() => handleCommandError(arbitrary, "text")).toThrow(arbitrary);
+    expect(() => handleCommandError(arbitrary, "default")).toThrow(arbitrary);
     expect(exitCode).toBeUndefined();
   });
 
   it("a non-Error value also propagates", () => {
-    expect(() => handleCommandError("just a string", "text")).toThrow("just a string");
+    expect(() => handleCommandError("just a string", "default")).toThrow("just a string");
     expect(exitCode).toBeUndefined();
   });
 });
 
 describe("handleCommandError — rendering parity with printFruglError", () => {
   it("text mode emits the `Exit code N (NAME)` footer", () => {
-    const { out } = run(new AuthError("Not logged in."), "text");
+    const { out } = run(new AuthError("Not logged in."), "default");
     expect(out).toContain("frugl: Not logged in.");
     expect(out).toContain("Exit code 10  (AUTH_FAILURE)");
   });
@@ -102,7 +105,7 @@ describe("handleCommandError — rendering parity with printFruglError", () => {
   });
 
   it("CloudHttpError renders a generic `frugl:` line, no footer", () => {
-    const { out } = run(new CloudHttpError(502, {}, "bad gateway"), "text");
+    const { out } = run(new CloudHttpError(502, {}, "bad gateway"), "default");
     expect(out).toContain("frugl: bad gateway");
     expect(out).not.toContain("Exit code");
   });

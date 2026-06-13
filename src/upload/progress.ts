@@ -108,7 +108,11 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
   let done = 0;
   let skipped = 0;
 
+  // The live progress bar uses carriage returns to repaint in place — only the
+  // default format animates. minimal stays quiet per-session (the final summary
+  // still prints) so it never spews `\r` noise into a CI/agent log.
   const liveBar = (): void => {
+    if (mode !== "default") return;
     const filled = total > 0 ? Math.round((done / total) * 32) : 0;
     const tail = skipped > 0 ? color.dim(`  ${skipped} skipped`) : "";
     process.stderr.write(`\r\x1b[K  ${bar(filled, 32)}  ${done} / ${total}${tail}`);

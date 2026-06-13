@@ -16,7 +16,7 @@ export default class OrgUse extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(OrgUse);
-    const mode = resolveOutputMode({ json: flags.json });
+    const mode = resolveOutputMode({ format: flags.format });
 
     try {
       const { client, session } = await authedClient(flags.endpoint);

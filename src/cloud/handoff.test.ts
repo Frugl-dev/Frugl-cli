@@ -75,12 +75,12 @@ describe("handoff wire schemas (contract)", () => {
 describe("resolveHandoffPreference", () => {
   it.each([
     // flag        isTTY   mode      active  source
-    [false, true, "text", false, "flag"], // --no-handoff wins everything
+    [false, true, "default", false, "flag"], // --no-handoff wins everything
     [false, false, "json", false, "flag"],
     [true, false, "json", true, "flag"], // --handoff forces on in JSON/non-TTY
-    [true, false, "text", true, "flag"],
-    [undefined, true, "text", true, "default"], // unset: on only when TTY ∧ text
-    [undefined, false, "text", false, "default"],
+    [true, false, "default", true, "flag"],
+    [undefined, true, "default", true, "default"], // unset: on only when TTY ∧ text
+    [undefined, false, "default", false, "default"],
     [undefined, true, "json", false, "default"],
     [undefined, false, "json", false, "default"],
   ] as const)("flag=%s isTTY=%s mode=%s → active=%s (%s)", (flag, isTTY, mode, active, source) => {

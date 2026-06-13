@@ -26,7 +26,7 @@ Exit codes:
 
   static override examples = [
     "<%= config.bin %> <%= command.id %>",
-    "<%= config.bin %> <%= command.id %> --json",
+    "<%= config.bin %> <%= command.id %> --format json",
     "# Daily via crontab (no built-in scheduler):",
     "0 9 * * * <%= config.bin %> <%= command.id %> >> ~/.frugl/context.log 2>&1",
   ];

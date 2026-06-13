@@ -9,6 +9,6 @@ export default class OrgLs extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(OrgLs);
-    await runOrgList({ endpoint: flags.endpoint, json: flags.json });
+    await runOrgList({ endpoint: flags.endpoint, format: flags.format });
   }
 }

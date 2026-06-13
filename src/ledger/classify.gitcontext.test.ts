@@ -37,7 +37,7 @@ describe("ledger: --link-prs does not churn the ledger (SC-007)", { timeout: 30_
     const env = { FRUGL_HOME_DIR: home.dir };
 
     const first = await runCli(
-      ["upload", "--sessions", "--yes", "--json", "--endpoint", server.url],
+      ["upload", "--sessions", "--yes", "--format", "json", "--endpoint", server.url],
       {
         env,
       },
@@ -47,7 +47,7 @@ describe("ledger: --link-prs does not churn the ledger (SC-007)", { timeout: 30_
     expect(firstResult.actualSessionCount).toBe(1);
 
     const second = await runCli(
-      ["upload", "--sessions", "--yes", "--link-prs", "--json", "--endpoint", server.url],
+      ["upload", "--sessions", "--yes", "--link-prs", "--format", "json", "--endpoint", server.url],
       {
         env,
       },
