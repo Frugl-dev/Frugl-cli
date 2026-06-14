@@ -32,8 +32,6 @@ import {
   type SessionUploadJob,
 } from "../upload/pipeline.js";
 import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
-import { captureContext } from "../context/capture.js";
-import { uploadContextSnapshot } from "../context/upload.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
@@ -56,7 +54,7 @@ import {
 import type { Selection } from "../select/selection.js";
 import { filterTrivial, filterByCost } from "../select/filter.js";
 import type { Source, SessionRef } from "../sources/types.js";
-import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
+import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   AuthError,
   NoSessionsError,
@@ -90,18 +88,17 @@ Exit codes:
 
 Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
-  // Positional targets pick *what* to upload: `sessions`, `context`, or both.
-  // Passing none uploads everything — no "neither = both" boolean to reason about.
-  // oclif has no native variadic *named* arg, so `strict = false` is what lets the
-  // command accept a target list; with `--report` the lone positional is instead
-  // the manifest id to explain (defaults to the in-flight upload).
+  // The only positional target is `sessions`; passing it is equivalent to
+  // passing nothing. Context snapshots are captured by `frugl context` alone —
+  // `upload` never triggers one. oclif has no native variadic *named* arg, so
+  // `strict = false` is what lets the command accept a target token; with
+  // `--report` the lone positional is instead the manifest id to explain
+  // (defaults to the in-flight upload).
   static override strict = false;
 
   static override examples = [
-    "<%= config.bin %> <%= command.id %>                  # upload all targets (sessions + context)",
-    "<%= config.bin %> <%= command.id %> sessions         # only AI coding sessions",
-    "<%= config.bin %> <%= command.id %> context          # only a context snapshot",
-    "<%= config.bin %> <%= command.id %> sessions context # both, named explicitly",
+    "<%= config.bin %> <%= command.id %>                  # upload AI coding sessions",
+    "<%= config.bin %> <%= command.id %> sessions         # same, named explicitly",
     "<%= config.bin %> <%= command.id %> --report         # explain the last upload's failures",
   ];
 
@@ -164,10 +161,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     // an unknown target.
     const positionals = argv as string[];
     let uploadSessions = true;
-    let uploadContext = true;
     if (!flags.report) {
       try {
-        ({ uploadSessions, uploadContext } = resolveUploadTargets(positionals));
+        ({ uploadSessions } = resolveUploadTargets(positionals));
       } catch (err) {
         this.bail(err, mode);
       }
@@ -244,19 +240,11 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         });
       }
 
-      // Shared accumulators — set inside the sessions block, read by the context
-      // block and the final output section.
+      // Shared accumulators — set inside the sessions block, read by the final
+      // output section.
       let totalAcked = 0;
       let lastManifestId = "";
       let lastDashboardUrl = `${endpoint.url}/dashboard`;
-      let contextUploadResult:
-        | {
-            manifestId: string;
-            sessionId: string;
-            capturedAt: string;
-            byteSize: number;
-          }
-        | undefined;
 
       // Session-summary variables — populated inside the sessions block and used
       // in the final JSON output. Declared here so they're in scope after the block.
@@ -591,33 +579,28 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
 
         if (willUpload.length === 0) {
-          if (!uploadContext) {
-            const result = {
-              command: "upload" as const,
-              ok: true as const,
-              manifestId: "noop",
-              actualSessionCount: 0,
-              expectedSessionCount: 1,
-              redactionPolicyVersion: POLICY_VERSION,
-              sourceKind: displaySourceKind,
-              endpoint: endpoint.url,
-              dashboardUrl: `${endpoint.url}/dashboard`,
-              classification: buildClassification(summary!),
-              limited: summary!.limited ?? { active: false },
-              selection: selectionReport,
-              noop: true,
-            };
-            if (mode !== "json") {
-              process.stdout.write(
-                `${color.dim("No new or updated sessions. Nothing to upload.")}\n`,
-              );
-            }
-            if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
-            return;
-          }
+          const result = {
+            command: "upload" as const,
+            ok: true as const,
+            manifestId: "noop",
+            actualSessionCount: 0,
+            expectedSessionCount: 1,
+            redactionPolicyVersion: POLICY_VERSION,
+            sourceKind: displaySourceKind,
+            endpoint: endpoint.url,
+            dashboardUrl: `${endpoint.url}/dashboard`,
+            classification: buildClassification(summary!),
+            limited: summary!.limited ?? { active: false },
+            selection: selectionReport,
+            noop: true,
+          };
           if (mode !== "json") {
-            process.stdout.write(`${color.dim("No new or updated sessions.")}\n`);
+            process.stdout.write(
+              `${color.dim("No new or updated sessions. Nothing to upload.")}\n`,
+            );
           }
+          if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
+          return;
         }
 
         if (willUpload.length > 0) {
@@ -689,65 +672,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         } // end if (willUpload.length > 0)
       } // end if (uploadSessions)
 
-      // Context snapshot upload — runs after sessions (or alone with --context).
-      if (uploadContext && !flags["dry-run"]) {
-        if (mode === "default")
-          process.stderr.write(
-            color.dim("Snapshotting your context window — redacting locally…\n"),
-          );
-        const ctxHomeDir = process.env["FRUGL_HOME_DIR"];
-        const capture = captureContext("claude-code");
-        // Local-only random salt. The pseudonym HMAC key must never equal a
-        // value that ships in the manifest (capturedAt does), or pseudonyms
-        // become dictionary-reversible by anyone holding the payload.
-        const ctxAnon = anonymize(capture.text, {
-          uploadId: randomUUID(),
-          ownerEmail: session.email,
-          ...(ctxHomeDir !== undefined ? { homeDir: ctxHomeDir } : {}),
-        });
-        const ctxMcpServers = captureDeclaredMcpServers();
-        const ctxUpload = await uploadContextSnapshot({
-          cloud,
-          cliVersion: getCliVersion(),
-          sourceKind: "claude-code",
-          policyVersion: POLICY_VERSION,
-          capturedAt: capture.capturedAt,
-          anonymization: ctxAnon,
-          ...(ctxMcpServers ? { mcpServers: ctxMcpServers } : {}),
-        });
-        // Snapshot gate (spec 052): an unchanged or over-cap capture is skipped
-        // server-side. It rides alongside the session upload here, so a skip
-        // never fails the run — just note it and leave the receipt's context
-        // section absent (contextUploadResult stays undefined).
-        if (ctxUpload.status === "no_change") {
-          if (mode !== "json") {
-            process.stdout.write(
-              `${color.dim(`${symbol.tick} Context snapshot unchanged — nothing uploaded`)}\n`,
-            );
-          }
-        } else if (ctxUpload.status === "cap_reached") {
-          if (mode !== "json") {
-            process.stdout.write(
-              `${color.dim(`${symbol.tick} Context snapshot weekly limit reached (${ctxUpload.used}/${ctxUpload.cap}) — nothing uploaded`)}\n`,
-            );
-          }
-        } else {
-          contextUploadResult = {
-            manifestId: ctxUpload.manifestId,
-            sessionId: ctxUpload.sessionId,
-            capturedAt: capture.capturedAt,
-            byteSize: ctxAnon.byteSize,
-          };
-          if (lastDashboardUrl === `${endpoint.url}/dashboard`) {
-            lastDashboardUrl = ctxUpload.dashboardUrl;
-          }
-          if (mode !== "json") {
-            process.stdout.write(
-              `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
-            );
-          }
-        }
-      }
+      // Context snapshots are no longer captured here — `frugl context` is the
+      // sole entry point for them. `upload` only ships AI coding sessions.
 
       // The payoff. The one place upload lets itself celebrate — a receipt that
       // makes the redaction story tangible: what was scrubbed on your machine,
@@ -802,37 +728,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
       }
 
-      // Context-only path: emit a compact JSON output and exit.
-      if (!uploadSessions && contextUploadResult !== undefined) {
-        if (mode === "json") {
-          process.stdout.write(
-            `${JSON.stringify({
-              command: "upload" as const,
-              ok: true as const,
-              endpoint: endpoint.url,
-              dashboardUrl: handoff.dashboardUrl,
-              ...(handoff.active
-                ? {
-                    handoff: {
-                      active: true as const,
-                      expiresAt: handoff.expiresAt,
-                    },
-                  }
-                : handoff.reason === "disabled-default"
-                  ? {}
-                  : {
-                      handoff: {
-                        active: false as const,
-                        reason: handoff.reason,
-                      },
-                    }),
-              context: contextUploadResult,
-            })}\n`,
-          );
-        }
-        return;
-      }
-
       if (summary === undefined || selectionReport === undefined) return;
 
       const finalSummary = {
@@ -865,7 +760,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               },
             }
           : {}),
-        ...(contextUploadResult ? { context: contextUploadResult } : {}),
       };
       // A real upload round-tripped successfully (dry-run returned earlier), so
       // the token is healthy — drop any stale background-failure breadcrumb left
@@ -1202,31 +1096,19 @@ export function parseCostFlag(raw: string | undefined, flagName: string): number
   return n;
 }
 
-const UPLOAD_TARGETS = ["sessions", "context"] as const;
-type UploadTarget = (typeof UPLOAD_TARGETS)[number];
+const UPLOAD_TARGETS = ["sessions"] as const;
 
-// Map positional targets onto the two artifact kinds. No targets = upload
-// everything; otherwise each token must name a known kind. Duplicates are
-// harmless (set semantics), so `upload sessions sessions` is the same as
-// `upload sessions`.
-function resolveUploadTargets(positionals: string[]): {
-  uploadSessions: boolean;
-  uploadContext: boolean;
-} {
-  if (positionals.length === 0) {
-    return { uploadSessions: true, uploadContext: true };
-  }
-  const selected = new Set<UploadTarget>();
+// `upload` ships AI coding sessions only; `sessions` is the sole positional
+// target and is equivalent to passing nothing. Context snapshots belong to
+// `frugl context`. Any other token is rejected so `upload context` fails loudly
+// rather than silently doing nothing.
+function resolveUploadTargets(positionals: string[]): { uploadSessions: boolean } {
   for (const raw of positionals) {
     if (!(UPLOAD_TARGETS as readonly string[]).includes(raw)) {
       throw new UsageError(
-        `Unknown upload target '${raw}'. Valid targets: ${UPLOAD_TARGETS.join(", ")} (omit to upload all).`,
+        `Unknown upload target '${raw}'. Valid target: ${UPLOAD_TARGETS.join(", ")} (omit to upload all sessions).`,
       );
     }
-    selected.add(raw as UploadTarget);
   }
-  return {
-    uploadSessions: selected.has("sessions"),
-    uploadContext: selected.has("context"),
-  };
+  return { uploadSessions: true };
 }
