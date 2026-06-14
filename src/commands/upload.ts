@@ -1,7 +1,7 @@
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
 import path from "node:path";
-import { color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
+import { bar, color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint } from "../cloud/endpoints.js";
@@ -254,7 +254,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         const homeDir = process.env["FRUGL_HOME_DIR"];
         const discoverOpts = homeDir ? { homeDir } : undefined;
 
-        if (mode !== "json")
+        if (mode === "default")
           process.stderr.write(color.dim("Sniffing out AI sessions on this machine…\n"));
 
         // 1) Detect which providers have sessions on this machine.
@@ -346,23 +346,17 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         // Classify per source (each source knows how to parse its own refs).
         // Parsing + anonymizing every selected session is the heaviest local pass
         // and prints nothing on its own — at hundreds of sessions it reads as a
-        // hang. Show a live "redacting" counter so the user sees the work happen.
+        // hang. Paint a live progress bar (same style as the upload bar) so the
+        // user sees the redaction work advance. The bar obeys the output-mode
+        // contract via liveLocalProgress: rich in default, silent in minimal/json.
         const classificationsBySource = new Map<Source, SessionClassification[]>();
         const totalToClassify = [...refsBySource.values()].reduce((n, r) => n + r.length, 0);
-        const liveProgress = mode === "default" && Boolean(process.stderr.isTTY);
-        let classifyDone = 0;
-        const renderClassifyProgress = (): void => {
-          if (!liveProgress) return;
-          process.stderr.write(
-            `\r\x1b[K  ${color.dim(`Redacting sessions on your machine… ${classifyDone} / ${totalToClassify}`)}`,
-          );
-        };
-        if (mode !== "json" && totalToClassify > 0 && !liveProgress) {
-          process.stderr.write(
-            color.dim(`Redacting ${totalToClassify} sessions on your machine…\n`),
-          );
-        }
-        renderClassifyProgress();
+        const redactProgress = liveLocalProgress(
+          mode,
+          totalToClassify,
+          "redacting",
+          `Redacting ${totalToClassify} sessions on your machine…`,
+        );
         for (const [source, sourceRefs] of refsBySource) {
           const sorted = sourceRefs.toSorted(
             (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
@@ -379,15 +373,11 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
                 ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
               },
             },
-            () => {
-              classifyDone += 1;
-              renderClassifyProgress();
-            },
+            () => redactProgress.tick(),
           );
           classificationsBySource.set(source, classifications);
         }
-        // Clear the live counter line before the summary prints.
-        if (liveProgress && totalToClassify > 0) process.stderr.write("\r\x1b[K");
+        redactProgress.done();
 
         // Merge for confirmation + summary
         const allClassifications = [...classificationsBySource.values()].flat();
@@ -405,12 +395,22 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
 
         // Opt-in git-context resolution: only run the (expensive) git pass when
-        // linking is active. The builder folds in the link-prs precedence and
-        // assembles the `prLinking` summary from these raw git facts.
+        // linking is active. It shells out to git once per unique repo/branch, so
+        // a big batch is another silent local pass — show the same live bar.
         const gitBySession = new Map<string, GitContext>();
         let gitContext: { sessionsWithContext: number; repositories: string[] } | undefined;
         if (linkActive) {
-          const repositories = await this.resolveBatchGitContext(willUpload, gitBySession);
+          const gitTotal = willUpload.filter((i) => i.kind !== "unchanged").length;
+          const gitProgress = liveLocalProgress(
+            mode,
+            gitTotal,
+            "linking git context",
+            `Resolving git context for ${gitTotal} sessions…`,
+          );
+          const repositories = await this.resolveBatchGitContext(willUpload, gitBySession, () =>
+            gitProgress.tick(),
+          );
+          gitProgress.done();
           gitContext = { sessionsWithContext: gitBySession.size, repositories };
         }
 
@@ -428,7 +428,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         });
         prLinking = summary.prLinking;
 
-        if (mode !== "json") {
+        // The decorated summary table is human output — default only. minimal/json
+        // get the terse per-batch reporter lines and the final JSON respectively.
+        if (mode === "default") {
           process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
         }
 
@@ -478,7 +480,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           if (finalized) {
             lastManifestId = finalized.manifestId;
             lastDashboardUrl = finalized.dashboardUrl;
-            if (mode !== "json") {
+            if (mode === "default") {
               process.stderr.write(color.dim("Completed a previously interrupted upload batch.\n"));
             }
           }
@@ -588,7 +590,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
       // Context snapshot upload — runs after sessions (or alone with --context).
       if (uploadContext && !flags["dry-run"]) {
-        if (mode !== "json")
+        if (mode === "default")
           process.stderr.write(
             color.dim("Snapshotting your context window — redacting locally…\n"),
           );
@@ -901,6 +903,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
   private async resolveBatchGitContext(
     willUpload: SessionClassification[],
     gitBySession: Map<string, GitContext>,
+    onProgress?: () => void,
   ): Promise<string[]> {
     const memo = new Map<string, Awaited<ReturnType<typeof resolveGitContext>>>();
     const repositories = new Set<string>();
@@ -928,6 +931,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       } else if (resolution.kind === "git-unavailable") {
         gitUnavailable += 1;
       }
+      onProgress?.();
     }
 
     if (attempted > 0 && gitUnavailable === attempted) {
@@ -942,6 +946,42 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
     return [...repositories].toSorted();
   }
+}
+
+// A live progress bar for the heavy *local* pre-upload passes (redaction,
+// git-context resolution). It mirrors the upload bar's look and obeys the
+// output-mode contract: animate in place only in interactive default mode on a
+// TTY; default on a non-TTY prints one static line so a human isn't staring at
+// a frozen cursor; minimal/json stay silent so agent/CI output is terse.
+// Callers drive it with tick() per unit of work and done() to clear the line.
+function liveLocalProgress(
+  mode: OutputMode,
+  total: number,
+  liveLabel: string,
+  staticLabel: string,
+): { tick: () => void; done: () => void } {
+  const animate = mode === "default" && Boolean(process.stderr.isTTY) && total > 0;
+  let completed = 0;
+  const render = (): void => {
+    if (!animate) return;
+    const filled = (completed / total) * 32;
+    process.stderr.write(
+      `\r\x1b[K  ${bar(filled, 32)}  ${completed} / ${total}  ${color.dim(liveLabel)}`,
+    );
+  };
+  if (mode === "default" && total > 0 && !animate) {
+    process.stderr.write(color.dim(`${staticLabel}\n`));
+  }
+  render();
+  return {
+    tick: () => {
+      completed += 1;
+      render();
+    },
+    done: () => {
+      if (animate) process.stderr.write("\r\x1b[K");
+    },
+  };
 }
 
 function buildProjectRows(
