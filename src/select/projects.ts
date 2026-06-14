@@ -10,6 +10,10 @@ export interface SelectProjectsOptions {
   // When set (and > 0), label the prompt so it's clear the counts exclude cheap
   // sessions, e.g. "excluding sessions under $0.01".
   minCost?: number;
+  // projectIds to leave unchecked by default even when they have sessions to
+  // upload — e.g. groups with no git remote, which the user opts into by hand
+  // rather than shipping local-only scratch repos unintentionally.
+  deselect?: Set<string>;
 }
 
 // Returns the ids of the projects the dev wants to upload. Non-interactive (or
@@ -29,7 +33,7 @@ export async function selectProjects(
     return {
       name: `${g.displayName}  (${count})`,
       value: g.projectId,
-      checked: count > 0,
+      checked: count > 0 && !(opts.deselect?.has(g.projectId) ?? false),
     };
   });
   const message =
