@@ -120,12 +120,12 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       description: "Maximum sessions to upload (from new and updated candidates).",
     }),
     "min-cost": Flags.string({
-      // Defaults to a penny: near-zero sessions (a stray prompt, an aborted run)
-      // are noise on the dashboard and cost more to ship than they're worth.
-      // Pass --min-cost=0 to upload everything regardless of estimated cost.
+      // Defaults to (and floors at) $10: low-cost sessions (a stray prompt, an
+      // aborted run, a quick one-off) are noise on the dashboard and cost more to
+      // process than they're worth. Frugl saves money, so the floor can't go lower.
       description:
-        "Skip sessions whose estimated cost is below this amount in USD (e.g. 0.10, 5). Default 0.01; use --min-cost=0 to upload everything.",
-      default: "0.01",
+        "Skip sessions whose estimated cost is below this amount in USD (e.g. 10, 25). Default and minimum 10.00.",
+      default: "10.00",
     }),
     "link-prs": Flags.boolean({
       description:
@@ -182,6 +182,15 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
     if (flags.limit !== undefined && flags.limit <= 0) {
       this.bail(new UsageError("--limit must be a positive integer."), mode);
+    }
+
+    // Validate --min-cost up front (before auth) so a bad value fails fast with a
+    // clean usage error rather than after the login flow. The floor lives in
+    // parseCostFlag, which is re-used later to read the value.
+    try {
+      parseCostFlag(flags["min-cost"], "--min-cost");
+    } catch (err) {
+      this.bail(err, mode);
     }
 
     const endpoint = resolveEndpoint({
@@ -276,11 +285,82 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         });
 
         const groups: ProjectGroup[] = [];
+
+        const uploadId = randomUUID();
+        const minCost = parseCostFlag(flags["min-cost"], "--min-cost");
+        const ledger = new Ledger({
+          endpointUrl: endpoint.url,
+          userId: session.userId,
+        });
+        const resumeStore = new ResumeStore({
+          endpointUrl: endpoint.url,
+          userId: session.userId,
+        });
+
+        // Parse + anonymize a set of refs, grouped per source (each source knows
+        // how to parse its own files). This is the heaviest local pass and prints
+        // nothing on its own — at hundreds of sessions it reads as a hang — so we
+        // paint a live progress bar. classifyAll bounds its own concurrency so a
+        // big batch doesn't fan out and stall. The bar obeys the output-mode
+        // contract via liveLocalProgress: rich in default, silent in minimal/json.
+        const homeDirOverride = process.env["FRUGL_HOME_DIR"];
+        const classifyRefs = async (toParse: SessionRef[]): Promise<SessionClassification[]> => {
+          const bySource = new Map<Source, SessionRef[]>();
+          for (const ref of toParse) {
+            const source = getSourceByKind(ref.sourceKind);
+            if (!source) continue;
+            const list = bySource.get(source) ?? [];
+            list.push(ref);
+            bySource.set(source, list);
+          }
+          const total = [...bySource.values()].reduce((n, r) => n + r.length, 0);
+          const progress = liveLocalProgress(
+            mode,
+            total,
+            "parsing sessions",
+            `Parsing ${total} sessions on your machine…`,
+          );
+          const out: SessionClassification[] = [];
+          for (const [source, sourceRefs] of bySource) {
+            const sorted = sourceRefs.toSorted(
+              (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
+            );
+            const classifications = await classifyAll(
+              sorted,
+              {
+                ledger,
+                source,
+                anonymize: {
+                  uploadId,
+                  ownerEmail: session.email,
+                  ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
+                },
+              },
+              () => progress.tick(),
+            );
+            out.push(...classifications);
+          }
+          progress.done();
+          return out;
+        };
+
+        // The sessions that would actually upload from a classified set:
+        // new/updated (never unchanged) that survive the trivial + --min-cost
+        // filters. Used both for the picker counts and the final willUpload.
+        const eligibleFrom = (cs: SessionClassification[]): SessionClassification[] => {
+          const buckets = bucketize(cs);
+          const candidates = sortByMtimeDesc([...buckets.new, ...buckets.updated]);
+          const notTrivial = filterTrivial(candidates);
+          return minCost !== undefined ? filterByCost(notTrivial, minCost) : notTrivial;
+        };
+
         let selection: Selection;
+        let allClassifications: SessionClassification[];
 
         if (uploadConfig) {
           // Config-driven scope: derive all supported providers' projects, then
-          // filter by the config's providers + project include/exclude globs.
+          // filter by the config's providers + project include/exclude globs. No
+          // picker, so only the config-selected refs are parsed.
           for (const d of supportedDetected) {
             const descriptor = getProvider(d.descriptor.id);
             if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
@@ -289,11 +369,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             groups.push(...descriptor.deriveProjects(providerRefs));
           }
           selection = resolveConfigSelection(uploadConfig, detected, groups);
+          allClassifications = await classifyRefs(applySelection(groups, selection));
         } else {
           // 2) Choose providers — interactive picker, or auto-select-all when not.
-          const selectedProviderIds = await selectProviders(detected, {
-            interactive,
-          });
+          const selectedProviderIds = await selectProviders(detected, { interactive });
           if (selectedProviderIds.length === 0) {
             if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
             process.exit(EXIT.OK);
@@ -306,9 +385,25 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             const providerRefs = await descriptor.source.discover(discoverOpts);
             groups.push(...descriptor.deriveProjects(providerRefs));
           }
-          // 4) Choose projects — all preselected; deselect to exclude from upload.
+          // Parse every discovered session up front so the project picker can show
+          // counts that reflect what will actually upload after --min-cost. Cost is
+          // only knowable by reading each file, so this heavy pass precedes the picker.
+          allClassifications = await classifyRefs(groups.flatMap((g) => g.sessions));
+          const byPath = new Map<string, SessionClassification>();
+          for (const c of allClassifications) byPath.set(c.ref.absolutePath, c);
+          const counts = new Map<string, number>();
+          for (const g of groups) {
+            const cs = g.sessions
+              .map((s) => byPath.get(s.absolutePath))
+              .filter((c): c is SessionClassification => c !== undefined);
+            counts.set(g.projectId, eligibleFrom(cs).length);
+          }
+          // 4) Choose projects — labelled with cost-aware counts; projects with
+          // nothing left to upload are shown but deselected by default.
           const selectedProjectIds = await selectProjects(groups, {
             interactive,
+            counts,
+            ...(minCost !== undefined ? { minCost } : {}),
           });
           selection = {
             providerIds: selectedProviderIds,
@@ -317,81 +412,35 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
         selectionReport = buildSelectionReport(detected, groups, selection);
 
-        const refs = applySelection(groups, selection);
-        if (refs.length === 0) {
+        const selectedRefs = applySelection(groups, selection);
+        if (selectedRefs.length === 0) {
           if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
           process.exit(EXIT.OK);
         }
 
-        const uploadId = randomUUID();
-        // Group refs by source for per-source pipeline
-        const refsBySource = new Map<Source, SessionRef[]>();
-        for (const ref of refs) {
-          const source = getSourceByKind(ref.sourceKind);
-          if (!source) continue;
-          const existing = refsBySource.get(source) ?? [];
-          existing.push(ref);
-          refsBySource.set(source, existing);
-        }
-
-        const ledger = new Ledger({
-          endpointUrl: endpoint.url,
-          userId: session.userId,
-        });
-        const resumeStore = new ResumeStore({
-          endpointUrl: endpoint.url,
-          userId: session.userId,
-        });
-
-        // Classify per source (each source knows how to parse its own refs).
-        // Parsing + anonymizing every selected session is the heaviest local pass
-        // and prints nothing on its own — at hundreds of sessions it reads as a
-        // hang. Paint a live progress bar (same style as the upload bar) so the
-        // user sees the redaction work advance. The bar obeys the output-mode
-        // contract via liveLocalProgress: rich in default, silent in minimal/json.
-        const classificationsBySource = new Map<Source, SessionClassification[]>();
-        const totalToClassify = [...refsBySource.values()].reduce((n, r) => n + r.length, 0);
-        const redactProgress = liveLocalProgress(
-          mode,
-          totalToClassify,
-          "redacting",
-          `Redacting ${totalToClassify} sessions on your machine…`,
+        // Keep only the classifications for the selected projects — already parsed
+        // above, so no file is read twice.
+        const selectedPaths = new Set(selectedRefs.map((r) => r.absolutePath));
+        const selectedClassifications = allClassifications.filter((c) =>
+          selectedPaths.has(c.ref.absolutePath),
         );
-        for (const [source, sourceRefs] of refsBySource) {
-          const sorted = sourceRefs.toSorted(
-            (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
-          );
-          const homeDirOverride = process.env["FRUGL_HOME_DIR"];
-          const classifications = await classifyAll(
-            sorted,
-            {
-              ledger,
-              source,
-              anonymize: {
-                uploadId,
-                ownerEmail: session.email,
-                ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
-              },
-            },
-            () => redactProgress.tick(),
-          );
-          classificationsBySource.set(source, classifications);
+
+        // Group selected classifications by source for the per-source pipeline.
+        const classificationsBySource = new Map<Source, SessionClassification[]>();
+        for (const c of selectedClassifications) {
+          const source = getSourceByKind(c.ref.sourceKind);
+          if (!source) continue;
+          const list = classificationsBySource.get(source) ?? [];
+          list.push(c);
+          classificationsBySource.set(source, list);
         }
-        redactProgress.done();
 
         // Merge for confirmation + summary
-        const allClassifications = [...classificationsBySource.values()].flat();
-        const allBuckets = bucketize(allClassifications);
-        const allCandidates: SessionClassification[] = sortByMtimeDesc([
-          ...allBuckets.new,
-          ...allBuckets.updated,
-        ]);
-        const minCost = parseCostFlag(flags["min-cost"], "--min-cost");
-        const notTrivial = filterTrivial(allCandidates);
-        const costFiltered = minCost !== undefined ? filterByCost(notTrivial, minCost) : notTrivial;
-        willUpload = flags.limit !== undefined ? costFiltered.slice(0, flags.limit) : costFiltered;
+        const allBuckets = bucketize(selectedClassifications);
+        const eligible = eligibleFrom(selectedClassifications);
+        willUpload = flags.limit !== undefined ? eligible.slice(0, flags.limit) : eligible;
 
-        const activeSources = [...refsBySource.keys()];
+        const activeSources = [...classificationsBySource.keys()];
         displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
 
         // Opt-in git-context resolution: only run the (expensive) git pass when
@@ -1063,11 +1112,21 @@ async function buildJobsForSource(
   return jobs;
 }
 
-function parseCostFlag(raw: string | undefined, flagName: string): number | undefined {
+// The lowest --min-cost we accept. Frugl exists to save you money, and parsing
+// and shipping a session itself costs money — uploading cheap sessions is net
+// negative, so we don't let the floor drop below this.
+export const MIN_COST_FLOOR_USD = 10;
+
+export function parseCostFlag(raw: string | undefined, flagName: string): number | undefined {
   if (raw === undefined) return undefined;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) {
-    throw new UsageError(`${flagName} must be a non-negative number (e.g. 0.10, 5).`);
+    throw new UsageError(`${flagName} must be a non-negative number (e.g. 10, 25).`);
+  }
+  if (n < MIN_COST_FLOOR_USD) {
+    throw new UsageError(
+      `${flagName} must be at least $${MIN_COST_FLOOR_USD.toFixed(2)}. Frugl is about saving money — uploading sessions below that costs more to process than they're worth.`,
+    );
   }
   return n;
 }
