@@ -28,14 +28,22 @@ export async function selectProjects(
   if (!opts.interactive || groups.length === 0) {
     return groups.map((g) => g.projectId);
   }
-  const choices = groups.map((g) => {
-    const count = opts.counts?.get(g.projectId) ?? g.sessionCount;
-    return {
+  const choices = groups
+    .map((g) => ({
+      group: g,
+      count: opts.counts?.get(g.projectId) ?? g.sessionCount,
+    }))
+    // Drop anything with nothing to upload — an empty "(0)" row is just noise
+    // the dev can't act on.
+    .filter(({ count }) => count > 0)
+    .map(({ group: g, count }) => ({
       name: `${g.displayName}  (${count})`,
       value: g.projectId,
-      checked: count > 0 && !(opts.deselect?.has(g.projectId) ?? false),
-    };
-  });
+      checked: !(opts.deselect?.has(g.projectId) ?? false),
+    }));
+  if (choices.length === 0) {
+    return [];
+  }
   const message =
     opts.minCost !== undefined && opts.minCost > 0
       ? `Which projects should Frugl upload? (excluding sessions under $${opts.minCost.toFixed(2)})`
