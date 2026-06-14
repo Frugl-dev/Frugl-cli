@@ -70,22 +70,33 @@ export async function classifySession(
   };
 }
 
+// How many sessions to parse + anonymize at once. An unbounded fan-out over a
+// large batch (hundreds of sessions) reads every file, decodes it, and runs the
+// CPU-bound anonymize walk all at the same time — that exhausts file descriptors
+// and memory and pins the event loop, so the redaction progress bar sits at
+// 0 / N and the command reads as a hang. A small fixed pool keeps peak work
+// bounded and lets progress tick steadily from the first completion.
+export const CLASSIFY_CONCURRENCY = 8;
+
 export async function classifyAll(
   refs: SessionRef[],
   ctx: ClassifyContext,
   onProgress?: (done: number, total: number) => void,
+  concurrency: number = CLASSIFY_CONCURRENCY,
 ): Promise<SessionClassification[]> {
   const total = refs.length;
+  const all: SessionClassification[] = Array.from({ length: total });
+  let next = 0;
   let done = 0;
-  const all = await Promise.all(
-    refs.map((ref) =>
-      classifySession(ref, ctx).then((result) => {
-        done += 1;
-        onProgress?.(done, total);
-        return result;
-      }),
-    ),
-  );
+  const workers = Math.max(1, Math.min(concurrency, total));
+  const worker = async (): Promise<void> => {
+    for (let i = next++; i < total; i = next++) {
+      all[i] = await classifySession(refs[i]!, ctx);
+      done += 1;
+      onProgress?.(done, total);
+    }
+  };
+  await Promise.all(Array.from({ length: workers }, () => worker()));
   const seen = new Set<string>();
   const results: SessionClassification[] = [];
   for (const result of all) {
