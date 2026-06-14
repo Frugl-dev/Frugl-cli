@@ -98,7 +98,7 @@ describe("selectProjects", () => {
     },
   ];
 
-  it("interactive: labels with cost-aware counts and unchecks empty projects", async () => {
+  it("interactive: labels with cost-aware counts and drops empty projects", async () => {
     checkboxMock.mockResolvedValue(["-Users-me-app"]);
     const counts = new Map([
       ["-Users-me-app", 7],
@@ -111,9 +111,19 @@ describe("selectProjects", () => {
     // Count comes from `counts`, not the raw sessionCount (40 / 12).
     expect(choices[0]!["name"]).toContain("(7)");
     expect(choices[0]!["checked"]).toBe(true);
-    // A project with nothing left to upload is shown but deselected.
-    expect(choices[1]!["name"]).toContain("(0)");
-    expect(choices[1]!["checked"]).toBe(false);
+    // A project with nothing left to upload is dropped entirely, not shown as "(0)".
+    expect(choices).toHaveLength(1);
+    expect(choices.some((c) => c["value"] === "-Users-me-scratch")).toBe(false);
+  });
+
+  it("interactive: all projects empty returns [] without prompting", async () => {
+    const counts = new Map([
+      ["-Users-me-app", 0],
+      ["-Users-me-scratch", 0],
+    ]);
+    const ids = await selectProjects(twoGroups, { interactive: true, counts });
+    expect(ids).toEqual([]);
+    expect(checkboxMock).not.toHaveBeenCalled();
   });
 
   it("interactive: deselect set leaves matching projects unchecked despite sessions", async () => {
