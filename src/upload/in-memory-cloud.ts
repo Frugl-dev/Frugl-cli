@@ -1,6 +1,11 @@
 import type { CreateManifestRequest } from "../cloud/schemas.js";
 import { AuthError, VersionGateError } from "../lib/errors.js";
-import { CloudPortError, type PresignResult, type UploadCloudPort } from "./cloud-port.js";
+import {
+  CloudPortError,
+  type CreateManifestResult,
+  type PresignResult,
+  type UploadCloudPort,
+} from "./cloud-port.js";
 
 // Mirror the production control-plane mapping (CloudClient.handleResponse):
 // 401/403 surface as AuthError and 426 as VersionGateError BEFORE any
@@ -29,6 +34,10 @@ export interface InMemoryCloudOptions {
   presignThrow?: (sessionId: string) => unknown;
   failPutWith?: number;
   failCompleteWith?: number;
+  // Snapshot gate outcomes (spec 052): force the manifest to skip (no_change) or
+  // refuse (cap_reached) instead of creating an upload. Default → created.
+  manifestNoChange?: boolean;
+  manifestCapReached?: { cap: number; used: number; windowResetsAt: string };
 }
 
 export class InMemoryCloud implements UploadCloudPort {
@@ -41,9 +50,12 @@ export class InMemoryCloud implements UploadCloudPort {
     this.manifestId = opts.manifestId ?? "mfst_test";
   }
 
-  async createManifest(req: CreateManifestRequest): Promise<{ uploadId: string }> {
+  async createManifest(req: CreateManifestRequest): Promise<CreateManifestResult> {
     this.manifests.set(this.manifestId, req);
-    return { uploadId: this.manifestId };
+    if (this.opts.manifestNoChange) return { kind: "no_change" };
+    if (this.opts.manifestCapReached)
+      return { kind: "cap_reached", ...this.opts.manifestCapReached };
+    return { kind: "created", uploadId: this.manifestId };
   }
 
   async presign(_manifestId: string, sessionId: string): Promise<PresignResult> {

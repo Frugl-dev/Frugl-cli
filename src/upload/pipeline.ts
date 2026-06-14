@@ -224,7 +224,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
       sessionBodyBytes(job.anonymizationResult.payload).byteLength,
     ]),
   );
-  const { uploadId } = await opts.cloud.createManifest({
+  const manifest = await opts.cloud.createManifest({
     cli_version: opts.cliVersion,
     redaction_policy_version: opts.policyVersion,
     source_kind: opts.sourceKind,
@@ -238,6 +238,16 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
       ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
     })),
   });
+  // Session uploads never carry a content_hash, so the snapshot gate's no_change
+  // / cap_reached outcomes (spec 052) can't apply here. Anything but `created` is
+  // a protocol violation — surface it honestly rather than proceeding blind.
+  if (manifest.kind !== "created") {
+    throw new FruglError(
+      `unexpected manifest outcome for session upload: ${manifest.kind}`,
+      EXIT.GENERIC_FAILURE,
+    );
+  }
+  const { uploadId } = manifest;
   return {
     manifestId: uploadId,
     cliVersion: opts.cliVersion,

@@ -5,8 +5,16 @@ import type { CreateManifestRequest } from "../cloud/schemas.js";
 // nothing about HTTP, fetch, snake_case wire payloads, or the cloud Zod schemas
 // leaks across this boundary. Adapters (HTTP for prod, in-memory for tests)
 // implement it; the deep module never imports from `../cloud/*`.
+// The outcome of POSTing a manifest. A session upload only ever sees `created`;
+// snapshot uploads (spec 052) can also be skipped (`no_change`) or refused
+// (`cap_reached`) by the server's gate before any bytes are sent.
+export type CreateManifestResult =
+  | { kind: "created"; uploadId: string }
+  | { kind: "no_change" }
+  | { kind: "cap_reached"; cap: number; used: number; windowResetsAt: string };
+
 export interface UploadCloudPort {
-  createManifest(req: CreateManifestRequest): Promise<{ uploadId: string }>;
+  createManifest(req: CreateManifestRequest): Promise<CreateManifestResult>;
   presign(manifestId: string, sessionId: string): Promise<PresignResult>;
   putSessionBody(url: string, body: Uint8Array, headers: Record<string, string>): Promise<void>;
   completeManifest(

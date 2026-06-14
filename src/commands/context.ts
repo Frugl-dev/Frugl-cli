@@ -70,6 +70,50 @@ Exit codes:
         ...(mcpServers ? { mcpServers } : {}),
       });
 
+      // Snapshot gate outcomes (spec 052): the server skipped an unchanged
+      // capture or refused one over the weekly cap. Both are expected,
+      // non-error results — report clearly and exit 0 (no dashboard handoff,
+      // since nothing was uploaded).
+      if (upload.status === "no_change") {
+        if (mode === "json") {
+          process.stdout.write(
+            `${JSON.stringify({
+              command: "context",
+              ok: true,
+              status: "no_change",
+              tool: TOOL,
+              capturedAt: capture.capturedAt,
+            })}\n`,
+          );
+          return;
+        }
+        process.stdout.write(
+          `${color.dim(`${symbol.tick} No change since your last context snapshot — nothing uploaded`)}\n`,
+        );
+        return;
+      }
+      if (upload.status === "cap_reached") {
+        if (mode === "json") {
+          process.stdout.write(
+            `${JSON.stringify({
+              command: "context",
+              ok: true,
+              status: "cap_reached",
+              tool: TOOL,
+              cap: upload.cap,
+              used: upload.used,
+              windowResetsAt: upload.windowResetsAt,
+            })}\n`,
+          );
+          return;
+        }
+        process.stdout.write(
+          `${color.dim(`${symbol.tick} Weekly snapshot limit reached (${upload.used}/${upload.cap}) — nothing uploaded`)}\n`,
+        );
+        process.stdout.write(`${color.dim(`  Resets ${upload.windowResetsAt}`)}\n`);
+        return;
+      }
+
       const handoff = await requestHandoffUrl(
         client,
         upload.dashboardUrl,
@@ -81,6 +125,7 @@ Exit codes:
           `${JSON.stringify({
             command: "context",
             ok: true,
+            status: "uploaded",
             tool: TOOL,
             capturedAt: capture.capturedAt,
             manifestId: upload.manifestId,

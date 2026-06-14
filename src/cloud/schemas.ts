@@ -65,6 +65,14 @@ export const manifestEntryRequestSchema = z.object({
   // Capture timestamp (ISO 8601). Optional on the wire for back-compat, but the
   // server requires it when artifact_kind === "context_snapshot".
   captured_at: z.string().datetime().optional(),
+  // No-change fingerprint (spec 052): a sha256 hex of the capture content,
+  // independent of the per-run uploadId and captured_at. The server compares it
+  // to the user's latest snapshot of the same kind+project and skips the upload
+  // on an exact match. Optional + additive — omitting it just skips the check.
+  content_hash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
 });
 export type ManifestEntryRequest = z.infer<typeof manifestEntryRequestSchema>;
 
@@ -91,10 +99,25 @@ export const createManifestRequestSchema = z.object({
 });
 export type CreateManifestRequest = z.infer<typeof createManifestRequestSchema>;
 
-export const createManifestResponseSchema = z.object({
+// A created upload — the historical happy path.
+export const manifestCreatedResponseSchema = z.object({
   upload_id: z.string().min(1),
   session_object_ids: z.array(z.string()).optional(),
 });
+
+// Snapshot no-change skip (spec 052): the server found the content identical to
+// the user's latest snapshot of this kind+project and wrote nothing. Returned
+// 200 (an OK status), so it must be an accepted response shape, not an error.
+export const manifestNoChangeResponseSchema = z.object({
+  status: z.literal("no_change"),
+  artifact_kind: z.string().min(1),
+});
+
+// A 200 manifest response is either a created upload or a no-change skip.
+export const createManifestResponseSchema = z.union([
+  manifestCreatedResponseSchema,
+  manifestNoChangeResponseSchema,
+]);
 export type CreateManifestResponse = z.infer<typeof createManifestResponseSchema>;
 
 export const presignResponseSchema = z.object({
