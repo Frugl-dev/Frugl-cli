@@ -37,7 +37,7 @@ export function captureClaudeCodeContext(spawner: Spawner = defaultSpawner): str
     const code = (result.error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
       throw new FruglError(
-        "The 'claude' CLI was not found on your PATH. Install Claude Code (https://docs.claude.com/claude-code) and ensure `claude` is runnable, then re-run `frugl context`.",
+        "The 'claude' CLI was not found on your PATH. Install Claude Code (https://docs.claude.com/claude-code) and ensure `claude` is runnable, then re-run `frugl snapshot context`.",
         EXIT.GENERIC_FAILURE,
       );
     }

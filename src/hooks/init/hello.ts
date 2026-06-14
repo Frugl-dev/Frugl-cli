@@ -43,7 +43,7 @@ const hook: Hook<"init"> = async function (opts) {
     `${color.dim("anonymize on your machine, ")}${color.bold("then")}${color.dim(" send.")}`,
   );
   row("recs", color.dim("what's worth fixing this week — ranked by $/mo."));
-  row("context", color.dim("snapshot your context window before it bloats."));
+  row("snapshot", color.dim("capture your context window & MCP setup."));
   out.write("\n");
   out.write(
     `  ${color.dim("First time? ")}${color.frog("frugl upload --dry-run")}${color.dim(" shows everything, sends nothing.")}\n`,

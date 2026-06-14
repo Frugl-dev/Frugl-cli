@@ -50,9 +50,10 @@ export type GitContextRequest = z.infer<typeof gitContextRequestSchema>;
 
 // The artifact a manifest carries. "session" is the historical default (parsed
 // session logs); "context_snapshot" (spec 025) is a single timestamped capture
-// of a tool's /context breakdown. The field is optional + defaults to "session"
-// so existing session uploads stay byte-identical on the wire.
-export const artifactKindSchema = z.enum(["session", "context_snapshot"]);
+// of a tool's /context breakdown; "mcp_snapshot" is a single timestamped capture
+// of the configured MCP-server inventory. The field is optional + defaults to
+// "session" so existing session uploads stay byte-identical on the wire.
+export const artifactKindSchema = z.enum(["session", "context_snapshot", "mcp_snapshot"]);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
 export const manifestEntryRequestSchema = z.object({
@@ -63,7 +64,7 @@ export const manifestEntryRequestSchema = z.object({
   // Sub-path within .claude/worktrees/ when the session comes from a worktree.
   worktree_path: z.string().min(1).optional(),
   // Capture timestamp (ISO 8601). Optional on the wire for back-compat, but the
-  // server requires it when artifact_kind === "context_snapshot".
+  // server requires it for snapshot artifacts ("context_snapshot"/"mcp_snapshot").
   captured_at: z.string().datetime().optional(),
 });
 export type ManifestEntryRequest = z.infer<typeof manifestEntryRequestSchema>;

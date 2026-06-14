@@ -47,7 +47,7 @@ burning tokens. Everything below is the detail.
 | `frugl logout`       | Revoke this device's session and forget the local token.                                 |
 | `frugl whoami`       | Show the signed-in identity, active org, and role.                                       |
 | `frugl upload`       | Discover, anonymize, and upload local AI-coding sessions.                                |
-| `frugl context`      | Capture + upload a timestamped context-window snapshot.                                  |
+| `frugl snapshot`     | Capture + upload a timestamped snapshot (`context`, `mcp`, or `--all`).                  |
 | `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                              |
 | `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                 |
 
@@ -79,13 +79,15 @@ before sending anything:
 By default trivial sessions (negligible estimated cost) are filtered out
 automatically; use `--min-cost` to raise that threshold.
 
+`frugl upload` uploads AI-coding **sessions** only. Snapshots (your context
+window, your MCP setup) live under `frugl snapshot` — see [Snapshots](#snapshots)
+below.
+
 ```bash
-frugl upload                               # upload all targets (sessions + context)
-frugl upload sessions                      # only AI coding sessions
-frugl upload context                       # only a context snapshot
+frugl upload                               # discover + upload AI coding sessions
 frugl upload --dry-run                     # discover + anonymize; transmit zero bytes
 frugl upload --yes                         # upload without the confirmation prompt
-frugl upload --min-cost 0.10               # skip sessions estimated under $0.10
+frugl upload --min-cost 25.00              # skip sessions estimated under $25.00
 frugl upload --limit 20                    # cap how many sessions upload
 frugl upload --report                      # explain the last upload's failures
 ```
@@ -135,35 +137,51 @@ frugl org invites                      # how to get an invite code
 Invite codes come from a teammate — org owners and admins generate them on the
 dashboard.
 
-## Context snapshots
+## Snapshots
 
-`frugl context` captures the configured AI tool's context-window breakdown —
-today Claude Code's `/context` — anonymizes it locally, and uploads a single
-**timestamped** snapshot. It launches the tool by spawning `claude -p "/context"`
-and uploads only what that command prints to stdout: category token counts plus
-config identifiers (skill / MCP server / agent names and memory-file paths). It
-never reads or uploads the **contents** of any file the breakdown references.
-Embedded secrets and third-party emails are redacted, and your home-directory
-prefix is normalized, by the same local anonymizer the upload path uses
-(fail-closed).
+A **snapshot** is a single timestamped, locally-anonymized capture of part of
+your AI-tool setup. They are kept separate from `frugl upload` (which only sends
+sessions) so you always choose explicitly what leaves your machine. Two kinds
+are available today, both from Claude Code:
+
+| Command                  | Captures                                                                |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `frugl snapshot context` | The `/context` window breakdown — category token counts + config names. |
+| `frugl snapshot mcp`     | The configured MCP-server inventory — name, transport, target, status.  |
 
 ```bash
-frugl context                 # capture, anonymize, upload one snapshot
-frugl context --format json   # machine-readable result (capturedAt, manifestId, …)
+frugl snapshot                 # list the snapshot kinds (captures nothing)
+frugl snapshot --all           # capture + upload every kind
+frugl snapshot context         # only the /context breakdown
+frugl snapshot mcp             # only the MCP-server inventory
+frugl snapshot mcp --format json
 ```
 
+**Context** spawns `claude -p "/context"` and uploads only what it prints to
+stdout: category token counts plus config identifiers (skill / MCP server / agent
+names and memory-file paths). It never reads or uploads the **contents** of any
+file the breakdown references.
+
+**MCP** runs `claude mcp list` and uploads the server inventory. Server `target`
+values (URLs or launch commands) can embed secrets, so they are run through the
+same local anonymizer before upload — embedded keys, tokens, and third-party
+emails are redacted while server **names** are preserved as config identifiers.
+
+For both, your home-directory prefix is normalized and redaction is the same
+**fail-closed** local anonymizer the upload path uses.
+
 **Cadence (v1).** There is no built-in scheduler. To accumulate snapshots over
-time — which is what makes them useful for spotting context-window drift — run
-`frugl context` on a recurring schedule from an external cron/CI job, roughly
-daily:
+time — which is what makes them useful for spotting drift — run them on a
+recurring schedule from an external cron/CI job, roughly daily:
 
 ```cron
-0 9 * * * frugl context >> ~/.frugl/context.log 2>&1
+0 9 * * * frugl snapshot --all >> ~/.frugl/snapshot.log 2>&1
 ```
 
 Each run produces a **distinct** snapshot (fresh id + fresh timestamp) — there
 is no overwrite or dedupe. A failed run (tool missing, no output, network blip)
-exits non-zero, uploads nothing, and **never blocks the next run**.
+exits non-zero, uploads nothing, and **never blocks the next run**. Under
+`--all`, one kind failing never blocks the other.
 
 ## Why open source?
 

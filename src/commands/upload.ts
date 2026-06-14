@@ -32,8 +32,6 @@ import {
   type SessionUploadJob,
 } from "../upload/pipeline.js";
 import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
-import { captureContext } from "../context/capture.js";
-import { uploadContextSnapshot } from "../context/upload.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
@@ -49,7 +47,7 @@ import { applySelection, isInteractive, selectProjects, selectProviders } from "
 import type { Selection } from "../select/selection.js";
 import { filterTrivial, filterByCost } from "../select/filter.js";
 import type { Source, SessionRef } from "../sources/types.js";
-import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
+import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   AuthError,
   NoSessionsError,
@@ -83,19 +81,16 @@ Exit codes:
 
 Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
-  // Positional targets pick *what* to upload: `sessions`, `context`, or both.
-  // Passing none uploads everything — no "neither = both" boolean to reason about.
-  // oclif has no native variadic *named* arg, so `strict = false` is what lets the
-  // command accept a target list; with `--report` the lone positional is instead
-  // the manifest id to explain (defaults to the in-flight upload).
+  // `upload` takes no targets — it uploads AI-coding sessions. Snapshots have
+  // their own home (`frugl snapshot context` / `frugl snapshot mcp`). The only
+  // positional is the manifest id for `--report`; `strict = false` lets that
+  // through (and lets us reject stray positionals with a helpful redirect).
   static override strict = false;
 
   static override examples = [
-    "<%= config.bin %> <%= command.id %>                  # upload all targets (sessions + context)",
-    "<%= config.bin %> <%= command.id %> sessions         # only AI coding sessions",
-    "<%= config.bin %> <%= command.id %> context          # only a context snapshot",
-    "<%= config.bin %> <%= command.id %> sessions context # both, named explicitly",
-    "<%= config.bin %> <%= command.id %> --report         # explain the last upload's failures",
+    "<%= config.bin %> <%= command.id %>            # upload AI coding sessions",
+    "<%= config.bin %> <%= command.id %> --dry-run  # anonymize locally, send nothing",
+    "<%= config.bin %> <%= command.id %> --report   # explain the last upload's failures",
   ];
 
   static override flags = {
@@ -151,19 +146,16 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     const mode = resolveOutputMode({ format: flags.format });
     const reporter = createProgressReporter(mode);
 
-    // Positionals mean different things per mode: with `--report` the first one
-    // is a manifest id; otherwise they're the upload targets. Resolve targets
-    // only in the upload path so `frugl upload --report <id>` isn't rejected as
-    // an unknown target.
+    // With `--report` the lone positional is a manifest id; in the upload path
+    // `upload` takes no positionals — snapshots moved to `frugl snapshot`.
     const positionals = argv as string[];
-    let uploadSessions = true;
-    let uploadContext = true;
-    if (!flags.report) {
-      try {
-        ({ uploadSessions, uploadContext } = resolveUploadTargets(positionals));
-      } catch (err) {
-        this.bail(err, mode);
-      }
+    if (!flags.report && positionals.length > 0) {
+      this.bail(
+        new UsageError(
+          `'frugl upload' no longer takes targets — it uploads sessions. For snapshots use 'frugl snapshot context', 'frugl snapshot mcp', or 'frugl snapshot --all'.`,
+        ),
+        mode,
+      );
     }
 
     // Clear the live progress bar line and tell the user how to inspect
@@ -242,447 +234,386 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       let totalAcked = 0;
       let lastManifestId = "";
       let lastDashboardUrl = `${endpoint.url}/dashboard`;
-      let contextUploadResult:
-        | {
-            manifestId: string;
-            sessionId: string;
-            capturedAt: string;
-            byteSize: number;
-          }
-        | undefined;
 
-      // Session-summary variables — populated inside the sessions block and used
-      // in the final JSON output. Declared here so they're in scope after the block.
+      // Session-summary variables — populated by the upload flow and used in the
+      // final JSON output.
       let summary: ReturnType<typeof buildUploadSummary> | undefined;
       let prLinking: ReturnType<typeof buildUploadSummary>["prLinking"];
       let selectionReport: ReturnType<typeof buildSelectionReport> | undefined;
       let willUpload: SessionClassification[] = [];
       let displaySourceKind = "multi";
 
-      if (uploadSessions) {
-        const homeDir = process.env["FRUGL_HOME_DIR"];
-        const discoverOpts = homeDir ? { homeDir } : undefined;
+      const homeDir = process.env["FRUGL_HOME_DIR"];
+      const discoverOpts = homeDir ? { homeDir } : undefined;
 
-        if (mode === "default")
-          process.stderr.write(color.dim("Sniffing out AI sessions on this machine…\n"));
+      if (mode === "default")
+        process.stderr.write(color.dim("Sniffing out AI sessions on this machine…\n"));
 
-        // 1) Detect which providers have sessions on this machine.
-        const detected = await detectProviders(discoverOpts);
-        const supportedDetected = detected.filter((d) => d.descriptor.supported);
-        if (supportedDetected.length === 0) {
-          const names = detected.map((d) => d.descriptor.displayName).join(", ");
-          throw new NoSessionsError(
-            detected.length === 0
-              ? "No sessions found. Make sure at least one AI coding tool (Claude Code, Cursor, Codex, or Gemini) has been used on this machine."
-              : `Detected ${names}, but none are supported for upload yet.`,
-          );
+      // 1) Detect which providers have sessions on this machine.
+      const detected = await detectProviders(discoverOpts);
+      const supportedDetected = detected.filter((d) => d.descriptor.supported);
+      if (supportedDetected.length === 0) {
+        const names = detected.map((d) => d.descriptor.displayName).join(", ");
+        throw new NoSessionsError(
+          detected.length === 0
+            ? "No sessions found. Make sure at least one AI coding tool (Claude Code, Cursor, Codex, or Gemini) has been used on this machine."
+            : `Detected ${names}, but none are supported for upload yet.`,
+        );
+      }
+
+      const interactive = isInteractive({
+        mode,
+        yes: flags.yes,
+        isTTY: Boolean(process.stdin.isTTY),
+      });
+
+      const groups: ProjectGroup[] = [];
+
+      const uploadId = randomUUID();
+      const minCost = parseCostFlag(flags["min-cost"], "--min-cost");
+      const ledger = new Ledger({
+        endpointUrl: endpoint.url,
+        userId: session.userId,
+      });
+      const resumeStore = new ResumeStore({
+        endpointUrl: endpoint.url,
+        userId: session.userId,
+      });
+
+      // Parse + anonymize a set of refs, grouped per source (each source knows
+      // how to parse its own files). This is the heaviest local pass and prints
+      // nothing on its own — at hundreds of sessions it reads as a hang — so we
+      // paint a live progress bar. classifyAll bounds its own concurrency so a
+      // big batch doesn't fan out and stall. The bar obeys the output-mode
+      // contract via liveLocalProgress: rich in default, silent in minimal/json.
+      const homeDirOverride = process.env["FRUGL_HOME_DIR"];
+      const classifyRefs = async (toParse: SessionRef[]): Promise<SessionClassification[]> => {
+        const bySource = new Map<Source, SessionRef[]>();
+        for (const ref of toParse) {
+          const source = getSourceByKind(ref.sourceKind);
+          if (!source) continue;
+          const list = bySource.get(source) ?? [];
+          list.push(ref);
+          bySource.set(source, list);
         }
-
-        const interactive = isInteractive({
+        const total = [...bySource.values()].reduce((n, r) => n + r.length, 0);
+        const progress = liveLocalProgress(
           mode,
-          yes: flags.yes,
-          isTTY: Boolean(process.stdin.isTTY),
-        });
-
-        const groups: ProjectGroup[] = [];
-
-        const uploadId = randomUUID();
-        const minCost = parseCostFlag(flags["min-cost"], "--min-cost");
-        const ledger = new Ledger({
-          endpointUrl: endpoint.url,
-          userId: session.userId,
-        });
-        const resumeStore = new ResumeStore({
-          endpointUrl: endpoint.url,
-          userId: session.userId,
-        });
-
-        // Parse + anonymize a set of refs, grouped per source (each source knows
-        // how to parse its own files). This is the heaviest local pass and prints
-        // nothing on its own — at hundreds of sessions it reads as a hang — so we
-        // paint a live progress bar. classifyAll bounds its own concurrency so a
-        // big batch doesn't fan out and stall. The bar obeys the output-mode
-        // contract via liveLocalProgress: rich in default, silent in minimal/json.
-        const homeDirOverride = process.env["FRUGL_HOME_DIR"];
-        const classifyRefs = async (toParse: SessionRef[]): Promise<SessionClassification[]> => {
-          const bySource = new Map<Source, SessionRef[]>();
-          for (const ref of toParse) {
-            const source = getSourceByKind(ref.sourceKind);
-            if (!source) continue;
-            const list = bySource.get(source) ?? [];
-            list.push(ref);
-            bySource.set(source, list);
-          }
-          const total = [...bySource.values()].reduce((n, r) => n + r.length, 0);
-          const progress = liveLocalProgress(
-            mode,
-            total,
-            "parsing sessions",
-            `Parsing ${total} sessions on your machine…`,
+          total,
+          "parsing sessions",
+          `Parsing ${total} sessions on your machine…`,
+        );
+        const out: SessionClassification[] = [];
+        for (const [source, sourceRefs] of bySource) {
+          const sorted = sourceRefs.toSorted(
+            (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
           );
-          const out: SessionClassification[] = [];
-          for (const [source, sourceRefs] of bySource) {
-            const sorted = sourceRefs.toSorted(
-              (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
-            );
-            const classifications = await classifyAll(
-              sorted,
-              {
-                ledger,
-                source,
-                anonymize: {
-                  uploadId,
-                  ownerEmail: session.email,
-                  ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
-                },
+          const classifications = await classifyAll(
+            sorted,
+            {
+              ledger,
+              source,
+              anonymize: {
+                uploadId,
+                ownerEmail: session.email,
+                ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
               },
-              () => progress.tick(),
-            );
-            out.push(...classifications);
-          }
-          progress.done();
-          return out;
-        };
-
-        // The sessions that would actually upload from a classified set:
-        // new/updated (never unchanged) that survive the trivial + --min-cost
-        // filters. Used both for the picker counts and the final willUpload.
-        const eligibleFrom = (cs: SessionClassification[]): SessionClassification[] => {
-          const buckets = bucketize(cs);
-          const candidates = sortByMtimeDesc([...buckets.new, ...buckets.updated]);
-          const notTrivial = filterTrivial(candidates);
-          return minCost !== undefined ? filterByCost(notTrivial, minCost) : notTrivial;
-        };
-
-        let selection: Selection;
-        let allClassifications: SessionClassification[];
-
-        if (uploadConfig) {
-          // Config-driven scope: derive all supported providers' projects, then
-          // filter by the config's providers + project include/exclude globs. No
-          // picker, so only the config-selected refs are parsed.
-          for (const d of supportedDetected) {
-            const descriptor = getProvider(d.descriptor.id);
-            if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
-              continue;
-            const providerRefs = await descriptor.source.discover(discoverOpts);
-            groups.push(...descriptor.deriveProjects(providerRefs));
-          }
-          selection = resolveConfigSelection(uploadConfig, detected, groups);
-          allClassifications = await classifyRefs(applySelection(groups, selection));
-        } else {
-          // 2) Choose providers — interactive picker, or auto-select-all when not.
-          const selectedProviderIds = await selectProviders(detected, { interactive });
-          if (selectedProviderIds.length === 0) {
-            if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
-            process.exit(EXIT.OK);
-          }
-          // 3) Discover sessions for the selected providers, grouped by project.
-          for (const id of selectedProviderIds) {
-            const descriptor = getProvider(id);
-            if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
-              continue;
-            const providerRefs = await descriptor.source.discover(discoverOpts);
-            groups.push(...descriptor.deriveProjects(providerRefs));
-          }
-          // Parse every discovered session up front so the project picker can show
-          // counts that reflect what will actually upload after --min-cost. Cost is
-          // only knowable by reading each file, so this heavy pass precedes the picker.
-          allClassifications = await classifyRefs(groups.flatMap((g) => g.sessions));
-          const byPath = new Map<string, SessionClassification>();
-          for (const c of allClassifications) byPath.set(c.ref.absolutePath, c);
-          const counts = new Map<string, number>();
-          for (const g of groups) {
-            const cs = g.sessions
-              .map((s) => byPath.get(s.absolutePath))
-              .filter((c): c is SessionClassification => c !== undefined);
-            counts.set(g.projectId, eligibleFrom(cs).length);
-          }
-          // 4) Choose projects — labelled with cost-aware counts; projects with
-          // nothing left to upload are shown but deselected by default.
-          const selectedProjectIds = await selectProjects(groups, {
-            interactive,
-            counts,
-            ...(minCost !== undefined ? { minCost } : {}),
-          });
-          selection = {
-            providerIds: selectedProviderIds,
-            projectIds: selectedProjectIds,
-          };
+            },
+            () => progress.tick(),
+          );
+          out.push(...classifications);
         }
-        selectionReport = buildSelectionReport(detected, groups, selection);
+        progress.done();
+        return out;
+      };
 
-        const selectedRefs = applySelection(groups, selection);
-        if (selectedRefs.length === 0) {
+      // The sessions that would actually upload from a classified set:
+      // new/updated (never unchanged) that survive the trivial + --min-cost
+      // filters. Used both for the picker counts and the final willUpload.
+      const eligibleFrom = (cs: SessionClassification[]): SessionClassification[] => {
+        const buckets = bucketize(cs);
+        const candidates = sortByMtimeDesc([...buckets.new, ...buckets.updated]);
+        const notTrivial = filterTrivial(candidates);
+        return minCost !== undefined ? filterByCost(notTrivial, minCost) : notTrivial;
+      };
+
+      let selection: Selection;
+      let allClassifications: SessionClassification[];
+
+      if (uploadConfig) {
+        // Config-driven scope: derive all supported providers' projects, then
+        // filter by the config's providers + project include/exclude globs. No
+        // picker, so only the config-selected refs are parsed.
+        for (const d of supportedDetected) {
+          const descriptor = getProvider(d.descriptor.id);
+          if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
+          const providerRefs = await descriptor.source.discover(discoverOpts);
+          groups.push(...descriptor.deriveProjects(providerRefs));
+        }
+        selection = resolveConfigSelection(uploadConfig, detected, groups);
+        allClassifications = await classifyRefs(applySelection(groups, selection));
+      } else {
+        // 2) Choose providers — interactive picker, or auto-select-all when not.
+        const selectedProviderIds = await selectProviders(detected, { interactive });
+        if (selectedProviderIds.length === 0) {
           if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
           process.exit(EXIT.OK);
         }
-
-        // Keep only the classifications for the selected projects — already parsed
-        // above, so no file is read twice.
-        const selectedPaths = new Set(selectedRefs.map((r) => r.absolutePath));
-        const selectedClassifications = allClassifications.filter((c) =>
-          selectedPaths.has(c.ref.absolutePath),
-        );
-
-        // Group selected classifications by source for the per-source pipeline.
-        const classificationsBySource = new Map<Source, SessionClassification[]>();
-        for (const c of selectedClassifications) {
-          const source = getSourceByKind(c.ref.sourceKind);
-          if (!source) continue;
-          const list = classificationsBySource.get(source) ?? [];
-          list.push(c);
-          classificationsBySource.set(source, list);
+        // 3) Discover sessions for the selected providers, grouped by project.
+        for (const id of selectedProviderIds) {
+          const descriptor = getProvider(id);
+          if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects) continue;
+          const providerRefs = await descriptor.source.discover(discoverOpts);
+          groups.push(...descriptor.deriveProjects(providerRefs));
         }
-
-        // Merge for confirmation + summary
-        const allBuckets = bucketize(selectedClassifications);
-        const eligible = eligibleFrom(selectedClassifications);
-        willUpload = flags.limit !== undefined ? eligible.slice(0, flags.limit) : eligible;
-
-        const activeSources = [...classificationsBySource.keys()];
-        displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
-
-        // Opt-in git-context resolution: only run the (expensive) git pass when
-        // linking is active. It shells out to git once per unique repo/branch, so
-        // a big batch is another silent local pass — show the same live bar.
-        const gitBySession = new Map<string, GitContext>();
-        let gitContext: { sessionsWithContext: number; repositories: string[] } | undefined;
-        if (linkActive) {
-          const gitTotal = willUpload.filter((i) => i.kind !== "unchanged").length;
-          const gitProgress = liveLocalProgress(
-            mode,
-            gitTotal,
-            "linking git context",
-            `Resolving git context for ${gitTotal} sessions…`,
-          );
-          const repositories = await this.resolveBatchGitContext(willUpload, gitBySession, () =>
-            gitProgress.tick(),
-          );
-          gitProgress.done();
-          gitContext = { sessionsWithContext: gitBySession.size, repositories };
+        // Parse every discovered session up front so the project picker can show
+        // counts that reflect what will actually upload after --min-cost. Cost is
+        // only knowable by reading each file, so this heavy pass precedes the picker.
+        allClassifications = await classifyRefs(groups.flatMap((g) => g.sessions));
+        const byPath = new Map<string, SessionClassification>();
+        for (const c of allClassifications) byPath.set(c.ref.absolutePath, c);
+        const counts = new Map<string, number>();
+        for (const g of groups) {
+          const cs = g.sessions
+            .map((s) => byPath.get(s.absolutePath))
+            .filter((c): c is SessionClassification => c !== undefined);
+          counts.set(g.projectId, eligibleFrom(cs).length);
         }
-
-        const projectRows = buildProjectRows(willUpload, groups);
-        summary = buildUploadSummary({
-          buckets: allBuckets,
-          willUpload,
-          policyVersion: POLICY_VERSION,
-          endpoint,
-          sourceKind: displaySourceKind,
-          linkPrs: { flagValue: flags["link-prs"], configValue: configLinkPrs },
-          ...(gitContext ? { gitContext } : {}),
-          ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
-          ...(projectRows.length > 0 ? { projects: projectRows } : {}),
+        // 4) Choose projects — labelled with cost-aware counts; projects with
+        // nothing left to upload are shown but deselected by default.
+        const selectedProjectIds = await selectProjects(groups, {
+          interactive,
+          counts,
+          ...(minCost !== undefined ? { minCost } : {}),
         });
-        prLinking = summary.prLinking;
+        selection = {
+          providerIds: selectedProviderIds,
+          projectIds: selectedProjectIds,
+        };
+      }
+      selectionReport = buildSelectionReport(detected, groups, selection);
 
-        // The decorated summary table is human output — default only. minimal/json
-        // get the terse per-batch reporter lines and the final JSON respectively.
-        if (mode === "default") {
-          process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
+      const selectedRefs = applySelection(groups, selection);
+      if (selectedRefs.length === 0) {
+        if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
+        process.exit(EXIT.OK);
+      }
+
+      // Keep only the classifications for the selected projects — already parsed
+      // above, so no file is read twice.
+      const selectedPaths = new Set(selectedRefs.map((r) => r.absolutePath));
+      const selectedClassifications = allClassifications.filter((c) =>
+        selectedPaths.has(c.ref.absolutePath),
+      );
+
+      // Group selected classifications by source for the per-source pipeline.
+      const classificationsBySource = new Map<Source, SessionClassification[]>();
+      for (const c of selectedClassifications) {
+        const source = getSourceByKind(c.ref.sourceKind);
+        if (!source) continue;
+        const list = classificationsBySource.get(source) ?? [];
+        list.push(c);
+        classificationsBySource.set(source, list);
+      }
+
+      // Merge for confirmation + summary
+      const allBuckets = bucketize(selectedClassifications);
+      const eligible = eligibleFrom(selectedClassifications);
+      willUpload = flags.limit !== undefined ? eligible.slice(0, flags.limit) : eligible;
+
+      const activeSources = [...classificationsBySource.keys()];
+      displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
+
+      // Opt-in git-context resolution: only run the (expensive) git pass when
+      // linking is active. It shells out to git once per unique repo/branch, so
+      // a big batch is another silent local pass — show the same live bar.
+      const gitBySession = new Map<string, GitContext>();
+      let gitContext: { sessionsWithContext: number; repositories: string[] } | undefined;
+      if (linkActive) {
+        const gitTotal = willUpload.filter((i) => i.kind !== "unchanged").length;
+        const gitProgress = liveLocalProgress(
+          mode,
+          gitTotal,
+          "linking git context",
+          `Resolving git context for ${gitTotal} sessions…`,
+        );
+        const repositories = await this.resolveBatchGitContext(willUpload, gitBySession, () =>
+          gitProgress.tick(),
+        );
+        gitProgress.done();
+        gitContext = { sessionsWithContext: gitBySession.size, repositories };
+      }
+
+      const projectRows = buildProjectRows(willUpload, groups);
+      summary = buildUploadSummary({
+        buckets: allBuckets,
+        willUpload,
+        policyVersion: POLICY_VERSION,
+        endpoint,
+        sourceKind: displaySourceKind,
+        linkPrs: { flagValue: flags["link-prs"], configValue: configLinkPrs },
+        ...(gitContext ? { gitContext } : {}),
+        ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
+        ...(projectRows.length > 0 ? { projects: projectRows } : {}),
+      });
+      prLinking = summary.prLinking;
+
+      // The decorated summary table is human output — default only. minimal/json
+      // get the terse per-batch reporter lines and the final JSON respectively.
+      if (mode === "default") {
+        process.stdout.write(`${formatSummaryForHuman(summary)}\n`);
+      }
+
+      if (flags["dry-run"]) {
+        if (mode !== "json") {
+          process.stdout.write(
+            `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
+          );
         }
-
-        if (flags["dry-run"]) {
-          if (mode !== "json") {
-            process.stdout.write(
-              `\n${color.dim("Dry-run — anonymized, nothing transmitted.")}  ${color.bold("0 bytes sent.")}\n`,
-            );
-          }
-          const result = {
-            command: "upload" as const,
-            ok: true as const,
-            manifestId: "dry-run",
-            actualSessionCount: 0,
-            expectedSessionCount: Math.max(1, willUpload.length),
-            redactionPolicyVersion: POLICY_VERSION,
-            sourceKind: displaySourceKind,
-            endpoint: endpoint.url,
-            dashboardUrl: `${endpoint.url}/dry-run`,
-            classification: buildClassification(summary),
-            limited: summary.limited ?? { active: false },
-            ...(prLinking
-              ? {
-                  gitContext: {
-                    active: true,
-                    sessionsWithContext: prLinking.sessionsWithContext,
-                    repositories: prLinking.repositories,
-                  },
-                }
-              : {}),
-            selection: selectionReport,
-            dryRun: true,
-          };
-          if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
-          return;
-        }
-
-        // A previous run may have PUT every session but died before (or during)
-        // completeManifest, leaving resume state with no pending work. Finish
-        // that handshake first — even when this run has nothing new — so those
-        // sessions actually become visible on the dashboard.
-        try {
-          const finalized = await finalizePendingManifest({
-            cloud,
-            resumeStore,
-          });
-          if (finalized) {
-            lastManifestId = finalized.manifestId;
-            lastDashboardUrl = finalized.dashboardUrl;
-            if (mode === "default") {
-              process.stderr.write(color.dim("Completed a previously interrupted upload batch.\n"));
-            }
-          }
-        } catch {
-          // Completion is still failing transiently; the state is kept and the
-          // next run will retry. Never block this run's work on it.
-        }
-
-        if (willUpload.length === 0) {
-          if (!uploadContext) {
-            const result = {
-              command: "upload" as const,
-              ok: true as const,
-              manifestId: "noop",
-              actualSessionCount: 0,
-              expectedSessionCount: 1,
-              redactionPolicyVersion: POLICY_VERSION,
-              sourceKind: displaySourceKind,
-              endpoint: endpoint.url,
-              dashboardUrl: `${endpoint.url}/dashboard`,
-              classification: buildClassification(summary!),
-              limited: summary!.limited ?? { active: false },
-              selection: selectionReport,
-              noop: true,
-            };
-            if (mode !== "json") {
-              process.stdout.write(
-                `${color.dim("No new or updated sessions. Nothing to upload.")}\n`,
-              );
-            }
-            if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
-            return;
-          }
-          if (mode !== "json") {
-            process.stdout.write(`${color.dim("No new or updated sessions.")}\n`);
-          }
-        }
-
-        if (willUpload.length > 0) {
-          if (!flags.yes) {
-            const ok = await confirm({
-              message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
-              default: true,
-            });
-            if (!ok) {
-              process.stderr.write(color.dim("Aborted. 0 bytes sent.\n"));
-              process.exit(EXIT.OK);
-            }
-          }
-
-          // Run a separate pipeline per source — each source gets its own manifest
-          for (const [source, _classifications] of classificationsBySource) {
-            const sourceCandidates = willUpload.filter((c) => c.ref.sourceKind === source.kind);
-            if (sourceCandidates.length === 0) continue;
-
-            const jobs = await buildJobsForSource(sourceCandidates, source, gitBySession);
-            const gitContextEvent = prLinking
-              ? {
+        const result = {
+          command: "upload" as const,
+          ok: true as const,
+          manifestId: "dry-run",
+          actualSessionCount: 0,
+          expectedSessionCount: Math.max(1, willUpload.length),
+          redactionPolicyVersion: POLICY_VERSION,
+          sourceKind: displaySourceKind,
+          endpoint: endpoint.url,
+          dashboardUrl: `${endpoint.url}/dry-run`,
+          classification: buildClassification(summary),
+          limited: summary.limited ?? { active: false },
+          ...(prLinking
+            ? {
+                gitContext: {
                   active: true,
                   sessionsWithContext: prLinking.sessionsWithContext,
                   repositories: prLinking.repositories,
-                }
-              : undefined;
-
-            // Declared MCP inventory (names-only, fail-open): `claude mcp list` is
-            // Claude Code's vocabulary, so only that source's manifest carries it.
-            const mcpServers =
-              source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
-
-            const pipelineOptions = {
-              cloud,
-              jobs,
-              ledger,
-              resumeStore,
-              reporter,
-              concurrency,
-              policyVersion: POLICY_VERSION,
-              cliVersion: getCliVersion(),
-              sourceKind: source.kind,
-              endpointUrl: endpoint.url,
-              userId: session.userId,
-              ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
-              ...(mcpServers ? { mcpServers } : {}),
-            };
-
-            let pipelineResult;
-            try {
-              pipelineResult = await runUploadPipeline(pipelineOptions);
-            } catch (err) {
-              if (err instanceof StaleResumeError) {
-                if (mode !== "json") {
-                  process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
-                }
-                resumeStore.clear();
-                pipelineResult = await runUploadPipeline(pipelineOptions);
-              } else {
-                throw err;
+                },
               }
-            }
-
-            totalAcked += pipelineResult.acked.length;
-            lastManifestId = pipelineResult.manifestId;
-            lastDashboardUrl = pipelineResult.dashboardUrl;
-          }
-        } // end if (willUpload.length > 0)
-      } // end if (uploadSessions)
-
-      // Context snapshot upload — runs after sessions (or alone with --context).
-      if (uploadContext && !flags["dry-run"]) {
-        if (mode === "default")
-          process.stderr.write(
-            color.dim("Snapshotting your context window — redacting locally…\n"),
-          );
-        const ctxHomeDir = process.env["FRUGL_HOME_DIR"];
-        const capture = captureContext("claude-code");
-        // Local-only random salt. The pseudonym HMAC key must never equal a
-        // value that ships in the manifest (capturedAt does), or pseudonyms
-        // become dictionary-reversible by anyone holding the payload.
-        const ctxAnon = anonymize(capture.text, {
-          uploadId: randomUUID(),
-          ownerEmail: session.email,
-          ...(ctxHomeDir !== undefined ? { homeDir: ctxHomeDir } : {}),
-        });
-        const ctxMcpServers = captureDeclaredMcpServers();
-        const ctxUpload = await uploadContextSnapshot({
-          cloud,
-          cliVersion: getCliVersion(),
-          sourceKind: "claude-code",
-          policyVersion: POLICY_VERSION,
-          capturedAt: capture.capturedAt,
-          anonymization: ctxAnon,
-          ...(ctxMcpServers ? { mcpServers: ctxMcpServers } : {}),
-        });
-        contextUploadResult = {
-          manifestId: ctxUpload.manifestId,
-          sessionId: ctxUpload.sessionId,
-          capturedAt: capture.capturedAt,
-          byteSize: ctxAnon.byteSize,
+            : {}),
+          selection: selectionReport,
+          dryRun: true,
         };
-        if (lastDashboardUrl === `${endpoint.url}/dashboard`) {
-          lastDashboardUrl = ctxUpload.dashboardUrl;
-        }
-        if (mode !== "json") {
-          process.stdout.write(
-            `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
-          );
-        }
+        if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
+        return;
       }
+
+      // A previous run may have PUT every session but died before (or during)
+      // completeManifest, leaving resume state with no pending work. Finish
+      // that handshake first — even when this run has nothing new — so those
+      // sessions actually become visible on the dashboard.
+      try {
+        const finalized = await finalizePendingManifest({
+          cloud,
+          resumeStore,
+        });
+        if (finalized) {
+          lastManifestId = finalized.manifestId;
+          lastDashboardUrl = finalized.dashboardUrl;
+          if (mode === "default") {
+            process.stderr.write(color.dim("Completed a previously interrupted upload batch.\n"));
+          }
+        }
+      } catch {
+        // Completion is still failing transiently; the state is kept and the
+        // next run will retry. Never block this run's work on it.
+      }
+
+      if (willUpload.length === 0) {
+        const result = {
+          command: "upload" as const,
+          ok: true as const,
+          manifestId: "noop",
+          actualSessionCount: 0,
+          expectedSessionCount: 1,
+          redactionPolicyVersion: POLICY_VERSION,
+          sourceKind: displaySourceKind,
+          endpoint: endpoint.url,
+          dashboardUrl: `${endpoint.url}/dashboard`,
+          classification: buildClassification(summary!),
+          limited: summary!.limited ?? { active: false },
+          selection: selectionReport,
+          noop: true,
+        };
+        if (mode !== "json") {
+          process.stdout.write(`${color.dim("No new or updated sessions. Nothing to upload.")}\n`);
+        }
+        if (mode === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
+        return;
+      }
+
+      if (willUpload.length > 0) {
+        if (!flags.yes) {
+          const ok = await confirm({
+            message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
+            default: true,
+          });
+          if (!ok) {
+            process.stderr.write(color.dim("Aborted. 0 bytes sent.\n"));
+            process.exit(EXIT.OK);
+          }
+        }
+
+        // Run a separate pipeline per source — each source gets its own manifest
+        for (const [source, _classifications] of classificationsBySource) {
+          const sourceCandidates = willUpload.filter((c) => c.ref.sourceKind === source.kind);
+          if (sourceCandidates.length === 0) continue;
+
+          const jobs = await buildJobsForSource(sourceCandidates, source, gitBySession);
+          const gitContextEvent = prLinking
+            ? {
+                active: true,
+                sessionsWithContext: prLinking.sessionsWithContext,
+                repositories: prLinking.repositories,
+              }
+            : undefined;
+
+          // Declared MCP inventory (names-only, fail-open): `claude mcp list` is
+          // Claude Code's vocabulary, so only that source's manifest carries it.
+          const mcpServers =
+            source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
+
+          const pipelineOptions = {
+            cloud,
+            jobs,
+            ledger,
+            resumeStore,
+            reporter,
+            concurrency,
+            policyVersion: POLICY_VERSION,
+            cliVersion: getCliVersion(),
+            sourceKind: source.kind,
+            endpointUrl: endpoint.url,
+            userId: session.userId,
+            ...(gitContextEvent ? { gitContext: gitContextEvent } : {}),
+            ...(mcpServers ? { mcpServers } : {}),
+          };
+
+          let pipelineResult;
+          try {
+            pipelineResult = await runUploadPipeline(pipelineOptions);
+          } catch (err) {
+            if (err instanceof StaleResumeError) {
+              if (mode !== "json") {
+                process.stderr.write(`${color.warn(`${symbol.resume} ${err.message}`)}\n`);
+              }
+              resumeStore.clear();
+              pipelineResult = await runUploadPipeline(pipelineOptions);
+            } else {
+              throw err;
+            }
+          }
+
+          totalAcked += pipelineResult.acked.length;
+          lastManifestId = pipelineResult.manifestId;
+          lastDashboardUrl = pipelineResult.dashboardUrl;
+        }
+      } // end if (willUpload.length > 0)
 
       // The payoff. The one place upload lets itself celebrate — a receipt that
       // makes the redaction story tangible: what was scrubbed on your machine,
       // what actually left it, and the number that matters (0 raw secrets sent).
-      if (uploadSessions && totalAcked > 0 && mode === "default") {
+      if (totalAcked > 0 && mode === "default") {
         let totalRedactions = 0;
         for (const item of willUpload) {
           if (item.kind === "unchanged") continue;
@@ -732,37 +663,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
       }
 
-      // Context-only path: emit a compact JSON output and exit.
-      if (!uploadSessions && contextUploadResult !== undefined) {
-        if (mode === "json") {
-          process.stdout.write(
-            `${JSON.stringify({
-              command: "upload" as const,
-              ok: true as const,
-              endpoint: endpoint.url,
-              dashboardUrl: handoff.dashboardUrl,
-              ...(handoff.active
-                ? {
-                    handoff: {
-                      active: true as const,
-                      expiresAt: handoff.expiresAt,
-                    },
-                  }
-                : handoff.reason === "disabled-default"
-                  ? {}
-                  : {
-                      handoff: {
-                        active: false as const,
-                        reason: handoff.reason,
-                      },
-                    }),
-              context: contextUploadResult,
-            })}\n`,
-          );
-        }
-        return;
-      }
-
       if (summary === undefined || selectionReport === undefined) return;
 
       const finalSummary = {
@@ -795,7 +695,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               },
             }
           : {}),
-        ...(contextUploadResult ? { context: contextUploadResult } : {}),
       };
       // A real upload round-tripped successfully (dry-run returned earlier), so
       // the token is healthy — drop any stale background-failure breadcrumb left
@@ -1129,33 +1028,4 @@ export function parseCostFlag(raw: string | undefined, flagName: string): number
     );
   }
   return n;
-}
-
-const UPLOAD_TARGETS = ["sessions", "context"] as const;
-type UploadTarget = (typeof UPLOAD_TARGETS)[number];
-
-// Map positional targets onto the two artifact kinds. No targets = upload
-// everything; otherwise each token must name a known kind. Duplicates are
-// harmless (set semantics), so `upload sessions sessions` is the same as
-// `upload sessions`.
-function resolveUploadTargets(positionals: string[]): {
-  uploadSessions: boolean;
-  uploadContext: boolean;
-} {
-  if (positionals.length === 0) {
-    return { uploadSessions: true, uploadContext: true };
-  }
-  const selected = new Set<UploadTarget>();
-  for (const raw of positionals) {
-    if (!(UPLOAD_TARGETS as readonly string[]).includes(raw)) {
-      throw new UsageError(
-        `Unknown upload target '${raw}'. Valid targets: ${UPLOAD_TARGETS.join(", ")} (omit to upload all).`,
-      );
-    }
-    selected.add(raw as UploadTarget);
-  }
-  return {
-    uploadSessions: selected.has("sessions"),
-    uploadContext: selected.has("context"),
-  };
 }
