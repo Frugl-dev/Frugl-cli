@@ -7,6 +7,7 @@ import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import type { CloudClient } from "../cloud/client.js";
 import type { AuthSession } from "../auth/session.js";
 import { uploadSnapshot } from "./upload.js";
+import { resolveProjectIdentity, UNKNOWN_PROJECT } from "../upload/project-identity.js";
 import { buildMcpSnapshotDocument, captureMcpSnapshot, MCP_FORMAT_VERSION } from "./mcp-capture.js";
 
 // The kinds of snapshot `frugl snapshot` can capture. Drives `--all` and the
@@ -48,6 +49,14 @@ function anonymizeOpts(session: AuthSession): {
   };
 }
 
+// Resolve the portable project identity (spec 051) for a snapshot: the git repo
+// name of the directory `frugl snapshot` was invoked from. Returns undefined when
+// unresolvable ("unknown") so the field is simply omitted from the manifest.
+async function resolveSnapshotProject(): Promise<string | undefined> {
+  const project = await resolveProjectIdentity(process.cwd());
+  return project === UNKNOWN_PROJECT ? undefined : project;
+}
+
 // Capture → anonymize → upload a single context snapshot. Fail-closed: a missing
 // binary / non-zero exit / empty stdout throws before any upload.
 export async function runContextSnapshot(deps: SnapshotRunDeps): Promise<SnapshotResult> {
@@ -57,6 +66,7 @@ export async function runContextSnapshot(deps: SnapshotRunDeps): Promise<Snapsho
   // The declared MCP inventory (names-only, fail-open) rides the manifest: a
   // failed `claude mcp list` simply omits it, never blocking the snapshot.
   const mcpServers = captureDeclaredMcpServers();
+  const project = await resolveSnapshotProject();
   const upload = await uploadSnapshot({
     cloud,
     cliVersion: deps.client.cliVersion,
@@ -68,6 +78,7 @@ export async function runContextSnapshot(deps: SnapshotRunDeps): Promise<Snapsho
     body: Buffer.from(String(result.payload), "utf8"),
     expectedBytes: result.byteSize,
     redactionsByCategory: result.redactionsByCategory,
+    ...(project ? { project } : {}),
     ...(mcpServers ? { mcpServers } : {}),
   });
   return {
@@ -91,6 +102,7 @@ export async function runMcpSnapshot(deps: SnapshotRunDeps): Promise<SnapshotRes
   const capture = captureMcpSnapshot();
   const result = anonymize(buildMcpSnapshotDocument(capture), anonymizeOpts(deps.session));
   const cloud = new HttpCloudAdapter(deps.client);
+  const project = await resolveSnapshotProject();
   const upload = await uploadSnapshot({
     cloud,
     cliVersion: deps.client.cliVersion,
@@ -102,6 +114,7 @@ export async function runMcpSnapshot(deps: SnapshotRunDeps): Promise<SnapshotRes
     body: Buffer.from(JSON.stringify(result.payload), "utf8"),
     expectedBytes: result.byteSize,
     redactionsByCategory: result.redactionsByCategory,
+    ...(project ? { project } : {}),
   });
   return {
     kind: "mcp",

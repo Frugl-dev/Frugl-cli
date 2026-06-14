@@ -61,6 +61,12 @@ export const manifestEntryRequestSchema = z.object({
   format_version: z.string().min(1),
   expected_bytes: z.number().int().min(0),
   git_context: gitContextRequestSchema.optional(),
+  // Portable project identity (spec 051): the git repo name (repo segment only,
+  // host/owner dropped), falling back to package.json name → basename. Resolved
+  // client-side independently of `git_context`/--link-prs. Optional + strictly
+  // additive so older CLIs and existing uploads stay byte-identical; the server
+  // falls back to its content-derived basename when absent.
+  project: z.string().min(1).max(200).optional(),
   // Sub-path within .claude/worktrees/ when the session comes from a worktree.
   worktree_path: z.string().min(1).optional(),
   // Capture timestamp (ISO 8601). Optional on the wire for back-compat, but the
