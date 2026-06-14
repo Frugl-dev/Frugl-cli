@@ -73,8 +73,19 @@ export async function classifySession(
 export async function classifyAll(
   refs: SessionRef[],
   ctx: ClassifyContext,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<SessionClassification[]> {
-  const all = await Promise.all(refs.map((ref) => classifySession(ref, ctx)));
+  const total = refs.length;
+  let done = 0;
+  const all = await Promise.all(
+    refs.map((ref) =>
+      classifySession(ref, ctx).then((result) => {
+        done += 1;
+        onProgress?.(done, total);
+        return result;
+      }),
+    ),
+  );
   const seen = new Set<string>();
   const results: SessionClassification[] = [];
   for (const result of all) {

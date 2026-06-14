@@ -139,6 +139,7 @@ export function handleCommandError(err: unknown, mode: OutputMode): never {
  * command's `static flags` so the duplicated definitions collapse to one place.
  */
 export const COMMON_FLAGS = {
-  endpoint: Flags.string({ description: "Override the API endpoint" }),
+  // Development-only: point the CLI at a non-production cloud. Hidden from help.
+  endpoint: Flags.string({ description: "Override the API endpoint", hidden: true }),
   format: FORMAT_FLAG,
 };
