@@ -52,9 +52,12 @@ export async function writeTestSessions(
             role: "assistant",
             model: "claude-sonnet-4-6",
             content: [{ type: "text", text: `Response ${i}` }],
+            // Sized so each fixture session clears the default --min-cost=0.01
+            // penny floor (~$0.03 at Sonnet pricing); otherwise the default
+            // cost filter would drop every test session.
             usage: {
-              input_tokens: 10,
-              output_tokens: 20,
+              input_tokens: 1000,
+              output_tokens: 2000,
               cache_creation_input_tokens: 0,
               cache_read_input_tokens: 0,
             },
