@@ -232,6 +232,50 @@ describe("classify", () => {
     expect(elapsedMs).toBeLessThan(5_000);
   }, 10_000);
 
+  it("bounds parse concurrency so a large batch never fans out unbounded", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://conc.test", userId: "u-conc" },
+      { cwd: tempHome },
+    );
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const refs: SessionRef[] = [];
+    for (let i = 0; i < 50; i++) refs.push(makeRef(`/conc/sess-${i}.jsonl`, i));
+    const source: Source = {
+      kind: SOURCE_KIND,
+      formatVersion: "test-format-v1",
+      discover: async () => [],
+      parse: async (ref) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 1));
+        inFlight -= 1;
+        return {
+          sourceKind: SOURCE_KIND,
+          ref,
+          identity: { sessionId: path.basename(ref.absolutePath, ".jsonl"), derivation: "native" },
+          records: [{ msg: ref.absolutePath }],
+        } satisfies ParsedSession;
+      },
+      deriveIdentity: (ref) => ({
+        sessionId: path.basename(ref.absolutePath, ".jsonl"),
+        derivation: "native",
+      }),
+    };
+    const ticks: number[] = [];
+    const results = await classifyAll(
+      refs,
+      { ledger, source, anonymize: { uploadId: "u", ownerEmail: "o@x.com" } },
+      (done) => ticks.push(done),
+      4,
+    );
+    expect(maxInFlight).toBeLessThanOrEqual(4);
+    expect(results).toHaveLength(50);
+    // Progress is reported once per session, monotonically up to the total.
+    expect(ticks).toHaveLength(50);
+    expect(ticks.at(-1)).toBe(50);
+  });
+
   it("sortByMtimeDesc orders by mtime desc, path asc tiebreaker", () => {
     const items: SessionClassification[] = [
       {
