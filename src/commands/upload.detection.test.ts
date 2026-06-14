@@ -93,7 +93,7 @@ describe("frugl upload — provider detection & guided selection", { timeout: 30
     await writeTestSessions(home.dir, 1, "-Users-me-scratch");
 
     const { exitCode, stdout } = await runCli(
-      ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
+      ["upload", "--yes", "--format", "json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
@@ -115,7 +115,7 @@ describe("frugl upload — provider detection & guided selection", { timeout: 30
     await makeCursorFixture(home.dir);
 
     const { exitCode, stdout } = await runCli(
-      ["upload", "sessions", "--yes", "--format", "json", "--endpoint", server.url],
+      ["upload", "--yes", "--format", "json", "--endpoint", server.url],
       { env: { FRUGL_HOME_DIR: home.dir } },
     );
     expect(exitCode).toBe(EXIT.OK);
