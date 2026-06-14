@@ -39,6 +39,11 @@ export interface UploadSummary {
   dateRange?: { from: string; to: string };
   limited?: { active: boolean; limit?: number; candidateCount?: number };
   projects?: ProjectSummaryRow[];
+  // The active --min-cost floor in USD, and how many new/updated candidates were
+  // dropped purely for falling below it. Surfaced so a thin upload reads as a
+  // deliberate filter, not a bug.
+  minCost?: number;
+  skippedBelowMinCost?: number;
 }
 
 export interface ReportFailureSession {
@@ -107,6 +112,10 @@ export interface BuildSummaryInput {
   gitContext?: { sessionsWithContext: number; repositories: string[] };
   limit?: number;
   projects?: ProjectSummaryRow[];
+  // The active --min-cost floor (USD) and the count of candidates the cost
+  // filter dropped. The command computes the count; the builder just carries it.
+  minCost?: number;
+  skippedBelowMinCost?: number;
 }
 
 export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
@@ -151,6 +160,10 @@ export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
     ...(dateRange ? { dateRange } : {}),
     limited,
     ...(input.projects ? { projects: input.projects } : {}),
+    ...(input.minCost !== undefined ? { minCost: input.minCost } : {}),
+    ...(input.skippedBelowMinCost !== undefined
+      ? { skippedBelowMinCost: input.skippedBelowMinCost }
+      : {}),
   };
 }
 
@@ -277,9 +290,20 @@ export function formatSummaryForHuman(s: UploadSummary): string {
   );
   lines.push(`    ${color.dim("New".padEnd(LABEL - 2))}${color.ok(String(s.new))}`);
   lines.push(`    ${color.dim("Updated".padEnd(LABEL - 2))}${color.warn(String(s.updated))}`);
+  if (s.skippedBelowMinCost !== undefined && s.skippedBelowMinCost > 0) {
+    const floor = s.minCost !== undefined ? ` (under $${s.minCost.toFixed(2)})` : "";
+    lines.push(
+      `    ${color.dim("Below min cost".padEnd(LABEL - 2))}${color.dim(`${s.skippedBelowMinCost}   skipping${floor}`)}`,
+    );
+  }
   lines.push(
     `  ${label("Will upload")}${color.frogBold(String(s.willUpload))} ${color.dim("sessions")}`,
   );
+  if (s.minCost !== undefined) {
+    lines.push(
+      `  ${label("Min cost")}${color.dim(`$${s.minCost.toFixed(2)} — cheaper sessions are skipped`)}`,
+    );
+  }
 
   if (s.limited?.active) {
     lines.push(
