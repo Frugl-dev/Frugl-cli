@@ -46,7 +46,22 @@ export async function writeGitSession(
   if (opts.gitBranch !== undefined) first["gitBranch"] = opts.gitBranch;
   const records = [
     first,
-    { sessionId, type: "assistant", message: "hi", timestamp: new Date().toISOString() },
+    {
+      sessionId,
+      type: "assistant",
+      message: {
+        role: "assistant",
+        model: "claude-sonnet-4-6",
+        content: [{ type: "text", text: "hi" }],
+        usage: {
+          input_tokens: 5,
+          output_tokens: 5,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    },
   ];
   await writeFile(
     path.join(projectDir, `${sessionId}.jsonl`),
