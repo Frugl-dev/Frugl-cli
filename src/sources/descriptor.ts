@@ -169,7 +169,12 @@ const codex: ProviderDescriptor = {
   },
   format: { kind: "ndjson" },
   extractNativeId: ({ firstRecord }) => readSessionMeta(firstRecord, "id"),
-  extractMetadata: ({ firstRecord }) => ({ cwd: readSessionMeta(firstRecord, "cwd") }),
+  extractMetadata: ({ firstRecord }) => ({
+    cwd: readSessionMeta(firstRecord, "cwd"),
+    // Codex records git state under session_meta.payload.git (commit_hash,
+    // branch, repository_url); mirror Claude by surfacing the branch.
+    recordedBranch: readSessionMetaGit(firstRecord, "branch"),
+  }),
   deriveProjects: deriveFlatProjects("codex", "Codex sessions"),
 };
 
@@ -221,6 +226,18 @@ function readSessionMeta(record: unknown, key: string): string | undefined {
   const payload = r["payload"];
   if (!payload || typeof payload !== "object") return undefined;
   return readStr(payload, key);
+}
+
+// Codex git state lives one level deeper, under session_meta.payload.git.
+function readSessionMetaGit(record: unknown, key: string): string | undefined {
+  if (!record || typeof record !== "object") return undefined;
+  const r = record as Record<string, unknown>;
+  if (r["type"] !== "session_meta") return undefined;
+  const payload = r["payload"];
+  if (!payload || typeof payload !== "object") return undefined;
+  const git = (payload as Record<string, unknown>)["git"];
+  if (!git || typeof git !== "object") return undefined;
+  return readStr(git, key);
 }
 
 export const DESCRIPTORS: readonly ProviderDescriptor[] = [claude, codex, cursor, gemini];
