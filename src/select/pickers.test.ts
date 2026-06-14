@@ -80,4 +80,48 @@ describe("selectProjects", () => {
     expect(choices[0]!["checked"]).toBe(true);
     expect(choices[0]!["value"]).toBe("-Users-me-app");
   });
+
+  const twoGroups: ProjectGroup[] = [
+    {
+      providerId: "claude",
+      projectId: "-Users-me-app",
+      displayName: "/Users/me/app",
+      sessions: [],
+      sessionCount: 40,
+    },
+    {
+      providerId: "claude",
+      projectId: "-Users-me-scratch",
+      displayName: "/Users/me/scratch",
+      sessions: [],
+      sessionCount: 12,
+    },
+  ];
+
+  it("interactive: labels with cost-aware counts and unchecks empty projects", async () => {
+    checkboxMock.mockResolvedValue(["-Users-me-app"]);
+    const counts = new Map([
+      ["-Users-me-app", 7],
+      ["-Users-me-scratch", 0],
+    ]);
+    await selectProjects(twoGroups, { interactive: true, counts });
+    const choices = checkboxMock.mock.calls[0]![0].choices as unknown as Array<
+      Record<string, unknown>
+    >;
+    // Count comes from `counts`, not the raw sessionCount (40 / 12).
+    expect(choices[0]!["name"]).toContain("(7)");
+    expect(choices[0]!["checked"]).toBe(true);
+    // A project with nothing left to upload is shown but deselected.
+    expect(choices[1]!["name"]).toContain("(0)");
+    expect(choices[1]!["checked"]).toBe(false);
+  });
+
+  it("interactive: notes the --min-cost exclusion in the prompt", async () => {
+    checkboxMock.mockResolvedValue([]);
+    await selectProjects(twoGroups, { interactive: true, minCost: 10 });
+    const config = checkboxMock.mock.calls[0]![0] as unknown as Record<string, unknown>;
+    expect(config["message"]).toBe(
+      "Which projects should Frugl upload? (excluding sessions under $10.00)",
+    );
+  });
 });
