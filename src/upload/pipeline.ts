@@ -235,6 +235,7 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
       format_version: job.formatVersion,
       expected_bytes: bodyBytes.get(job.sessionId)!,
       ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
+      ...(job.project ? { project: job.project } : {}),
       ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
     })),
   });

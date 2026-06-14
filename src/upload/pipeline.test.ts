@@ -143,6 +143,53 @@ describe("upload pipeline", () => {
     expect(resumeStore.load()).toBeNull();
   });
 
+  it("rides the project identity onto the session manifest entry (spec 051)", async () => {
+    const { ledger, resumeStore } = stores();
+    const { jobs } = makeJobs(1);
+    jobs[0]!.project = "frugl";
+    const cloud = new InMemoryCloud({ manifestId: "mfst_project" });
+
+    await runUploadPipeline({
+      cloud,
+      jobs,
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    });
+
+    const entry = [...cloud.manifests.values()][0]!.sessions[0]!;
+    expect(entry.project).toBe("frugl");
+  });
+
+  it("omits project from the session entry when unresolved (back-compat)", async () => {
+    const { ledger, resumeStore } = stores();
+    const { jobs } = makeJobs(1);
+    const cloud = new InMemoryCloud({ manifestId: "mfst_noproject" });
+
+    await runUploadPipeline({
+      cloud,
+      jobs,
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    });
+
+    const entry = [...cloud.manifests.values()][0]!.sessions[0]!;
+    expect(entry.project).toBeUndefined();
+  });
+
   it("persists classified failures and folds them into a --report", async () => {
     const { ledger, resumeStore } = stores();
     const { jobs } = makeJobs(2);

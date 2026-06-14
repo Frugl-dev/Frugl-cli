@@ -23,6 +23,9 @@ export interface SnapshotUploadInput {
   body: Buffer;
   // Bytes declared on the manifest entry (expected_bytes).
   expectedBytes: number;
+  // Portable project identity (spec 051): the git repo name of the directory the
+  // snapshot was captured from. Omitted when unresolvable ("unknown").
+  project?: string;
   redactionsByCategory: Record<string, number>;
   // Declared MCP server inventory (names-only, fail-open) recorded on the upload
   // row server-side; omitted when the capture failed or found nothing.
@@ -55,6 +58,7 @@ export async function uploadSnapshot(input: SnapshotUploadInput): Promise<Snapsh
         session_id: sessionId,
         format_version: input.formatVersion,
         expected_bytes: input.expectedBytes,
+        ...(input.project ? { project: input.project } : {}),
         captured_at: input.capturedAt,
       },
     ],

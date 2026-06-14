@@ -22,6 +22,10 @@ export interface SessionUploadJob {
   // Opt-in (005) git coordinate, attached as manifest metadata only — never part
   // of the payload PUT or of redactedHashHex/contentHash (FR-011, SC-007).
   gitContext?: GitContext;
+  // Portable project identity (spec 051): repo name → package name → basename.
+  // Resolved independently of `gitContext`/--link-prs; omitted only when "unknown"
+  // so the cloud can fall back to its content-derived basename.
+  project?: string;
   // Sub-path within the repo's .claude/worktrees/ dir when the session comes
   // from a git worktree (e.g. "001/cloud/ingest/db"). Null for main checkouts.
   worktreePath?: string;

@@ -35,6 +35,7 @@ import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
+import { resolveProjectIdentity, UNKNOWN_PROJECT } from "../upload/project-identity.js";
 import { extractWorktreePath } from "../sources/claude-code/project.js";
 import {
   detectProviders,
@@ -997,6 +998,12 @@ async function buildJobsForSource(
     const raw = await rawFileHash(item.ref.absolutePath);
     const gitContext = gitBySession.get(item.identity.sessionId);
     const worktreePath = extractWorktreePath(item.ref.absolutePath);
+    // Project identity resolves independently of --link-prs (spec 051). Reuse an
+    // already-resolved git remote when PR-linking is on (rung 1 = repo name);
+    // otherwise run the full fallback chain against the session's recorded cwd.
+    const project = gitContext
+      ? gitContext.repository.name.trim().toLowerCase()
+      : await resolveProjectIdentity(item.parsed.cwd);
     jobs.push({
       sessionId: item.identity.sessionId,
       identityDerivation: item.identity.derivation,
@@ -1005,6 +1012,7 @@ async function buildJobsForSource(
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
       ...(gitContext ? { gitContext } : {}),
+      ...(project && project !== UNKNOWN_PROJECT ? { project } : {}),
       ...(worktreePath ? { worktreePath } : {}),
     });
   }

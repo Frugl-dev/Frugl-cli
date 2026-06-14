@@ -41,6 +41,24 @@ describe("uploadSnapshot (mcp_snapshot)", () => {
     );
   });
 
+  it("rides the project identity onto the manifest entry when provided (spec 051)", async () => {
+    const cloud = new InMemoryCloud();
+    const body = Buffer.from("{}", "utf8");
+    await uploadSnapshot({ ...baseInput(cloud, body), project: "frugl" });
+
+    const entry = [...cloud.manifests.values()][0]!.sessions[0]!;
+    expect(entry.project).toBe("frugl");
+  });
+
+  it("omits project from the entry when unresolved (back-compat)", async () => {
+    const cloud = new InMemoryCloud();
+    const body = Buffer.from("{}", "utf8");
+    await uploadSnapshot(baseInput(cloud, body));
+
+    const entry = [...cloud.manifests.values()][0]!.sessions[0]!;
+    expect(entry.project).toBeUndefined();
+  });
+
   it("filterPositive drops zero/negative counts from the redaction summary", () => {
     expect(filterPositive({ secret: 2, empty: 0, neg: -1 })).toEqual({ secret: 2 });
   });
