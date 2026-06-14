@@ -258,6 +258,18 @@ describe("buildUploadSummary", () => {
     const without = buildUploadSummary(summaryInput());
     expect(without).not.toHaveProperty("projects");
   });
+
+  it("carries minCost and skippedBelowMinCost when provided", () => {
+    const summary = buildUploadSummary(summaryInput({ minCost: 10, skippedBelowMinCost: 4 }));
+    expect(summary.minCost).toBe(10);
+    expect(summary.skippedBelowMinCost).toBe(4);
+  });
+
+  it("omits the cost keys when not provided", () => {
+    const summary = buildUploadSummary(summaryInput());
+    expect(summary).not.toHaveProperty("minCost");
+    expect(summary).not.toHaveProperty("skippedBelowMinCost");
+  });
 });
 
 describe("link-prs precedence", () => {
@@ -331,5 +343,23 @@ describe("formatSummaryForHuman", () => {
   it("shows PR linking off when linking is inactive", () => {
     const out = stripAnsi(formatSummaryForHuman(buildUploadSummary(summaryInput())));
     expect(out).toContain("PR linking off");
+  });
+
+  it("notes the min-cost floor and the count skipped below it", () => {
+    const out = stripAnsi(
+      formatSummaryForHuman(
+        buildUploadSummary(summaryInput({ minCost: 10, skippedBelowMinCost: 4 })),
+      ),
+    );
+    expect(out).toContain("Min cost");
+    expect(out).toContain("$10.00 — cheaper sessions are skipped");
+    expect(out).toContain("Below min cost");
+    expect(out).toContain("4   skipping (under $10.00)");
+  });
+
+  it("notes the floor but omits the skipped line when nothing is below it", () => {
+    const out = stripAnsi(formatSummaryForHuman(buildUploadSummary(summaryInput({ minCost: 25 }))));
+    expect(out).toContain("$25.00 — cheaper sessions are skipped");
+    expect(out).not.toContain("Below min cost");
   });
 });
