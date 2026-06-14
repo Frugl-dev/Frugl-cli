@@ -46,7 +46,10 @@ export default class Recommendations extends Command {
   static override description =
     "List and rank cost-saving recommendations, and get a prompt to fix them.";
 
-  static override aliases = ["recs"];
+  // Hidden from the command list while the feature is in development; still
+  // runnable, and the `recs` alias stays available (hidden) too.
+  static override hidden = true;
+  static override hiddenAliases = ["recs"];
 
   static override flags = {
     ...COMMON_FLAGS,

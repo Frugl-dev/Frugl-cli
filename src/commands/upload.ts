@@ -103,7 +103,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       description: "Skip the interactive confirmation prompt.",
     }),
     "dry-run": Flags.boolean({ description: "Anonymize but do not transmit." }),
-    endpoint: Flags.string({ description: "Override the API endpoint." }),
+    // Development-only: point the CLI at a non-production cloud. Hidden from help.
+    endpoint: Flags.string({ description: "Override the API endpoint.", hidden: true }),
     token: Flags.string({
       description:
         "Access token for non-interactive auth (CI / hooks). Overrides FRUGL_TOKEN and any stored login.",
@@ -337,24 +338,51 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           userId: session.userId,
         });
 
-        // Classify per source (each source knows how to parse its own refs)
+        // Classify per source (each source knows how to parse its own refs).
+        // Parsing + anonymizing every selected session is the heaviest local pass
+        // and prints nothing on its own — at hundreds of sessions it reads as a
+        // hang. Show a live "redacting" counter so the user sees the work happen.
         const classificationsBySource = new Map<Source, SessionClassification[]>();
+        const totalToClassify = [...refsBySource.values()].reduce((n, r) => n + r.length, 0);
+        const liveProgress = mode === "default" && Boolean(process.stderr.isTTY);
+        let classifyDone = 0;
+        const renderClassifyProgress = (): void => {
+          if (!liveProgress) return;
+          process.stderr.write(
+            `\r\x1b[K  ${color.dim(`Redacting sessions on your machine… ${classifyDone} / ${totalToClassify}`)}`,
+          );
+        };
+        if (mode !== "json" && totalToClassify > 0 && !liveProgress) {
+          process.stderr.write(
+            color.dim(`Redacting ${totalToClassify} sessions on your machine…\n`),
+          );
+        }
+        renderClassifyProgress();
         for (const [source, sourceRefs] of refsBySource) {
           const sorted = sourceRefs.toSorted(
             (a, b) => b.mtimeMs - a.mtimeMs || a.absolutePath.localeCompare(b.absolutePath),
           );
           const homeDirOverride = process.env["FRUGL_HOME_DIR"];
-          const classifications = await classifyAll(sorted, {
-            ledger,
-            source,
-            anonymize: {
-              uploadId,
-              ownerEmail: session.email,
-              ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
+          const classifications = await classifyAll(
+            sorted,
+            {
+              ledger,
+              source,
+              anonymize: {
+                uploadId,
+                ownerEmail: session.email,
+                ...(homeDirOverride !== undefined ? { homeDir: homeDirOverride } : {}),
+              },
             },
-          });
+            () => {
+              classifyDone += 1;
+              renderClassifyProgress();
+            },
+          );
           classificationsBySource.set(source, classifications);
         }
+        // Clear the live counter line before the summary prints.
+        if (liveProgress && totalToClassify > 0) process.stderr.write("\r\x1b[K");
 
         // Merge for confirmation + summary
         const allClassifications = [...classificationsBySource.values()].flat();
