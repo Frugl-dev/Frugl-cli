@@ -243,8 +243,38 @@ describe("codex.extractNativeId / extractMetadata (session_meta traversal)", () 
     expect(codex.extractNativeId(ctx(refAt("/x"), [meta]))).toBe("s-1");
   });
 
-  it("reads payload.cwd as metadata", () => {
-    expect(codex.extractMetadata!(ctx(refAt("/x"), [meta]))).toEqual({ cwd: "/proj" });
+  it("reads payload.cwd as metadata (no git block → branch undefined)", () => {
+    expect(codex.extractMetadata!(ctx(refAt("/x"), [meta]))).toEqual({
+      cwd: "/proj",
+      recordedBranch: undefined,
+    });
+  });
+
+  it("reads recordedBranch from payload.git.branch (real Codex shape)", () => {
+    // Mirrors a live ~/.codex/sessions rollout: git state nests under payload.git.
+    const withGit = {
+      type: "session_meta",
+      payload: {
+        id: "019ebbff-50a1-7d60-a759-3504e48cdcd2",
+        cwd: "/Users/me/proj",
+        git: {
+          commit_hash: "2a367988a463e8e8902ab1c40510e9dbac05f53c",
+          branch: "main",
+          repository_url: "https://github.com/acme/proj.git",
+        },
+      },
+    };
+    expect(codex.extractMetadata!(ctx(refAt("/x"), [withGit]))).toEqual({
+      cwd: "/Users/me/proj",
+      recordedBranch: "main",
+    });
+  });
+
+  it("leaves recordedBranch undefined when payload.git is absent or malformed", () => {
+    const noBranch = { type: "session_meta", payload: { id: "s", git: { commit_hash: "abc" } } };
+    expect(codex.extractMetadata!(ctx(refAt("/x"), [noBranch])).recordedBranch).toBeUndefined();
+    const gitNotObject = { type: "session_meta", payload: { id: "s", git: "main" } };
+    expect(codex.extractMetadata!(ctx(refAt("/x"), [gitNotObject])).recordedBranch).toBeUndefined();
   });
 
   it("returns undefined when the first record is not session_meta", () => {
@@ -286,7 +316,7 @@ describe("toSource(codex) end-to-end", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       path.join(dir, "session.jsonl"),
-      '{"type":"session_meta","payload":{"id":"00000000-0000-4000-8000-0000000000c0","cwd":"/home/me/app"}}\n' +
+      '{"type":"session_meta","payload":{"id":"00000000-0000-4000-8000-0000000000c0","cwd":"/home/me/app","git":{"branch":"main"}}}\n' +
         '{"type":"event_msg","payload":{"role":"user","content":"hi"}}\n',
     );
 
@@ -297,6 +327,7 @@ describe("toSource(codex) end-to-end", () => {
     expect(parsed.sourceKind).toBe("codex");
     expect(parsed.records).toHaveLength(2);
     expect(parsed.cwd).toBe("/home/me/app");
+    expect(parsed.recordedBranch).toBe("main");
     expect(parsed.identity.sessionId).toBe("00000000-0000-4000-8000-0000000000c0");
     expect(parsed.identity.derivation).toBe("native");
 
