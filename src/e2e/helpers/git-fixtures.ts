@@ -53,9 +53,11 @@ export async function writeGitSession(
         role: "assistant",
         model: "claude-sonnet-4-6",
         content: [{ type: "text", text: "hi" }],
+        // Sized to clear the default --min-cost=0.01 penny floor (~$0.03 at
+        // Sonnet pricing); otherwise the default cost filter drops the session.
         usage: {
-          input_tokens: 5,
-          output_tokens: 5,
+          input_tokens: 1000,
+          output_tokens: 2000,
           cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,
         },

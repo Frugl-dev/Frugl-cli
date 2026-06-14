@@ -120,7 +120,12 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       description: "Maximum sessions to upload (from new and updated candidates).",
     }),
     "min-cost": Flags.string({
-      description: "Skip sessions whose estimated cost is below this amount in USD (e.g. 0.10, 5).",
+      // Defaults to a penny: near-zero sessions (a stray prompt, an aborted run)
+      // are noise on the dashboard and cost more to ship than they're worth.
+      // Pass --min-cost=0 to upload everything regardless of estimated cost.
+      description:
+        "Skip sessions whose estimated cost is below this amount in USD (e.g. 0.10, 5). Default 0.01; use --min-cost=0 to upload everything.",
+      default: "0.01",
     }),
     "link-prs": Flags.boolean({
       description:
