@@ -7,7 +7,12 @@ import {
 } from "../cloud/schemas.js";
 import { FruglError, NetworkError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
-import { CloudPortError, type PresignResult, type UploadCloudPort } from "./cloud-port.js";
+import {
+  CloudPortError,
+  type CreateManifestResult,
+  type PresignResult,
+  type UploadCloudPort,
+} from "./cloud-port.js";
 
 // Production adapter: wraps the existing `CloudClient` and owns everything that
 // used to be inline in `pipeline.ts` — the typed control-plane `call()`s, the
@@ -17,7 +22,7 @@ import { CloudPortError, type PresignResult, type UploadCloudPort } from "./clou
 export class HttpCloudAdapter implements UploadCloudPort {
   constructor(private readonly client: CloudClient) {}
 
-  async createManifest(req: CreateManifestRequest): Promise<{ uploadId: string }> {
+  async createManifest(req: CreateManifestRequest): Promise<CreateManifestResult> {
     let created;
     try {
       created = await this.client.call({
@@ -43,9 +48,19 @@ export class HttpCloudAdapter implements UploadCloudPort {
           EXIT.GENERIC_FAILURE,
         );
       }
+      // A snapshot over its weekly cap (spec 052) gets a 429
+      // { error: "snapshot_cap_reached", cap, used, window_resets_at }. Surface
+      // it as a typed result the snapshot upload path turns into a clean message
+      // — never a retried/opaque network error.
+      const cap = readCapReached(err);
+      if (cap) return cap;
       throw toCloudPortError(err);
     }
-    return { uploadId: created.upload_id };
+    // A created upload carries `upload_id`; a 200 no_change skip carries `status`.
+    if ("upload_id" in created) {
+      return { kind: "created", uploadId: created.upload_id };
+    }
+    return { kind: "no_change" };
   }
 
   async presign(manifestId: string, sessionId: string): Promise<PresignResult> {
@@ -100,6 +115,24 @@ export class HttpCloudAdapter implements UploadCloudPort {
       dashboardUrl: new URL(complete.dashboard_url, this.client.endpointUrl).toString(),
     };
   }
+}
+
+// Recognize the snapshot weekly-cap refusal (429) and read its fields. Returns
+// null for any other error so the caller falls through to normal mapping.
+function readCapReached(
+  err: unknown,
+): Extract<CreateManifestResult, { kind: "cap_reached" }> | null {
+  if (!(err instanceof CloudHttpError) || err.status !== 429) return null;
+  const body = err.body;
+  if (typeof body !== "object" || body === null) return null;
+  const b = body as Record<string, unknown>;
+  if (b.error !== "snapshot_cap_reached") return null;
+  return {
+    kind: "cap_reached",
+    cap: typeof b.cap === "number" ? b.cap : 0,
+    used: typeof b.used === "number" ? b.used : 0,
+    windowResetsAt: typeof b.window_resets_at === "string" ? b.window_resets_at : "",
+  };
 }
 
 // Map any wire error onto a `CloudPortError`, preserving the HTTP status so the

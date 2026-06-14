@@ -663,19 +663,37 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           anonymization: ctxAnon,
           ...(ctxMcpServers ? { mcpServers: ctxMcpServers } : {}),
         });
-        contextUploadResult = {
-          manifestId: ctxUpload.manifestId,
-          sessionId: ctxUpload.sessionId,
-          capturedAt: capture.capturedAt,
-          byteSize: ctxAnon.byteSize,
-        };
-        if (lastDashboardUrl === `${endpoint.url}/dashboard`) {
-          lastDashboardUrl = ctxUpload.dashboardUrl;
-        }
-        if (mode !== "json") {
-          process.stdout.write(
-            `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
-          );
+        // Snapshot gate (spec 052): an unchanged or over-cap capture is skipped
+        // server-side. It rides alongside the session upload here, so a skip
+        // never fails the run — just note it and leave the receipt's context
+        // section absent (contextUploadResult stays undefined).
+        if (ctxUpload.status === "no_change") {
+          if (mode !== "json") {
+            process.stdout.write(
+              `${color.dim(`${symbol.tick} Context snapshot unchanged — nothing uploaded`)}\n`,
+            );
+          }
+        } else if (ctxUpload.status === "cap_reached") {
+          if (mode !== "json") {
+            process.stdout.write(
+              `${color.dim(`${symbol.tick} Context snapshot weekly limit reached (${ctxUpload.used}/${ctxUpload.cap}) — nothing uploaded`)}\n`,
+            );
+          }
+        } else {
+          contextUploadResult = {
+            manifestId: ctxUpload.manifestId,
+            sessionId: ctxUpload.sessionId,
+            capturedAt: capture.capturedAt,
+            byteSize: ctxAnon.byteSize,
+          };
+          if (lastDashboardUrl === `${endpoint.url}/dashboard`) {
+            lastDashboardUrl = ctxUpload.dashboardUrl;
+          }
+          if (mode !== "json") {
+            process.stdout.write(
+              `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${capture.capturedAt}`)}\n`,
+            );
+          }
         }
       }
 
