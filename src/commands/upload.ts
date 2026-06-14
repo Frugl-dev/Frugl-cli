@@ -47,6 +47,7 @@ import {
 } from "../sources/providers.js";
 import { applySelection, isInteractive, selectProjects, selectProviders } from "../select/index.js";
 import type { Selection } from "../select/selection.js";
+import { filterTrivial, filterByCost } from "../select/filter.js";
 import type { Source, SessionRef } from "../sources/types.js";
 import { anonymize, POLICY_VERSION } from "../anonymize/index.js";
 import {
@@ -98,7 +99,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
   ];
 
   static override flags = {
-    yes: Flags.boolean({ description: "Skip the interactive confirmation prompt." }),
+    yes: Flags.boolean({
+      description: "Skip the interactive confirmation prompt.",
+    }),
     "dry-run": Flags.boolean({ description: "Anonymize but do not transmit." }),
     endpoint: Flags.string({ description: "Override the API endpoint." }),
     token: Flags.string({
@@ -114,6 +117,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     }),
     limit: Flags.integer({
       description: "Maximum sessions to upload (from new and updated candidates).",
+    }),
+    "min-cost": Flags.string({
+      description: "Skip sessions whose estimated cost is below this amount in USD (e.g. 0.10, 5).",
     }),
     "link-prs": Flags.boolean({
       description:
@@ -222,7 +228,12 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       let lastManifestId = "";
       let lastDashboardUrl = `${endpoint.url}/dashboard`;
       let contextUploadResult:
-        | { manifestId: string; sessionId: string; capturedAt: string; byteSize: number }
+        | {
+            manifestId: string;
+            sessionId: string;
+            capturedAt: string;
+            byteSize: number;
+          }
         | undefined;
 
       // Session-summary variables — populated inside the sessions block and used
@@ -274,7 +285,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           selection = resolveConfigSelection(uploadConfig, detected, groups);
         } else {
           // 2) Choose providers — interactive picker, or auto-select-all when not.
-          const selectedProviderIds = await selectProviders(detected, { interactive });
+          const selectedProviderIds = await selectProviders(detected, {
+            interactive,
+          });
           if (selectedProviderIds.length === 0) {
             if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
             process.exit(EXIT.OK);
@@ -288,8 +301,13 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             groups.push(...descriptor.deriveProjects(providerRefs));
           }
           // 4) Choose projects — all preselected; deselect to exclude from upload.
-          const selectedProjectIds = await selectProjects(groups, { interactive });
-          selection = { providerIds: selectedProviderIds, projectIds: selectedProjectIds };
+          const selectedProjectIds = await selectProjects(groups, {
+            interactive,
+          });
+          selection = {
+            providerIds: selectedProviderIds,
+            projectIds: selectedProjectIds,
+          };
         }
         selectionReport = buildSelectionReport(detected, groups, selection);
 
@@ -310,8 +328,14 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           refsBySource.set(source, existing);
         }
 
-        const ledger = new Ledger({ endpointUrl: endpoint.url, userId: session.userId });
-        const resumeStore = new ResumeStore({ endpointUrl: endpoint.url, userId: session.userId });
+        const ledger = new Ledger({
+          endpointUrl: endpoint.url,
+          userId: session.userId,
+        });
+        const resumeStore = new ResumeStore({
+          endpointUrl: endpoint.url,
+          userId: session.userId,
+        });
 
         // Classify per source (each source knows how to parse its own refs)
         const classificationsBySource = new Map<Source, SessionClassification[]>();
@@ -339,8 +363,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           ...allBuckets.new,
           ...allBuckets.updated,
         ]);
-        willUpload =
-          flags.limit !== undefined ? allCandidates.slice(0, flags.limit) : allCandidates;
+        const minCost = parseCostFlag(flags["min-cost"], "--min-cost");
+        const notTrivial = filterTrivial(allCandidates);
+        const costFiltered = minCost !== undefined ? filterByCost(notTrivial, minCost) : notTrivial;
+        willUpload = flags.limit !== undefined ? costFiltered.slice(0, flags.limit) : costFiltered;
 
         const activeSources = [...refsBySource.keys()];
         displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
@@ -412,7 +438,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         // that handshake first — even when this run has nothing new — so those
         // sessions actually become visible on the dashboard.
         try {
-          const finalized = await finalizePendingManifest({ cloud, resumeStore });
+          const finalized = await finalizePendingManifest({
+            cloud,
+            resumeStore,
+          });
           if (finalized) {
             lastManifestId = finalized.manifestId;
             lastDashboardUrl = finalized.dashboardUrl;
@@ -629,10 +658,20 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               endpoint: endpoint.url,
               dashboardUrl: handoff.dashboardUrl,
               ...(handoff.active
-                ? { handoff: { active: true as const, expiresAt: handoff.expiresAt } }
+                ? {
+                    handoff: {
+                      active: true as const,
+                      expiresAt: handoff.expiresAt,
+                    },
+                  }
                 : handoff.reason === "disabled-default"
                   ? {}
-                  : { handoff: { active: false as const, reason: handoff.reason } }),
+                  : {
+                      handoff: {
+                        active: false as const,
+                        reason: handoff.reason,
+                      },
+                    }),
               context: contextUploadResult,
             })}\n`,
           );
@@ -878,7 +917,10 @@ function buildProjectRows(
 ): ProjectSummaryRow[] {
   const infoById = new Map<string, { providerId: string; displayName: string }>();
   for (const g of groups) {
-    infoById.set(g.projectId, { providerId: g.providerId, displayName: g.displayName });
+    infoById.set(g.projectId, {
+      providerId: g.providerId,
+      displayName: g.displayName,
+    });
   }
   const counts = new Map<string, number>();
   for (const item of willUpload) {
@@ -946,6 +988,15 @@ async function buildJobsForSource(
     });
   }
   return jobs;
+}
+
+function parseCostFlag(raw: string | undefined, flagName: string): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new UsageError(`${flagName} must be a non-negative number (e.g. 0.10, 5).`);
+  }
+  return n;
 }
 
 const UPLOAD_TARGETS = ["sessions", "context"] as const;
