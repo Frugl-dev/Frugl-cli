@@ -116,6 +116,27 @@ describe("selectProjects", () => {
     expect(choices[1]!["checked"]).toBe(false);
   });
 
+  it("interactive: deselect set leaves matching projects unchecked despite sessions", async () => {
+    checkboxMock.mockResolvedValue([]);
+    const counts = new Map([
+      ["-Users-me-app", 7],
+      ["-Users-me-scratch", 5],
+    ]);
+    await selectProjects(twoGroups, {
+      interactive: true,
+      counts,
+      deselect: new Set(["-Users-me-scratch"]),
+    });
+    const choices = checkboxMock.mock.calls[0]![0].choices as unknown as Array<
+      Record<string, unknown>
+    >;
+    // Has a remote (not in deselect) and sessions → checked.
+    expect(choices[0]!["checked"]).toBe(true);
+    // No remote (in deselect) but still has sessions → shown, unchecked.
+    expect(choices[1]!["name"]).toContain("(5)");
+    expect(choices[1]!["checked"]).toBe(false);
+  });
+
   it("interactive: notes the --min-cost exclusion in the prompt", async () => {
     checkboxMock.mockResolvedValue([]);
     await selectProjects(twoGroups, { interactive: true, minCost: 10 });

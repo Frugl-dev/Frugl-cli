@@ -79,6 +79,28 @@ export async function resolveGitContext(
   }
 }
 
+// Resolve just the GitHub-style repository identity (host/owner/name) for a
+// working directory, walking up to the enclosing repo and reading the `origin`
+// remote — no commit/branch resolution. Used to label the project picker by
+// repo instead of by on-disk path. Like resolveGitContext it reads `.git/` files
+// only (never spawns git) and NEVER throws: any failure collapses to null.
+export async function resolveRepositoryIdentity(
+  cwd: string | undefined,
+): Promise<GitRepositoryIdentity | null> {
+  if (cwd === undefined || cwd.length === 0) return null;
+  try {
+    if ((await statKind(cwd)) !== "dir") return null;
+    const gitDir = await findGitDir(cwd);
+    if (gitDir === null) return null;
+    const config = await readFileSafe(path.join(gitDir, "config"));
+    const originUrl = config === null ? null : parseOriginUrl(config);
+    if (originUrl === null) return null;
+    return parseRemoteIdentity(originUrl);
+  } catch {
+    return null;
+  }
+}
+
 type StatKind = "dir" | "file" | "missing" | "error";
 
 async function statKind(target: string): Promise<StatKind> {

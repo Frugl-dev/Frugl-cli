@@ -45,7 +45,14 @@ import {
   type DetectedProvider,
   type ProjectGroup,
 } from "../sources/providers.js";
-import { applySelection, isInteractive, selectProjects, selectProviders } from "../select/index.js";
+import {
+  applySelection,
+  groupByGitProject,
+  isGitRepoGroup,
+  isInteractive,
+  selectProjects,
+  selectProviders,
+} from "../select/index.js";
 import type { Selection } from "../select/selection.js";
 import { filterTrivial, filterByCost } from "../select/filter.js";
 import type { Source, SessionRef } from "../sources/types.js";
@@ -391,6 +398,34 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           allClassifications = await classifyRefs(groups.flatMap((g) => g.sessions));
           const byPath = new Map<string, SessionClassification>();
           for (const c of allClassifications) byPath.set(c.ref.absolutePath, c);
+
+          // Relabel the picker by GitHub repo instead of on-disk path: resolve
+          // each group's recorded cwd to its git `origin` remote and collapse
+          // groups that map to the same repo (apps/web, packages/*, worktrees…
+          // all become one `owner/name` row). Only new/updated sessions carry a
+          // parsed cwd; groups with none fall back to their decoded path. Done
+          // here — after parsing, before the picker — so counts stay per-repo.
+          const cwdByPath = new Map<string, string>();
+          for (const c of allClassifications) {
+            if ("parsed" in c && c.parsed.cwd) cwdByPath.set(c.ref.absolutePath, c.parsed.cwd);
+          }
+          const repoGroups = await groupByGitProject(groups, (g) => {
+            // Every distinct recorded cwd in the group, then the decoded path as a
+            // last resort (covers already-uploaded projects whose sessions are all
+            // "unchanged" and so carry no parsed cwd). Stale/deleted cwds resolve
+            // to nothing and are skipped; resolveRepositoryIdentity stats each
+            // first, so a lossy decode that isn't on disk just keeps the path label.
+            const candidates: string[] = [];
+            for (const s of g.sessions) {
+              const cwd = cwdByPath.get(s.absolutePath);
+              if (cwd !== undefined && !candidates.includes(cwd)) candidates.push(cwd);
+            }
+            if (g.displayName.startsWith("/")) candidates.push(g.displayName);
+            return candidates;
+          });
+          groups.length = 0;
+          groups.push(...repoGroups);
+
           const counts = new Map<string, number>();
           for (const g of groups) {
             const cs = g.sessions
@@ -398,11 +433,16 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               .filter((c): c is SessionClassification => c !== undefined);
             counts.set(g.projectId, eligibleFrom(cs).length);
           }
-          // 4) Choose projects — labelled with cost-aware counts; projects with
-          // nothing left to upload are shown but deselected by default.
+          // 4) Choose projects — labelled with cost-aware counts. Projects with
+          // nothing left to upload, or with no git remote (local-only code), are
+          // shown but deselected by default so the user opts into them by hand.
+          const noRemote = new Set(
+            groups.filter((g) => !isGitRepoGroup(g)).map((g) => g.projectId),
+          );
           const selectedProjectIds = await selectProjects(groups, {
             interactive,
             counts,
+            deselect: noRemote,
             ...(minCost !== undefined ? { minCost } : {}),
           });
           selection = {
@@ -440,6 +480,16 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         const eligible = eligibleFrom(selectedClassifications);
         willUpload = flags.limit !== undefined ? eligible.slice(0, flags.limit) : eligible;
 
+        // Count candidates dropped purely for being under the cost floor — same
+        // pipeline as eligibleFrom, minus the cost step — so the preview can show
+        // how many local sessions were skipped as too cheap to be worth shipping.
+        let skippedBelowMinCost = 0;
+        if (minCost !== undefined) {
+          const candidates = sortByMtimeDesc([...allBuckets.new, ...allBuckets.updated]);
+          const notTrivial = filterTrivial(candidates);
+          skippedBelowMinCost = notTrivial.length - filterByCost(notTrivial, minCost).length;
+        }
+
         const activeSources = [...classificationsBySource.keys()];
         displaySourceKind = activeSources.length === 1 ? activeSources[0]!.kind : "multi";
 
@@ -474,6 +524,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           ...(gitContext ? { gitContext } : {}),
           ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
           ...(projectRows.length > 0 ? { projects: projectRows } : {}),
+          ...(minCost !== undefined ? { minCost } : {}),
+          ...(skippedBelowMinCost > 0 ? { skippedBelowMinCost } : {}),
         });
         prLinking = summary.prLinking;
 
@@ -1055,17 +1107,18 @@ function buildProjectRows(
   willUpload: SessionClassification[],
   groups: ProjectGroup[],
 ): ProjectSummaryRow[] {
+  // Map each session back to its group so the rows match whatever the picker
+  // showed — repo-keyed groups in the interactive path, path-keyed in the config
+  // path. Falls back to the encoded dir name only for a ref that lost its group.
+  const groupByRefPath = new Map<string, ProjectGroup>();
+  for (const g of groups) for (const s of g.sessions) groupByRefPath.set(s.absolutePath, g);
   const infoById = new Map<string, { providerId: string; displayName: string }>();
-  for (const g of groups) {
-    infoById.set(g.projectId, {
-      providerId: g.providerId,
-      displayName: g.displayName,
-    });
-  }
   const counts = new Map<string, number>();
   for (const item of willUpload) {
     if (item.kind === "unchanged") continue;
-    const projectId = path.basename(path.dirname(item.ref.absolutePath));
+    const g = groupByRefPath.get(item.ref.absolutePath);
+    const projectId = g?.projectId ?? path.basename(path.dirname(item.ref.absolutePath));
+    if (g) infoById.set(projectId, { providerId: g.providerId, displayName: g.displayName });
     counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
   }
   const rows: ProjectSummaryRow[] = [];
