@@ -3,7 +3,7 @@ import { runOrgList } from "../../org/list.js";
 import { COMMON_FLAGS } from "../../lib/command-context.js";
 
 export default class Org extends Command {
-  static override description = "Show your active org. See also: org ls, create, join, use.";
+  static override description = "Show your active org. See also: org ls, create, join.";
 
   static override flags = COMMON_FLAGS;
 
