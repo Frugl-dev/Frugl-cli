@@ -102,14 +102,21 @@ describe("walker.discover", () => {
     expect(refs[0]!.mtimeMs).toBeGreaterThan(0);
   });
 
-  it("honors the glob, skipping non-matching files (gemini wants logs.json only)", async () => {
-    const dir = path.join(home, ".gemini", "tmp", "sess");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "other.json"), "[]");
-    writeFileSync(path.join(dir, "logs.json"), "[]");
+  it("honors the glob, skipping non-matching files (gemini wants chats/*.jsonl)", async () => {
+    // The stripped logs.json sibling and the project root must be ignored; only
+    // the rich per-session chats transcripts are collected.
+    const projectDir = path.join(home, ".gemini", "tmp", "myproj");
+    const chatsDir = path.join(projectDir, "chats");
+    mkdirSync(chatsDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "logs.json"), "[]");
+    writeFileSync(
+      path.join(chatsDir, "session-2026-06-13T21-57-80776daa.jsonl"),
+      '{"sessionId":"x"}\n',
+    );
     const refs = await discover(gemini, { homeDir: home });
     expect(refs).toHaveLength(1);
-    expect(refs[0]!.absolutePath).toContain("logs.json");
+    expect(refs[0]!.absolutePath).toContain(path.join("chats", "session-"));
+    expect(refs[0]!.absolutePath).not.toContain("logs.json");
   });
 
   it("yields refs for files only, never directories", async () => {
@@ -143,25 +150,30 @@ describe("walker decode dispatch", () => {
     expect(parsed.records).toEqual([{ a: 1 }, { _raw: "not json" }, { b: 2 }]);
   });
 
-  it("json-array: a valid array decodes to its elements", async () => {
-    const file = path.join(home, "logs.json");
-    writeFileSync(file, '[{"sessionId":"a"},{"sessionId":"b"}]');
+  it("gemini ndjson: header + $set snapshot + raw turn lines decode to records", async () => {
+    const file = path.join(home, "session.jsonl");
+    // The real chats/*.jsonl shape: header, a $set snapshot, then turn lines.
+    writeFileSync(
+      file,
+      '{"sessionId":"a02974f8-0000-0000-0000-000000000001","projectHash":"h","startTime":"2026-06-12T13:14:01.157Z","kind":"main"}\n' +
+        '{"$set":{"messages":[{"id":"m1","type":"user","content":[{"text":"hi"}]}]}}\n' +
+        '{"id":"g-1","type":"gemini","content":"hello","tokens":{"input":10,"output":2,"total":12},"model":"gemini-3-flash-preview"}\n',
+    );
     const parsed = await parse(gemini, ref(file, "gemini"));
-    expect(parsed.records).toHaveLength(2);
+    expect(parsed.records).toHaveLength(3);
+    // The header is records[0] and carries the native sessionId.
+    expect(parsed.identity.sessionId).toBe("a02974f8-0000-0000-0000-000000000001");
   });
 
-  it("json-array: a non-array JSON value decodes to []", async () => {
-    const file = path.join(home, "logs.json");
-    writeFileSync(file, '{"sessionId":"a"}');
+  it("gemini ndjson: recovers a malformed line as _raw without losing the session", async () => {
+    const file = path.join(home, "session.jsonl");
+    writeFileSync(
+      file,
+      '{"sessionId":"a02974f8-0000-0000-0000-000000000002"}\nnot json\n{"id":"g-1","type":"gemini"}\n',
+    );
     const parsed = await parse(gemini, ref(file, "gemini"));
-    expect(parsed.records).toEqual([]);
-  });
-
-  it("json-array: malformed JSON decodes to []", async () => {
-    const file = path.join(home, "logs.json");
-    writeFileSync(file, "{not json");
-    const parsed = await parse(gemini, ref(file, "gemini"));
-    expect(parsed.records).toEqual([]);
+    expect(parsed.records).toHaveLength(3);
+    expect(parsed.records[1]).toEqual({ _raw: "not json" });
   });
 });
 
@@ -189,7 +201,7 @@ describe("descriptor conformance", () => {
     expect(claude.formatVersion).toBe("claude-jsonl-2026-04");
     expect(codex.formatVersion).toBe("codex-jsonl-2026-05");
     expect(cursor.formatVersion).toBe("cursor-jsonl-2026-05");
-    expect(gemini.formatVersion).toBe("gemini-json-2026-05");
+    expect(gemini.formatVersion).toBe("gemini-jsonl-2026-06");
   });
 });
 

@@ -8,8 +8,8 @@ import { collectToolResultRecords } from "./claude-code/tool-results.js";
 // single code path serves every provider — structurally preventing the
 // gemini-style bespoke-parse drift.
 export type RecordFormat =
-  | { kind: "ndjson" } // one JSON object per line (Claude, Codex, Cursor)
-  | { kind: "json-array" }; // the whole file is a JSON array (Gemini)
+  | { kind: "ndjson" } // one JSON object per line (Claude, Codex, Cursor, Gemini)
+  | { kind: "json-array" }; // the whole file is a JSON array (no current provider)
 
 // What the pure extractors receive: the discovered ref plus the already-decoded
 // records (and a convenience first-record handle). No filesystem access here —
@@ -205,15 +205,21 @@ const gemini: ProviderDescriptor = {
   id: "gemini",
   sourceKind: "gemini",
   displayName: "Gemini",
-  formatVersion: "gemini-json-2026-05",
+  formatVersion: "gemini-jsonl-2026-06",
   layout: {
     probeSegments: [".gemini", "tmp"],
     rootSegments: [".gemini", "tmp"],
-    globs: ["*/logs.json"],
+    // The RICH per-session transcripts live at tmp/<project>/chats/*.jsonl.
+    // The sibling tmp/<project>/logs.json is a STRIPPED projection (no tokens,
+    // no content arrays, no toolCalls) — collecting it yielded perpetually
+    // partial sessions. We collect the chats JSONL instead. (#gemini-compat)
+    globs: ["*/chats/*.jsonl"],
   },
-  // Routes through the SAME decode/identity path as the NDJSON providers; this
-  // is what removes gemini's bespoke JSON.parse and its divergent error handling.
-  format: { kind: "json-array" },
+  // The chats files are NDJSON: line 1 is the session header, then a `$set`
+  // snapshot line, then raw user/gemini turn lines. Routes through the SAME
+  // decode/identity path as the other NDJSON providers — no bespoke parse.
+  format: { kind: "ndjson" },
+  // The header (records[0] / firstRecord) carries `sessionId`.
   extractNativeId: ({ firstRecord }) => readStr(firstRecord, "sessionId"),
   deriveProjects: deriveFlatProjects("gemini", "Gemini sessions"),
 };
