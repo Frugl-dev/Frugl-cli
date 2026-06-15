@@ -40,16 +40,16 @@ burning tokens. Everything below is the detail.
 
 ## Commands
 
-| Command              | What it does                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------------- |
-| `frugl setup`        | Authenticate **and** create/join an org in one idempotent step. Safe to re-run.          |
-| `frugl login`        | Sign in (GitHub, Google, or email code); first-time accounts are set up with an org too. |
-| `frugl logout`       | Revoke this device's session and forget the local token.                                 |
-| `frugl whoami`       | Show the signed-in identity, active org, and role.                                       |
-| `frugl upload`       | Discover, anonymize, and upload local AI-coding sessions.                                |
-| `frugl context`      | Capture + upload a timestamped context-window snapshot.                                  |
-| `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                              |
-| `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                 |
+| Command              | What it does                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| `frugl setup`        | Authenticate **and** create/join an org in one idempotent step. Safe to re-run.                |
+| `frugl login`        | Sign in (GitHub, Google, or email code); first-time accounts are set up with an org too.       |
+| `frugl logout`       | Revoke this device's session and forget the local token.                                       |
+| `frugl whoami`       | Show the signed-in identity, active org, and role.                                             |
+| `frugl upload`       | Discover, anonymize, and upload local AI-coding sessions.                                      |
+| `frugl snapshot`     | Capture + upload both snapshots (context window + MCP servers). Subcommands: `context`, `mcp`. |
+| `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                                    |
+| `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                       |
 
 Every command supports `--format` to control output, and `--help` for the full
 flag list. The formats are:
@@ -135,30 +135,40 @@ frugl org invites                      # how to get an invite code
 Invite codes come from a teammate — org owners and admins generate them on the
 dashboard.
 
-## Context snapshots
+## Snapshots
 
-`frugl context` captures the configured AI tool's context-window breakdown —
-today Claude Code's `/context` — anonymizes it locally, and uploads a single
-**timestamped** snapshot. It launches the tool by spawning `claude -p "/context"`
-and uploads only what that command prints to stdout: category token counts plus
-config identifiers (skill / MCP server / agent names and memory-file paths). It
-never reads or uploads the **contents** of any file the breakdown references.
-Embedded secrets and third-party emails are redacted, and your home-directory
-prefix is normalized, by the same local anonymizer the upload path uses
-(fail-closed).
+`frugl snapshot` captures two timestamped, locally-anonymized snapshots and
+uploads them in one run:
+
+- **`frugl snapshot context`** — the configured AI tool's context-window
+  breakdown (today Claude Code's `/context`). It spawns `claude -p "/context"`
+  and uploads only what that command prints to stdout: category token counts
+  plus config identifiers (skill / MCP server / agent names and memory-file
+  paths). It never reads or uploads the **contents** of any file the breakdown
+  references.
+- **`frugl snapshot mcp`** — your declared MCP servers from `claude mcp list`
+  (name, transport, target, health). Each server **target** (a URL or launch
+  command that can embed a key) is scrubbed of secrets locally before upload.
+
+Bare `frugl snapshot` runs both; each runs independently, so a failure in one
+never blocks the other. Embedded secrets and third-party emails are redacted,
+and your home-directory prefix is normalized, by the same local anonymizer the
+upload path uses (fail-closed).
 
 ```bash
-frugl context                 # capture, anonymize, upload one snapshot
-frugl context --format json   # machine-readable result (capturedAt, manifestId, …)
+frugl snapshot                 # capture, anonymize, upload context + mcp
+frugl snapshot context         # just the context-window snapshot
+frugl snapshot mcp             # just the MCP-server snapshot
+frugl snapshot --format json   # machine-readable result (capturedAt, manifestId, …)
 ```
 
 **Cadence (v1).** There is no built-in scheduler. To accumulate snapshots over
 time — which is what makes them useful for spotting context-window drift — run
-`frugl context` on a recurring schedule from an external cron/CI job, roughly
+`frugl snapshot` on a recurring schedule from an external cron/CI job, roughly
 daily:
 
 ```cron
-0 9 * * * frugl context >> ~/.frugl/context.log 2>&1
+0 9 * * * frugl snapshot >> ~/.frugl/snapshot.log 2>&1
 ```
 
 Each run produces a **distinct** snapshot (fresh id + fresh timestamp) — there
