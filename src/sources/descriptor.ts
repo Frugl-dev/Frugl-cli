@@ -1,8 +1,14 @@
 import path from "node:path";
 import type { ProjectGroup, ProviderId } from "./providers.js";
-import type { SessionRef } from "./types.js";
+import type { DiscoverOptions, SessionRef } from "./types.js";
 import { deriveClaudeProjects, extractWorktreePath } from "./claude-code/project.js";
 import { collectToolResultRecords } from "./claude-code/tool-results.js";
+import {
+  composerIdOf,
+  decodeCursorComposer,
+  discoverCursorComposers,
+  isComposerRef,
+} from "./cursor-vscdb.js";
 
 // On-disk record layout. The generic walker's decode dispatch keys off this so a
 // single code path serves every provider — structurally preventing the
@@ -56,6 +62,15 @@ export interface ProviderDescriptor {
   // content hash like any other record. Warnings are surfaced by the walker
   // and never abort the parse (honest failures).
   collectExtraRecords?(ref: SessionRef): Promise<{ records: unknown[]; warnings: string[] }>;
+  // Optional discover/decode OVERRIDES for providers whose on-disk store is not a
+  // one-file-per-session glob. When `discoverRefs` is present the walker uses it
+  // instead of the glob walk; when `decodeRecords` is present the walker uses it
+  // instead of readFile + format decode. Cursor IDE uses both: one SQLite store
+  // (state.vscdb) holds many composers, so discover enumerates composers and
+  // decode reads one composer's `{composer, bubbles}` export. Everything after
+  // decode (identity, anonymize, upload) stays on the shared path.
+  discoverRefs?(opts?: DiscoverOptions): Promise<SessionRef[]>;
+  decodeRecords?(ref: SessionRef): Promise<unknown[]>;
   deriveProjects(refs: SessionRef[]): ProjectGroup[];
 }
 
@@ -110,12 +125,21 @@ function deriveFlatProjects(providerId: ProviderId, displayName: string) {
 function deriveCursorProjects(refs: SessionRef[]): ProjectGroup[] {
   const byProject = new Map<string, SessionRef[]>();
   for (const ref of refs) {
-    const parts = ref.absolutePath.replace(/\\/g, "/").split("/");
-    const projIdx = parts.indexOf("projects");
-    const projectId =
-      projIdx >= 0 && parts[projIdx + 1]
-        ? parts[projIdx + 1]!
-        : path.basename(path.dirname(path.dirname(ref.absolutePath)));
+    // IDE vscdb composers carry no on-disk project axis (one SQLite store holds
+    // every workspace's threads), so they group under a single "cursor" project;
+    // the cloud re-derives per-session project identity from the manifest. Legacy
+    // cursor-agent transcripts keep the projects/<id> path-segment grouping.
+    let projectId: string;
+    if (isComposerRef(ref.absolutePath)) {
+      projectId = "cursor";
+    } else {
+      const parts = ref.absolutePath.replace(/\\/g, "/").split("/");
+      const projIdx = parts.indexOf("projects");
+      projectId =
+        projIdx >= 0 && parts[projIdx + 1]
+          ? parts[projIdx + 1]!
+          : path.basename(path.dirname(path.dirname(ref.absolutePath)));
+    }
     const sessions = byProject.get(projectId);
     if (sessions) sessions.push(ref);
     else byProject.set(projectId, [ref]);
@@ -181,9 +205,14 @@ const codex: ProviderDescriptor = {
 const cursor: ProviderDescriptor = {
   id: "cursor",
   sourceKind: "cursor",
+  // The cloud routes the parse path on sourceKind ("cursor"); the export shape the
+  // adapter parses ({composer, bubbles}) is the SAME whether it came from the IDE
+  // vscdb or a cursor-agent transcript, so this stays wire-stable.
   displayName: "Cursor",
   formatVersion: "cursor-jsonl-2026-05",
   layout: {
+    // The Cursor IDE keeps all chat in SQLite, so "installed" = the global
+    // state.vscdb exists. (Discovery itself reads the SQLite store, not the glob.)
     probeSegments: [
       "Library",
       "Application Support",
@@ -192,12 +221,23 @@ const cursor: ProviderDescriptor = {
       "globalStorage",
       "state.vscdb",
     ],
+    // Retained for descriptor conformance; the vscdb path ignores them (see
+    // discoverRefs/decodeRecords). Kept pointing at the legacy cursor-agent
+    // transcript layout for documentation.
     rootSegments: [".cursor", "projects"],
     globs: ["**/agent-transcripts/**/*.jsonl"],
   },
   format: { kind: "ndjson" },
-  // Cursor's session UUID is the first path segment after "/agent-transcripts/".
-  extractNativeId: ({ ref }) => segmentAfter(ref.absolutePath, "/agent-transcripts/"),
+  // SUPERSEDES the legacy `agent-transcripts/**/*.jsonl` glob: a normal Cursor IDE
+  // install has no such files — all chat lives in state.vscdb. discoverRefs reads
+  // every composer from the SQLite store(s); decodeRecords reads one composer's
+  // {composer, bubbles} export. The cloud adapter's shape is unchanged.
+  discoverRefs: (opts) =>
+    discoverCursorComposers(opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
+  decodeRecords: (ref) => decodeCursorComposer(ref),
+  // The composer's UUID, encoded in the synthetic ref path, is reused as the
+  // session id (Cursor composerIds are UUIDs); else identity derives from path.
+  extractNativeId: ({ ref }) => composerIdOf(ref.absolutePath),
   deriveProjects: deriveCursorProjects,
 };
 

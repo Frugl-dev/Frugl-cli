@@ -9,6 +9,7 @@ import { classifyFailure, PresignExpiredError, type FailureReason } from "./fail
 import { CloudPortError, type UploadCloudPort } from "./cloud-port.js";
 import type { ProgressReporter } from "./progress.js";
 import { ResumeStore, type ManifestEntryState } from "./resume.js";
+import { vscdbFilePath } from "../sources/cursor-vscdb.js";
 
 // The per-entry work the deep module needs. Mirrors the batch-level
 // `SessionUploadJob` minus the fields only the manifest creation cares about.
@@ -195,14 +196,19 @@ function isStaleStatus(err: unknown): boolean {
   return err instanceof CloudPortError && (err.status === 404 || err.status === 410);
 }
 
+// Hash the raw source bytes. For a Cursor composer ref the source path carries a
+// `::composer::<id>` suffix that is NOT a real file — `vscdbFilePath` strips it
+// back to the physical state.vscdb so the hash reflects the actual store (and
+// changes whenever any thread in it changes; conservative but correct re-upload
+// detection). Plain file refs pass through unchanged.
 export async function rawFileHash(filePath: string): Promise<string> {
-  const buf = await readFile(filePath);
+  const buf = await readFile(vscdbFilePath(filePath));
   return createHash("sha256").update(buf).digest("hex");
 }
 
 async function verifyResumableEntry(entry: ManifestEntryState): Promise<SkipReason | null> {
   try {
-    const exists = await stat(entry.sourceFilePath).catch(() => null);
+    const exists = await stat(vscdbFilePath(entry.sourceFilePath)).catch(() => null);
     if (!exists) return "missing";
     const currentHash = await rawFileHash(entry.sourceFilePath);
     if (currentHash !== entry.rawContentHashAtFirstRun) return "modified";
