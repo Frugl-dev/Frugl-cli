@@ -80,12 +80,11 @@ By default trivial sessions (negligible estimated cost) are filtered out
 automatically; use `--min-cost` to raise that threshold.
 
 ```bash
-frugl upload                               # upload all targets (sessions + context)
-frugl upload sessions                      # only AI coding sessions
-frugl upload context                       # only a context snapshot
+frugl upload                               # discover, anonymize, and upload AI coding sessions
+frugl upload sessions                      # same, named explicitly
 frugl upload --dry-run                     # discover + anonymize; transmit zero bytes
 frugl upload --yes                         # upload without the confirmation prompt
-frugl upload --min-cost 0.10               # skip sessions estimated under $0.10
+frugl upload --min-cost 25                 # skip sessions estimated under $25 (floor is $10)
 frugl upload --limit 20                    # cap how many sessions upload
 frugl upload --report                      # explain the last upload's failures
 ```
@@ -119,8 +118,9 @@ available headlessly — `frugl setup` first.
 
 ## Organizations
 
-Every Frugl account belongs to exactly one org — the team whose AI retros you
-share. `frugl setup` handles this for you; a brand-new account is prompted to
+Every Frugl account belongs to an org today — the team whose AI retros you
+share (multi-org support is coming). `frugl setup` handles this for you; a
+brand-new account is prompted to
 **create** an org (you become the owner) or **join** an existing one with an
 invite code. Until you belong to an org, `frugl upload` is blocked.
 
@@ -128,7 +128,7 @@ invite code. Until you belong to an org, `frugl upload` is blocked.
 frugl org                              # show your active org, role, and member count
 frugl org create --name "Acme Corp"    # non-interactive create (slug auto-derived)
 frugl org join pop_inv_…               # redeem an invite code from a teammate
-frugl org use <slug>                   # switch the active org for uploads
+frugl org use <slug>                   # (not implemented) one org per account today; confirms current org only
 frugl org invites                      # how to get an invite code
 ```
 
