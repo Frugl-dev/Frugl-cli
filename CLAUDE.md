@@ -17,6 +17,13 @@ for everything this feature does not touch.
 The applicable constitution is at `../frugl/.specify/memory/constitution.md`
 (Frugl Cloud v2.1.0); the local `.specify/memory/constitution.md` is a placeholder.
 
+## Releases
+
+To publish a new version to npm, bump `version` in `package.json`, commit to
+`main`, then create a GitHub Release tagged `v<version>`. CI handles the build
+and `npm publish` automatically. See `DEVELOPMENT.md` (Releasing section) for
+the full process.
+
 <!-- SPECKIT END -->
 
 <!-- rtk-instructions v2 -->
