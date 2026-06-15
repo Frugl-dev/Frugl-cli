@@ -12,6 +12,7 @@ oclif.manifest.json
 *.log
 coverage
 .claude/worktrees
+.worktrees
 
 # Local artifacts (not source)
 .playwright-mcp
