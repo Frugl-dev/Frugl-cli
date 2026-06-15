@@ -94,7 +94,7 @@
     "topicSeparator": " "
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "packageManager": "pnpm@11.6.0"
 }

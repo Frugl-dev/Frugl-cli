@@ -92,15 +92,21 @@ describe("walker.discover", () => {
     expect(await discover(d, { homeDir: home })).toEqual([]);
   });
 
-  it.each(DESCRIPTORS)("returns a ref with the right sourceKind/size/mtime for $id", async (d) => {
-    const abs = seedSession(home, d, '{"sessionId":"x"}\n');
-    const refs = await discover(d, { homeDir: home });
-    expect(refs).toHaveLength(1);
-    expect(refs[0]!.sourceKind).toBe(d.sourceKind);
-    expect(refs[0]!.absolutePath).toBe(abs);
-    expect(refs[0]!.byteSizeOnDisk).toBeGreaterThan(0);
-    expect(refs[0]!.mtimeMs).toBeGreaterThan(0);
-  });
+  // Cursor's discovery is overridden (it reads the IDE's SQLite vscdb, not a file
+  // glob), so the file-seed shape doesn't apply — its discover/decode is covered
+  // in cursor-vscdb.test.ts.
+  it.each(DESCRIPTORS.filter((d) => !d.discoverRefs))(
+    "returns a ref with the right sourceKind/size/mtime for $id",
+    async (d) => {
+      const abs = seedSession(home, d, '{"sessionId":"x"}\n');
+      const refs = await discover(d, { homeDir: home });
+      expect(refs).toHaveLength(1);
+      expect(refs[0]!.sourceKind).toBe(d.sourceKind);
+      expect(refs[0]!.absolutePath).toBe(abs);
+      expect(refs[0]!.byteSizeOnDisk).toBeGreaterThan(0);
+      expect(refs[0]!.mtimeMs).toBeGreaterThan(0);
+    },
+  );
 
   it("honors the glob, skipping non-matching files (gemini wants logs.json only)", async () => {
     const dir = path.join(home, ".gemini", "tmp", "sess");
@@ -203,24 +209,36 @@ function refAt(absolutePath: string): SessionRef {
   return { sourceKind: "x", absolutePath, byteSizeOnDisk: 1, mtimeMs: 1 };
 }
 
-describe("cursor.extractNativeId / segmentAfter", () => {
-  it("reads the UUID segment after agent-transcripts/", () => {
+describe("cursor.extractNativeId (composerId from the vscdb ref path)", () => {
+  it("reads the composerId encoded after the ::composer:: marker", () => {
     const r = refAt(
-      "/h/.cursor/projects/p/agent-transcripts/aaaabbbb-1111-2222-3333-444444444444/f.jsonl",
+      "/h/Library/Application Support/Cursor/User/globalStorage/state.vscdb::composer::aaaabbbb-1111-2222-3333-444444444444",
     );
     expect(cursor.extractNativeId(ctx(r, []))).toBe("aaaabbbb-1111-2222-3333-444444444444");
   });
 
-  it("handles Windows-style separators", () => {
-    const r = refAt(
-      "C:\\Users\\u\\.cursor\\projects\\p\\agent-transcripts\\cccc0000-dddd-1111-eeee-222222222222\\f.jsonl",
-    );
-    expect(cursor.extractNativeId(ctx(r, []))).toBe("cccc0000-dddd-1111-eeee-222222222222");
+  it("returns undefined when the ref carries no composer marker", () => {
+    expect(cursor.extractNativeId(ctx(refAt("/h/globalStorage/state.vscdb"), []))).toBeUndefined();
+  });
+});
+
+// segmentAfter remains a shared pure helper (retained for path parsing); it is no
+// longer on cursor's hot path but kept tested.
+describe("segmentAfter helper", () => {
+  it("reads the first segment after a marker (separator-agnostic)", () => {
+    expect(
+      segmentAfter(
+        "/h/.cursor/projects/p/agent-transcripts/aaaabbbb-1111/f.jsonl",
+        "/agent-transcripts/",
+      ),
+    ).toBe("aaaabbbb-1111");
+    expect(
+      segmentAfter("C:\\u\\agent-transcripts\\cccc0000-dddd\\f.jsonl", "/agent-transcripts/"),
+    ).toBe("cccc0000-dddd");
   });
 
   it("returns undefined when the marker is absent", () => {
     expect(segmentAfter("/some/other/path/session.jsonl", "/agent-transcripts/")).toBeUndefined();
-    expect(cursor.extractNativeId(ctx(refAt("/some/other/session.jsonl"), []))).toBeUndefined();
   });
 });
 

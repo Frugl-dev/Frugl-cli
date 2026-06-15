@@ -35,6 +35,11 @@ export function probe(d: ProviderDescriptor, opts?: HomeOptions): Promise<boolea
 // The single filesystem walk: glob → stat → SessionRef. Directories and vanished
 // files are skipped; a missing root yields [].
 export async function discover(d: ProviderDescriptor, opts?: HomeOptions): Promise<SessionRef[]> {
+  // A provider whose store isn't a one-file-per-session glob (Cursor IDE's
+  // SQLite vscdb) supplies its own discovery; everything after is shared.
+  if (d.discoverRefs) {
+    return d.discoverRefs(opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {});
+  }
   const root = path.join(home(opts), ...d.layout.rootSegments);
   const files = await glob(d.layout.globs, { cwd: root, absolute: true, dot: false }).catch(
     () => [],
@@ -81,8 +86,11 @@ export function deriveIdentity(d: ProviderDescriptor, ctx: ExtractContext): Sess
 }
 
 export async function parse(d: ProviderDescriptor, ref: SessionRef): Promise<ParsedSession> {
-  const text = await readFile(ref.absolutePath, "utf8");
-  let records = decode(d, text);
+  // A provider with a custom decode (Cursor IDE's vscdb) reads its own records;
+  // others read the file off disk and run the shared format decode.
+  let records = d.decodeRecords
+    ? await d.decodeRecords(ref)
+    : decode(d, await readFile(ref.absolutePath, "utf8"));
   // Provider metadata records (039) join `records` after the transcript lines,
   // so they pass through anonymization and the content hash like everything
   // else. Collection warnings surface but never abort the parse.
