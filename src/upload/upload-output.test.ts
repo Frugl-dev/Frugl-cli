@@ -259,16 +259,20 @@ describe("buildUploadSummary", () => {
     expect(without).not.toHaveProperty("projects");
   });
 
-  it("carries minCost and skippedBelowMinCost when provided", () => {
-    const summary = buildUploadSummary(summaryInput({ minCost: 10, skippedBelowMinCost: 4 }));
+  it("carries minCost and the tiering counts when provided", () => {
+    const summary = buildUploadSummary(
+      summaryInput({ minCost: 10, metadataOnly: 4, excludedEmpty: 2 }),
+    );
     expect(summary.minCost).toBe(10);
-    expect(summary.skippedBelowMinCost).toBe(4);
+    expect(summary.metadataOnly).toBe(4);
+    expect(summary.excludedEmpty).toBe(2);
   });
 
   it("omits the cost keys when not provided", () => {
     const summary = buildUploadSummary(summaryInput());
     expect(summary).not.toHaveProperty("minCost");
-    expect(summary).not.toHaveProperty("skippedBelowMinCost");
+    expect(summary).not.toHaveProperty("metadataOnly");
+    expect(summary).not.toHaveProperty("excludedEmpty");
   });
 });
 
@@ -345,21 +349,24 @@ describe("formatSummaryForHuman", () => {
     expect(out).toContain("PR linking off");
   });
 
-  it("notes the min-cost floor and the count skipped below it", () => {
+  it("notes the min-cost threshold, the metadata-only count, and excluded-empty", () => {
     const out = stripAnsi(
       formatSummaryForHuman(
-        buildUploadSummary(summaryInput({ minCost: 10, skippedBelowMinCost: 4 })),
+        buildUploadSummary(summaryInput({ minCost: 10, metadataOnly: 4, excludedEmpty: 2 })),
       ),
     );
     expect(out).toContain("Min cost");
-    expect(out).toContain("$10.00 — cheaper sessions are skipped");
-    expect(out).toContain("Below min cost");
-    expect(out).toContain("4   skipping (under $10.00)");
+    expect(out).toContain("$10.00 — cheaper sessions upload metadata only");
+    expect(out).toContain("Metadata only");
+    expect(out).toContain("4   metrics, no transcript (under $10.00)");
+    expect(out).toContain("Excluded (empty)");
+    expect(out).toContain("2   skipping (under $0.01)");
   });
 
-  it("notes the floor but omits the skipped line when nothing is below it", () => {
+  it("notes the threshold but omits the tiering lines when there are none", () => {
     const out = stripAnsi(formatSummaryForHuman(buildUploadSummary(summaryInput({ minCost: 25 }))));
-    expect(out).toContain("$25.00 — cheaper sessions are skipped");
-    expect(out).not.toContain("Below min cost");
+    expect(out).toContain("$25.00 — cheaper sessions upload metadata only");
+    expect(out).not.toContain("Metadata only");
+    expect(out).not.toContain("Excluded (empty)");
   });
 });

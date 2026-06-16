@@ -58,6 +58,7 @@ import {
   classifyTier,
   computeSessionCostUSD,
   computeSessionMetrics,
+  EXCLUDE_FLOOR_USD,
 } from "../select/filter.js";
 import type { Source, SessionRef } from "../sources/types.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
@@ -345,14 +346,18 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           return out;
         };
 
-        // The sessions that would actually upload from a classified set:
-        // new/updated (never unchanged) that survive the trivial + --min-cost
-        // filters. Used both for the picker counts and the final willUpload.
+        // The sessions that would actually be sent from a classified set:
+        // new/updated (never unchanged) that survive the trivial filter and clear
+        // the $0.01 floor (spec 054). Both metadata-only ($0.01..min) and full
+        // (>= min) sessions are sent; only empty (< $0.01) ones are dropped. Used
+        // for both the picker counts and the final willUpload. Kept local for
+        // readability next to its callers, though it no longer closes over scope.
+        // eslint-disable-next-line unicorn/consistent-function-scoping
         const eligibleFrom = (cs: SessionClassification[]): SessionClassification[] => {
           const buckets = bucketize(cs);
           const candidates = sortByMtimeDesc([...buckets.new, ...buckets.updated]);
           const notTrivial = filterTrivial(candidates);
-          return minCost !== undefined ? filterByCost(notTrivial, minCost) : notTrivial;
+          return filterByCost(notTrivial, EXCLUDE_FLOOR_USD);
         };
 
         let selection: Selection;
@@ -474,14 +479,21 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         const eligible = eligibleFrom(selectedClassifications);
         willUpload = flags.limit !== undefined ? eligible.slice(0, flags.limit) : eligible;
 
-        // Count candidates dropped purely for being under the cost floor — same
-        // pipeline as eligibleFrom, minus the cost step — so the preview can show
-        // how many local sessions were skipped as too cheap to be worth shipping.
-        let skippedBelowMinCost = 0;
-        if (minCost !== undefined) {
+        // Tiering breakdown for the preview (spec 054): of the non-trivial
+        // candidates, how many upload metadata-only ($0.01..min) vs are excluded
+        // as empty (< $0.01). `willUpload` already excludes the empty ones; this
+        // just labels the split so a thin upload reads as deliberate tiering.
+        const fullThreshold = minCost ?? MIN_COST_FLOOR_USD;
+        let metadataOnly = 0;
+        let excludedEmpty = 0;
+        {
           const candidates = sortByMtimeDesc([...allBuckets.new, ...allBuckets.updated]);
-          const notTrivial = filterTrivial(candidates);
-          skippedBelowMinCost = notTrivial.length - filterByCost(notTrivial, minCost).length;
+          const notTrivial = filterTrivial(candidates).filter((c) => c.kind !== "unchanged");
+          for (const c of notTrivial) {
+            const tier = classifyTier(computeSessionCostUSD(c.parsed.records), fullThreshold);
+            if (tier === "excluded") excludedEmpty += 1;
+            else if (tier === "metadata") metadataOnly += 1;
+          }
         }
 
         const activeSources = [...classificationsBySource.keys()];
@@ -519,7 +531,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           ...(flags.limit !== undefined ? { limit: flags.limit } : {}),
           ...(projectRows.length > 0 ? { projects: projectRows } : {}),
           ...(minCost !== undefined ? { minCost } : {}),
-          ...(skippedBelowMinCost > 0 ? { skippedBelowMinCost } : {}),
+          ...(metadataOnly > 0 ? { metadataOnly } : {}),
+          ...(excludedEmpty > 0 ? { excludedEmpty } : {}),
         });
         prLinking = summary.prLinking;
 
