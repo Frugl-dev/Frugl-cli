@@ -155,6 +155,22 @@ describe("SessionUpload", () => {
     expect(calls.map((c) => c.name)).toEqual(["sessionStart", "sessionAcked"]);
   });
 
+  it("metadata-only tier → acked with NO presign/PUT (spec 054)", async () => {
+    const job: SessionUploadJob = { ...makeJob("sess-meta", "record-meta"), tier: "metadata" };
+    const entry = entryFor(job);
+    seedResume([entry]);
+
+    const cloud = new InMemoryCloud({ manifestId: MANIFEST_ID });
+    const { reporter, calls } = spyReporter();
+    const outcome = await makeSession(cloud, reporter).attempt(entry, job);
+
+    expect(outcome).toEqual({ kind: "acked", sessionId: "sess-meta" });
+    // The defining behavior: no raw body was ever PUT for a metadata session.
+    expect([...cloud.puttedBodies.keys()]).toEqual([]);
+    expect(loadEntry("sess-meta")?.status).toBe("acked");
+    expect(calls.map((c) => c.name)).toEqual(["sessionStart", "sessionAcked"]);
+  });
+
   it("PUT 500 → failed/network, entry reset to pending, emitted, does not throw", async () => {
     const job = makeJob("sess-500", "record-500");
     const entry = entryFor(job);

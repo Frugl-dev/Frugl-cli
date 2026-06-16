@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { filterTrivial, computeSessionCostUSD, filterByCost } from "./filter.js";
+import {
+  filterTrivial,
+  computeSessionCostUSD,
+  filterByCost,
+  classifyTier,
+  computeSessionMetrics,
+} from "./filter.js";
 import type { SessionClassification } from "../ledger/classify.js";
 import type { SessionRef } from "../sources/types.js";
 
@@ -236,5 +242,87 @@ describe("filterByCost", () => {
     const result = filterByCost(items, 100);
     expect(result).toHaveLength(1);
     expect(result[0]!.kind).toBe("unchanged");
+  });
+});
+
+// ── classifyTier (spec 054) ─────────────────────────────────────────────────────
+
+describe("classifyTier", () => {
+  it("excludes sessions below the $0.01 floor", () => {
+    expect(classifyTier(0.009, 10)).toBe("excluded");
+    expect(classifyTier(0, 10)).toBe("excluded");
+  });
+
+  it("treats the $0.01 floor as inclusive (metadata)", () => {
+    expect(classifyTier(0.01, 10)).toBe("metadata");
+  });
+
+  it("classifies between the floor and min-cost as metadata", () => {
+    expect(classifyTier(4.2, 10)).toBe("metadata");
+    expect(classifyTier(9.99, 10)).toBe("metadata");
+  });
+
+  it("treats the min-cost threshold as inclusive (full)", () => {
+    expect(classifyTier(10, 10)).toBe("full");
+  });
+
+  it("classifies at/above min-cost as full", () => {
+    expect(classifyTier(25, 10)).toBe("full");
+  });
+});
+
+// ── computeSessionMetrics (spec 054) ────────────────────────────────────────────
+
+function assistantWithTs(model: string, usage: Record<string, number>, ts: string): unknown {
+  return { timestamp: ts, message: { role: "assistant", model, usage } };
+}
+
+describe("computeSessionMetrics", () => {
+  it("sums tokens + cost, picks the primary model, and maps the vendor", () => {
+    const records = [
+      { timestamp: "2026-06-15T10:00:00.000Z", message: { role: "user" } },
+      assistantWithTs(
+        "claude-sonnet-4-6",
+        { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 200 },
+        "2026-06-15T10:01:00.000Z",
+      ),
+    ];
+    const m = computeSessionMetrics(records);
+    expect(m.cost_basis).toBe("cli");
+    expect(m.partial_data).toBe(true);
+    expect(m.input_tokens).toBe(1000);
+    expect(m.output_tokens).toBe(500);
+    expect(m.cache_read_tokens).toBe(200);
+    expect(m.total_tokens).toBe(1700);
+    expect(m.turn_count).toBe(1); // one user turn
+    expect(m.primary_model).toBe("claude-sonnet-4-6");
+    expect(m.model_provider).toBe("anthropic");
+    expect(m.started_at).toBe("2026-06-15T10:00:00.000Z");
+    expect(m.ended_at).toBe("2026-06-15T10:01:00.000Z");
+    expect(m.models).toHaveLength(1);
+    // Session-level cost equals the standalone cost computation (consistency).
+    expect(m.total_cost_usd).toBeCloseTo(computeSessionCostUSD(records), 9);
+  });
+
+  it("fans out per-model and picks the highest-token model as primary", () => {
+    const records = [
+      assistantWithTs("claude-haiku-4-5", { output_tokens: 100 }, "2026-06-15T10:00:00.000Z"),
+      assistantWithTs("claude-opus-4-8", { output_tokens: 5000 }, "2026-06-15T10:02:00.000Z"),
+    ];
+    const m = computeSessionMetrics(records);
+    expect(m.models.map((x) => x.model).toSorted()).toEqual(
+      ["claude-haiku-4-5", "claude-opus-4-8"].toSorted(),
+    );
+    expect(m.primary_model).toBe("claude-opus-4-8");
+  });
+
+  it("handles a session with no assistant usage (empty models, zero totals)", () => {
+    const m = computeSessionMetrics([userRecord(), userRecord()]);
+    expect(m.models).toEqual([]);
+    expect(m.total_cost_usd).toBe(0);
+    expect(m.primary_model).toBeNull();
+    expect(m.model_provider).toBeNull();
+    expect(m.turn_count).toBe(2);
+    expect(m.started_at).toBeNull();
   });
 });
