@@ -230,13 +230,19 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
     source_kind: opts.sourceKind,
     expected_session_count: opts.jobs.length,
     ...(opts.mcpServers?.length ? { mcp_servers: opts.mcpServers } : {}),
-    sessions: opts.jobs.map((job) => ({
-      session_id: job.sessionId,
-      format_version: job.formatVersion,
-      expected_bytes: bodyBytes.get(job.sessionId)!,
-      ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
-      ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
-    })),
+    sessions: opts.jobs.map((job) => {
+      // spec 054 — a metadata-only job ships its metrics in the manifest and no
+      // raw body, so expected_bytes is 0 (nothing is PUT).
+      const isMetadata = job.tier === "metadata";
+      return {
+        session_id: job.sessionId,
+        format_version: job.formatVersion,
+        expected_bytes: isMetadata ? 0 : bodyBytes.get(job.sessionId)!,
+        ...(job.gitContext ? { git_context: toWireGitContext(job.gitContext) } : {}),
+        ...(job.worktreePath ? { worktree_path: job.worktreePath } : {}),
+        ...(isMetadata && job.metrics ? { tier: "metadata" as const, metrics: job.metrics } : {}),
+      };
+    }),
   });
   // Session uploads never carry a content_hash, so the snapshot gate's no_change
   // / cap_reached outcomes (spec 052) can't apply here. Anything but `created` is

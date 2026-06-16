@@ -57,11 +57,53 @@ export type GitContextRequest = z.infer<typeof gitContextRequestSchema>;
 export const artifactKindSchema = z.enum(["session", "context_snapshot", "mcp_snapshot"]);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
+// Per-model usage for a metadata-only session (spec 054), mirroring the cloud's
+// session_model_usage columns. Numbers are non-negative; null = unmeasured.
+export const sessionModelUsageMetricSchema = z.object({
+  model: z.string().min(1).max(200),
+  input_tokens: z.number().min(0).nullable(),
+  output_tokens: z.number().min(0).nullable(),
+  cache_creation_tokens: z.number().min(0).nullable(),
+  cache_read_tokens: z.number().min(0).nullable(),
+  reasoning_tokens: z.number().min(0).nullable(),
+  cost_usd: z.number().min(0).nullable(),
+});
+
+// The compact metrics block carried by a metadata-only session (spec 054):
+// there is no raw object, so the cost/token/per-model numbers ride the manifest.
+// Mirrors the cloud's parseSessionMetrics contract; cost_basis is always "cli".
+export const sessionMetricsSchema = z.object({
+  cost_basis: z.literal("cli"),
+  total_cost_usd: z.number().min(0).nullable(),
+  total_tokens: z.number().min(0).nullable(),
+  input_tokens: z.number().min(0).nullable(),
+  output_tokens: z.number().min(0).nullable(),
+  cache_creation_tokens: z.number().min(0).nullable(),
+  cache_read_tokens: z.number().min(0).nullable(),
+  reasoning_tokens: z.number().min(0).nullable(),
+  turn_count: z.number().int().min(0),
+  started_at: z.string().nullable(),
+  ended_at: z.string().nullable(),
+  primary_model: z.string().nullable(),
+  model_provider: z.string().nullable(),
+  partial_data: z.boolean(),
+  models: z.array(sessionModelUsageMetricSchema).min(1),
+});
+export type SessionMetricsRequest = z.infer<typeof sessionMetricsSchema>;
+
+// Upload tier (spec 054). "full" (default) uploads the raw transcript; "metadata"
+// sends only `metrics`. Optional + additive — an older CLI omits it (⇒ full).
+export const sessionTierSchema = z.enum(["full", "metadata"]);
+export type SessionTierWire = z.infer<typeof sessionTierSchema>;
+
 export const manifestEntryRequestSchema = z.object({
   session_id: z.string().min(1).max(128),
   format_version: z.string().min(1),
   expected_bytes: z.number().int().min(0),
   git_context: gitContextRequestSchema.optional(),
+  // spec 054 — tier + metrics. metadata entries carry metrics and no raw body.
+  tier: sessionTierSchema.optional(),
+  metrics: sessionMetricsSchema.optional(),
   // Sub-path within .claude/worktrees/ when the session comes from a worktree.
   worktree_path: z.string().min(1).optional(),
   // Capture timestamp (ISO 8601). Optional on the wire for back-compat, but the

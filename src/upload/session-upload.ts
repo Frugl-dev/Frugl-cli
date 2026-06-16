@@ -4,6 +4,7 @@ import { withRetry } from "../lib/retry.js";
 import { AuthError, StaleResumeError, VersionGateError } from "../lib/errors.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
+import type { SessionMetrics } from "../select/filter.js";
 import type { GitContext } from "./git-context.js";
 import { classifyFailure, PresignExpiredError, type FailureReason } from "./failure-reasons.js";
 import { CloudPortError, type UploadCloudPort } from "./cloud-port.js";
@@ -26,6 +27,13 @@ export interface SessionUploadJob {
   // Sub-path within the repo's .claude/worktrees/ dir when the session comes
   // from a git worktree (e.g. "001/cloud/ingest/db"). Null for main checkouts.
   worktreePath?: string;
+  // Upload tier (spec 054). "full" (default) uploads the raw transcript;
+  // "metadata" declares the session in the manifest with `metrics` and skips the
+  // presign + PUT entirely — the server persists it from the metrics block.
+  tier?: "full" | "metadata";
+  // Present iff tier === "metadata": the CLI-computed metrics that ride the
+  // manifest in place of a raw transcript.
+  metrics?: SessionMetrics;
 }
 
 export type SkipReason = "missing" | "modified";
@@ -154,6 +162,11 @@ export class SessionUpload {
   // presign means the manifest is gone — surface it as a batch-aborting
   // StaleResumeError rather than a per-session failure.
   private async uploadOne(job: SessionUploadJob): Promise<void> {
+    // Metadata-only sessions (spec 054) have no raw object: the server persists
+    // them from the manifest metrics, so there is nothing to presign or PUT.
+    // The entry is still acked by the caller — the manifest declared it.
+    if (job.tier === "metadata") return;
+
     const body = sessionBodyBytes(job.anonymizationResult.payload);
 
     await withRetry(async () => {

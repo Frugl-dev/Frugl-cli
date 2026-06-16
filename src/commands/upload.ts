@@ -52,7 +52,13 @@ import {
   selectProviders,
 } from "../select/index.js";
 import type { Selection } from "../select/selection.js";
-import { filterTrivial, filterByCost } from "../select/filter.js";
+import {
+  filterTrivial,
+  filterByCost,
+  classifyTier,
+  computeSessionCostUSD,
+  computeSessionMetrics,
+} from "../select/filter.js";
 import type { Source, SessionRef } from "../sources/types.js";
 import { POLICY_VERSION } from "../anonymize/index.js";
 import {
@@ -620,7 +626,12 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             const sourceCandidates = willUpload.filter((c) => c.ref.sourceKind === source.kind);
             if (sourceCandidates.length === 0) continue;
 
-            const jobs = await buildJobsForSource(sourceCandidates, source, gitBySession);
+            const jobs = await buildJobsForSource(
+              sourceCandidates,
+              source,
+              gitBySession,
+              minCost ?? MIN_COST_FLOOR_USD,
+            );
             const gitContextEvent = prLinking
               ? {
                   active: true,
@@ -1056,6 +1067,11 @@ async function buildJobsForSource(
   items: SessionClassification[],
   source: Source,
   gitBySession: Map<string, GitContext>,
+  // spec 054 — the full-upload threshold. A candidate at/above it uploads raw
+  // ("full"); one below it (but >= the $0.01 floor) is "metadata", shipping its
+  // metrics in the manifest with no raw body. `excluded` (< $0.01) candidates
+  // never reach here — the selection drops them first.
+  minCostUsd: number,
 ): Promise<SessionUploadJob[]> {
   const jobs: SessionUploadJob[] = [];
   for (const item of items) {
@@ -1063,6 +1079,10 @@ async function buildJobsForSource(
     const raw = await rawFileHash(item.ref.absolutePath);
     const gitContext = gitBySession.get(item.identity.sessionId);
     const worktreePath = extractWorktreePath(item.ref.absolutePath);
+    const tier = classifyTier(computeSessionCostUSD(item.parsed.records), minCostUsd);
+    // A tier of "excluded" can't occur for an item the selection passed through,
+    // but guard anyway rather than silently ship an empty session.
+    if (tier === "excluded") continue;
     jobs.push({
       sessionId: item.identity.sessionId,
       identityDerivation: item.identity.derivation,
@@ -1070,6 +1090,8 @@ async function buildJobsForSource(
       sourceFilePath: item.ref.absolutePath,
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
+      tier,
+      ...(tier === "metadata" ? { metrics: computeSessionMetrics(item.parsed.records) } : {}),
       ...(gitContext ? { gitContext } : {}),
       ...(worktreePath ? { worktreePath } : {}),
     });
