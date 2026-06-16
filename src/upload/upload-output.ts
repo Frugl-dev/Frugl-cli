@@ -39,11 +39,14 @@ export interface UploadSummary {
   dateRange?: { from: string; to: string };
   limited?: { active: boolean; limit?: number; candidateCount?: number };
   projects?: ProjectSummaryRow[];
-  // The active --min-cost floor in USD, and how many new/updated candidates were
-  // dropped purely for falling below it. Surfaced so a thin upload reads as a
-  // deliberate filter, not a bug.
+  // The full-upload threshold in USD (spec 054): sessions at/above it upload
+  // their raw transcript; cheaper ones (down to the $0.01 floor) upload metadata
+  // only. `metadataOnly` is how many of `willUpload` are metadata-tier;
+  // `excludedEmpty` is how many candidates were dropped as empty (< $0.01).
+  // Surfaced so a thin upload reads as deliberate tiering, not a bug.
   minCost?: number;
-  skippedBelowMinCost?: number;
+  metadataOnly?: number;
+  excludedEmpty?: number;
 }
 
 export interface ReportFailureSession {
@@ -112,10 +115,12 @@ export interface BuildSummaryInput {
   gitContext?: { sessionsWithContext: number; repositories: string[] };
   limit?: number;
   projects?: ProjectSummaryRow[];
-  // The active --min-cost floor (USD) and the count of candidates the cost
-  // filter dropped. The command computes the count; the builder just carries it.
+  // The full-upload threshold (USD) plus the tiering counts the command computed
+  // (metadata-only uploads, and candidates excluded as empty). The builder just
+  // carries them onto the contract.
   minCost?: number;
-  skippedBelowMinCost?: number;
+  metadataOnly?: number;
+  excludedEmpty?: number;
 }
 
 export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
@@ -161,9 +166,8 @@ export function buildUploadSummary(input: BuildSummaryInput): UploadSummary {
     limited,
     ...(input.projects ? { projects: input.projects } : {}),
     ...(input.minCost !== undefined ? { minCost: input.minCost } : {}),
-    ...(input.skippedBelowMinCost !== undefined
-      ? { skippedBelowMinCost: input.skippedBelowMinCost }
-      : {}),
+    ...(input.metadataOnly !== undefined ? { metadataOnly: input.metadataOnly } : {}),
+    ...(input.excludedEmpty !== undefined ? { excludedEmpty: input.excludedEmpty } : {}),
   };
 }
 
@@ -290,18 +294,23 @@ export function formatSummaryForHuman(s: UploadSummary): string {
   );
   lines.push(`    ${color.dim("New".padEnd(LABEL - 2))}${color.ok(String(s.new))}`);
   lines.push(`    ${color.dim("Updated".padEnd(LABEL - 2))}${color.warn(String(s.updated))}`);
-  if (s.skippedBelowMinCost !== undefined && s.skippedBelowMinCost > 0) {
-    const floor = s.minCost !== undefined ? ` (under $${s.minCost.toFixed(2)})` : "";
+  if (s.excludedEmpty !== undefined && s.excludedEmpty > 0) {
     lines.push(
-      `    ${color.dim("Below min cost".padEnd(LABEL - 2))}${color.dim(`${s.skippedBelowMinCost}   skipping${floor}`)}`,
+      `    ${color.dim("Excluded (empty)".padEnd(LABEL - 2))}${color.dim(`${s.excludedEmpty}   skipping (under $0.01)`)}`,
     );
   }
   lines.push(
     `  ${label("Will upload")}${color.frogBold(String(s.willUpload))} ${color.dim("sessions")}`,
   );
+  if (s.metadataOnly !== undefined && s.metadataOnly > 0) {
+    const floor = s.minCost !== undefined ? ` (under $${s.minCost.toFixed(2)})` : "";
+    lines.push(
+      `    ${color.dim("Metadata only".padEnd(LABEL - 2))}${color.dim(`${s.metadataOnly}   metrics, no transcript${floor}`)}`,
+    );
+  }
   if (s.minCost !== undefined) {
     lines.push(
-      `  ${label("Min cost")}${color.dim(`$${s.minCost.toFixed(2)} — cheaper sessions are skipped`)}`,
+      `  ${label("Min cost")}${color.dim(`$${s.minCost.toFixed(2)} — cheaper sessions upload metadata only`)}`,
     );
   }
 

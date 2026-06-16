@@ -147,12 +147,12 @@ describe("selectProjects", () => {
     expect(choices[1]!["checked"]).toBe(false);
   });
 
-  it("interactive: notes the --min-cost exclusion in the prompt", async () => {
+  it("interactive: notes metadata-only tiering for cheap sessions in the prompt", async () => {
     checkboxMock.mockResolvedValue([]);
     await selectProjects(twoGroups, { interactive: true, minCost: 10 });
     const config = checkboxMock.mock.calls[0]![0] as unknown as Record<string, unknown>;
     expect(config["message"]).toBe(
-      "Which projects should Frugl upload? (excluding sessions under $10.00)",
+      "Which projects should Frugl upload? (sessions under $10.00 upload metadata only)",
     );
   });
 });

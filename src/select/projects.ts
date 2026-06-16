@@ -7,8 +7,8 @@ export interface SelectProjectsOptions {
   // discovered count. Used to surface the number of sessions that will actually
   // upload after the --min-cost filter, not just how many files were found.
   counts?: Map<string, number>;
-  // When set (and > 0), label the prompt so it's clear the counts exclude cheap
-  // sessions, e.g. "excluding sessions under $0.01".
+  // When set (and > 0), the full-upload threshold (spec 054): label the prompt so
+  // it's clear sessions below it upload metadata only, not their raw transcript.
   minCost?: number;
   // projectIds to leave unchecked by default even when they have sessions to
   // upload — e.g. groups with no git remote, which the user opts into by hand
@@ -46,7 +46,7 @@ export async function selectProjects(
   }
   const message =
     opts.minCost !== undefined && opts.minCost > 0
-      ? `Which projects should Frugl upload? (excluding sessions under $${opts.minCost.toFixed(2)})`
+      ? `Which projects should Frugl upload? (sessions under $${opts.minCost.toFixed(2)} upload metadata only)`
       : "Which projects should Frugl upload?";
   return checkbox({ message, choices });
 }
