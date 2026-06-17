@@ -14,6 +14,13 @@ import {
   type UploadCloudPort,
 } from "./cloud-port.js";
 
+// `/complete` is not a fixed-cost control-plane call: the server verifies every
+// raw object in Storage, persists metadata-only + snapshot sessions, and enqueues
+// durable ingest — all proportional to the number of sessions in the upload. The
+// 8s control-plane default aborts that mid-flight for large uploads (e.g. 174
+// sessions), so it gets its own generous budget, sized like the body-PUT timeout.
+const COMPLETE_TIMEOUT_MS = 120_000;
+
 // Production adapter: wraps the existing `CloudClient` and owns everything that
 // used to be inline in `pipeline.ts` — the typed control-plane `call()`s, the
 // `withRetry` wrapper around presign + PUT, building an error from a non-ok PUT,
@@ -104,6 +111,7 @@ export class HttpCloudAdapter implements UploadCloudPort {
         path: `/api/uploads/${encodeURIComponent(manifestId)}/complete`,
         body: { redaction_summary: redactionSummary },
         schema: completeUploadResponseSchema,
+        timeoutMs: COMPLETE_TIMEOUT_MS,
       });
     } catch (err) {
       throw toCloudPortError(err);
