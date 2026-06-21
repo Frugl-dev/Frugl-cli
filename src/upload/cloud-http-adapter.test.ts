@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { CloudClient } from "../cloud/client.js";
+import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { HttpCloudAdapter } from "./cloud-http-adapter.js";
+import { OrgBlockedError } from "../lib/errors.js";
+import type { CreateManifestRequest } from "../cloud/schemas.js";
 
 // `/complete` does work proportional to the number of sessions in the upload
 // (Storage stats, metadata/snapshot persist, durable enqueue) and previously
@@ -41,6 +43,90 @@ describe("HttpCloudAdapter.completeManifest", () => {
     expect(result).toEqual({
       manifestId: "m1",
       dashboardUrl: "https://app.frugl.dev/dashboard",
+    });
+  });
+});
+
+describe("HttpCloudAdapter.createManifest billing gate (org_blocked)", () => {
+  const REQ: CreateManifestRequest = {
+    cli_version: "0.1.4",
+    redaction_policy_version: "v0.2",
+    source_kind: "claude-code",
+    expected_session_count: 1,
+    sessions: [{ session_id: "s1", format_version: "claude-code/v1", expected_bytes: 10 }],
+  };
+
+  it("throws OrgBlockedError on 429 org_blocked, resolving a relative upgrade_url", async () => {
+    const { adapter, call } = adapterWithSpy();
+    call.mockRejectedValue(
+      new CloudHttpError(
+        429,
+        {
+          error: "org_blocked",
+          reason: "trial_expired",
+          used: 0,
+          limit: 0,
+          expires_at: "2026-07-03T00:00:00Z",
+          upgrade_url: "/acme/billing",
+        },
+        "blocked",
+      ),
+    );
+    const err = await adapter.createManifest(REQ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgBlockedError);
+    expect(err).toMatchObject({
+      reason: "trial_expired",
+      used: 0,
+      limit: 0,
+      expiresAt: "2026-07-03T00:00:00Z",
+      upgradeUrl: "https://app.frugl.dev/acme/billing",
+      exitCode: 0,
+    });
+  });
+
+  it("passes an absolute upgrade_url through unchanged and carries the quota", async () => {
+    const { adapter, call } = adapterWithSpy();
+    call.mockRejectedValue(
+      new CloudHttpError(
+        429,
+        {
+          error: "org_blocked",
+          reason: "session_limit_reached",
+          used: 2500,
+          limit: 2500,
+          expires_at: "2026-07-01T00:00:00Z",
+          upgrade_url: "https://app.frugl.dev/acme/billing",
+        },
+        "blocked",
+      ),
+    );
+    const err = (await adapter.createManifest(REQ).catch((e: unknown) => e)) as OrgBlockedError;
+    expect(err).toBeInstanceOf(OrgBlockedError);
+    expect(err.reason).toBe("session_limit_reached");
+    expect(err.used).toBe(2500);
+    expect(err.limit).toBe(2500);
+    expect(err.upgradeUrl).toBe("https://app.frugl.dev/acme/billing");
+  });
+
+  it("does not mistake a snapshot weekly cap (429) for an org block", async () => {
+    const { adapter, call } = adapterWithSpy();
+    call.mockRejectedValue(
+      new CloudHttpError(
+        429,
+        {
+          error: "snapshot_cap_reached",
+          cap: 5,
+          used: 5,
+          window_resets_at: "2026-07-01T00:00:00Z",
+        },
+        "cap",
+      ),
+    );
+    await expect(adapter.createManifest(REQ)).resolves.toEqual({
+      kind: "cap_reached",
+      cap: 5,
+      used: 5,
+      windowResetsAt: "2026-07-01T00:00:00Z",
     });
   });
 });
