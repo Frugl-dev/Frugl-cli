@@ -65,6 +65,7 @@ import { POLICY_VERSION } from "../anonymize/index.js";
 import {
   AuthError,
   NoSessionsError,
+  OrgBlockedError,
   printFruglError,
   StaleResumeError,
   UsageError,
@@ -812,6 +813,33 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       }
     }
 
+    // The billing gate refused the upload before any bytes were sent (spec 060).
+    // This is an expected business state, not a CLI failure: surface the quota +
+    // upgrade link and exit 0 so a hook/CI run isn't poisoned. JSON consumers get
+    // a structured `blocked` marker on an otherwise-ok envelope.
+    if (err instanceof OrgBlockedError) {
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({
+            command: "upload",
+            ok: true,
+            blocked: {
+              reason: err.reason,
+              used: err.used,
+              limit: err.limit,
+              expiresAt: err.expiresAt,
+              upgradeUrl: err.upgradeUrl,
+            },
+          })}\n`,
+        );
+      } else if (mode === "minimal") {
+        process.stderr.write(`frugl: ${err.message}\n`);
+      } else {
+        process.stderr.write(renderOrgBlockedHuman(err));
+      }
+      process.exit(EXIT.OK);
+    }
+
     if (
       err instanceof CloudHttpError &&
       err.status === 409 &&
@@ -1019,6 +1047,53 @@ function liveLocalProgress(
       if (animate) process.stderr.write("\r\x1b[K");
     },
   };
+}
+
+// Warm, blame-free rendering of a billing-gate block (default mode). Mirrors the
+// `org_required` and not-signed-in screens: a frog sigil, the cause, what's
+// reassuring (nothing left the machine), and the one action that fixes it.
+function renderOrgBlockedHuman(err: OrgBlockedError): string {
+  const lines: string[] = [""];
+  if (err.reason === "trial_expired") {
+    lines.push(`  ${color.frog(SIGIL)}   ${color.bold("Your Frugl trial has ended.")}`);
+    lines.push("");
+    if (err.expiresAt) {
+      lines.push(`  ${color.dim(`Your free trial ended ${formatBlockDate(err.expiresAt)}.`)}`);
+    }
+    lines.push(`  ${color.dim("Nothing was uploaded — your sessions never left this machine.")}`);
+    lines.push(`  ${color.dim("Upgrade to keep shipping them to Frugl:")}`);
+  } else {
+    lines.push(`  ${color.frog(SIGIL)}   ${color.bold("Your org is over its plan limit.")}`);
+    lines.push("");
+    lines.push(
+      `  ${color.dim(
+        `${err.used.toLocaleString("en-US")} of ${err.limit.toLocaleString("en-US")} sessions used this period. Nothing was uploaded.`,
+      )}`,
+    );
+    lines.push(
+      `  ${color.dim(
+        err.expiresAt
+          ? `Upgrade for more headroom — or your limit resets ${formatBlockDate(err.expiresAt)}:`
+          : "Upgrade for more headroom:",
+      )}`,
+    );
+  }
+  lines.push("");
+  lines.push(`    ${color.frog("→")} ${color.frog(color.underline(err.upgradeUrl))}`);
+  lines.push("");
+  lines.push(
+    `  ${color.ok(symbol.tick)} ${color.dim("Nothing was uploaded.")}   ${color.dim("Exit 0 (OK)")}`,
+  );
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
+// Human-friendly absolute date for a billing instant (trial end / limit reset).
+// Falls back to the raw string if it isn't a parseable date.
+function formatBlockDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function buildProjectRows(

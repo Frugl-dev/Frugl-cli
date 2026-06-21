@@ -5,7 +5,7 @@ import {
   completeUploadResponseSchema,
   type CreateManifestRequest,
 } from "../cloud/schemas.js";
-import { FruglError, NetworkError } from "../lib/errors.js";
+import { FruglError, NetworkError, OrgBlockedError, type OrgBlockedInfo } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import {
   CloudPortError,
@@ -54,6 +54,19 @@ export class HttpCloudAdapter implements UploadCloudPort {
           "Your account has no organization. Run 'frugl setup' to finish setup.",
           EXIT.GENERIC_FAILURE,
         );
+      }
+      // A billing-blocked org (spec 060) gets a 429
+      // { error: "org_blocked", reason, used, limit, expires_at, upgrade_url }.
+      // Surface it as a terminal, actionable refusal *before* any bytes are sent
+      // — never a retried/opaque network error. The upgrade link may arrive
+      // relative (the server hands back "/{slug}/billing"), so resolve it against
+      // the endpoint here, where we still know it.
+      const blocked = readOrgBlocked(err);
+      if (blocked) {
+        throw new OrgBlockedError({
+          ...blocked,
+          upgradeUrl: new URL(blocked.upgradeUrl, this.client.endpointUrl).toString(),
+        });
       }
       // A snapshot over its weekly cap (spec 052) gets a 429
       // { error: "snapshot_cap_reached", cap, used, window_resets_at }. Surface
@@ -140,6 +153,31 @@ function readCapReached(
     cap: typeof b.cap === "number" ? b.cap : 0,
     used: typeof b.used === "number" ? b.used : 0,
     windowResetsAt: typeof b.window_resets_at === "string" ? b.window_resets_at : "",
+  };
+}
+
+// Recognize the billing-gate refusal (429 { error: "org_blocked", ... }, spec
+// 060) and read its fields — sibling of `readCapReached`. Returns null for any
+// other error so the caller falls through to the snapshot-cap / normal mapping.
+// `upgrade_url` is returned verbatim (possibly relative); the caller resolves it.
+function readOrgBlocked(err: unknown): OrgBlockedInfo | null {
+  if (!(err instanceof CloudHttpError) || err.status !== 429) return null;
+  const body = err.body;
+  if (typeof body !== "object" || body === null) return null;
+  const b = body as Record<string, unknown>;
+  if (b.error !== "org_blocked") return null;
+  const reason =
+    b.reason === "trial_expired" || b.reason === "session_limit_reached"
+      ? b.reason
+      : "session_limit_reached";
+  const upgradeUrl =
+    typeof b.upgrade_url === "string" && b.upgrade_url.length > 0 ? b.upgrade_url : "/pricing";
+  return {
+    reason,
+    used: typeof b.used === "number" ? b.used : 0,
+    limit: typeof b.limit === "number" ? b.limit : 0,
+    expiresAt: typeof b.expires_at === "string" ? b.expires_at : null,
+    upgradeUrl,
   };
 }
 

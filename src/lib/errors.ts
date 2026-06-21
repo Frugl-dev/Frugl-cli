@@ -66,6 +66,47 @@ export class NoSessionsError extends FruglError {
   }
 }
 
+// The billing-gate refusal (spec 060): the org is over its plan and the server
+// returned a 429 { error: "org_blocked", ... } before any bytes were sent. The
+// `reason` discriminates an ended free trial from a hit session limit; `used`,
+// `limit`, and `expiresAt` describe the quota, and `upgradeUrl` is where to fix
+// it. Carried as the parsed verdict the upload command turns into a warm,
+// blame-free message. It is *not* a failure — nothing left the machine and the
+// CLI exits 0 (EXIT.OK), so a hook/CI run isn't poisoned by an expected
+// business state.
+export interface OrgBlockedInfo {
+  reason: "trial_expired" | "session_limit_reached";
+  used: number;
+  limit: number;
+  expiresAt: string | null;
+  upgradeUrl: string;
+}
+
+export class OrgBlockedError extends FruglError {
+  readonly reason: OrgBlockedInfo["reason"];
+  readonly used: number;
+  readonly limit: number;
+  readonly expiresAt: string | null;
+  readonly upgradeUrl: string;
+  constructor(info: OrgBlockedInfo) {
+    super(orgBlockedSummary(info), EXIT.OK);
+    this.reason = info.reason;
+    this.used = info.used;
+    this.limit = info.limit;
+    this.expiresAt = info.expiresAt;
+    this.upgradeUrl = info.upgradeUrl;
+  }
+}
+
+// One-line fallback message (json/minimal modes, and any path that renders the
+// error generically). The rich, mode-aware rendering lives in the upload command.
+function orgBlockedSummary(info: OrgBlockedInfo): string {
+  if (info.reason === "trial_expired") {
+    return `Your Frugl trial has ended — nothing was uploaded. Upgrade to keep shipping sessions: ${info.upgradeUrl}`;
+  }
+  return `Your org reached its plan limit (${info.used}/${info.limit} sessions) — nothing was uploaded. Upgrade to upload more: ${info.upgradeUrl}`;
+}
+
 export class UsageError extends FruglError {
   constructor(message: string) {
     super(message, EXIT.USAGE);
