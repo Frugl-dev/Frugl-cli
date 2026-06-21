@@ -11,6 +11,7 @@ import {
 } from "./cursor-vscdb.js";
 import {
   agentTranscriptId,
+  cursorInstalled,
   decodeAgentTranscriptCwd,
   decodeCursorAgentTranscript,
   discoverCursorAgentTranscripts,
@@ -78,6 +79,11 @@ export interface ProviderDescriptor {
   // decode (identity, anonymize, upload) stays on the shared path.
   discoverRefs?(opts?: DiscoverOptions): Promise<SessionRef[]>;
   decodeRecords?(ref: SessionRef): Promise<unknown[]>;
+  // Optional "installed?" OVERRIDE for providers whose presence isn't a single
+  // path. When present the walker uses it instead of probing `layout.probeSegments`.
+  // Cursor needs it: a terminal-only cursor-agent user has no IDE state.vscdb but
+  // does have ~/.cursor/projects transcripts — either one means installed.
+  probe?(opts?: DiscoverOptions): Promise<boolean>;
   deriveProjects(refs: SessionRef[]): ProjectGroup[];
 }
 
@@ -218,9 +224,9 @@ const cursor: ProviderDescriptor = {
   displayName: "Cursor",
   formatVersion: "cursor-jsonl-2026-05",
   layout: {
-    // "Installed" = the Cursor IDE global state.vscdb exists. (A terminal-only
-    // cursor-agent user without the IDE is still discovered via the transcript
-    // source below — discoverRefs runs regardless of this probe.)
+    // Documentation only — cursor uses a custom `probe` (installed = IDE store OR
+    // cursor-agent transcripts) and custom discoverRefs/decodeRecords, so these
+    // generic-walk fields are unused. Kept for descriptor conformance.
     probeSegments: [
       "Library",
       "Application Support",
@@ -229,13 +235,13 @@ const cursor: ProviderDescriptor = {
       "globalStorage",
       "state.vscdb",
     ],
-    // Documentation only — cursor uses custom discoverRefs/decodeRecords, not the
-    // generic glob walk. These point at the cursor-agent transcript layout that
-    // discoverCursorAgentTranscripts globs (cursor-agent.ts).
     rootSegments: [".cursor", "projects"],
     globs: ["**/agent-transcripts/**/*.jsonl"],
   },
   format: { kind: "ndjson" },
+  // Installed if EITHER source exists: the IDE global store OR cursor-agent
+  // transcripts. The default single-path probe would miss a terminal-only user.
+  probe: (opts) => cursorInstalled(opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
   // TWO sources, unified on the same {composer, bubbles} export shape:
   //   1. Cursor IDE composers from state.vscdb (`::composer::`-marked refs).
   //   2. cursor-agent terminal transcripts at

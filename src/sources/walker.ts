@@ -27,8 +27,10 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
-// A provider is "installed" iff its probe path exists under home.
+// A provider is "installed" iff its probe path exists under home — unless it
+// supplies a custom `probe` (e.g. Cursor's two-source presence check).
 export function probe(d: ProviderDescriptor, opts?: HomeOptions): Promise<boolean> {
+  if (d.probe) return d.probe(opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {});
   return pathExists(path.join(home(opts), ...d.layout.probeSegments));
 }
 
