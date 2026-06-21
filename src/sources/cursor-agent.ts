@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { glob } from "tinyglobby";
@@ -39,6 +39,40 @@ function home(opts?: HomeOptions): string {
 const TRANSCRIPT_MARKER = "/agent-transcripts/";
 
 const CURSOR_AGENT_SEGMENTS = [".cursor", "projects"];
+
+// The Cursor IDE's global SQLite store (cursor-vscdb.ts's probe path).
+const CURSOR_IDE_SEGMENTS = [
+  "Library",
+  "Application Support",
+  "Cursor",
+  "User",
+  "globalStorage",
+  "state.vscdb",
+];
+
+// Existence with FR-019 semantics: genuinely-absent → false; any OTHER error
+// (e.g. EACCES) propagates rather than being silently swallowed.
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await access(target);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+}
+
+// Cursor is "installed" if EITHER source is present: the IDE global store OR the
+// cursor-agent transcripts root. The single-path probe would miss a terminal-only
+// user (no IDE), whose sessions this source is the only way to upload.
+export async function cursorInstalled(opts?: HomeOptions): Promise<boolean> {
+  const h = home(opts);
+  const [ide, agent] = await Promise.all([
+    pathExists(path.join(h, ...CURSOR_IDE_SEGMENTS)),
+    pathExists(path.join(h, ...CURSOR_AGENT_SEGMENTS)),
+  ]);
+  return ide || agent;
+}
 
 // A ref points at a cursor-agent transcript (a real .jsonl file) rather than a
 // vscdb composer (which carries the `::composer::` marker).

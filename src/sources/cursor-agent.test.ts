@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { anonymize } from "../anonymize/index.js";
 import { cursor } from "./descriptor.js";
-import { discover, parse, toSource } from "./walker.js";
+import { discover, parse, probe, toSource } from "./walker.js";
 import {
   agentTranscriptId,
   agentTranscriptToExport,
+  cursorInstalled,
   decodeAgentTranscriptCwd,
   decodeCursorAgentTranscript,
   discoverCursorAgentTranscripts,
@@ -167,6 +168,45 @@ describe("discover + decode through the cursor descriptor", () => {
     const refs = await discover(cursor, { homeDir: home });
     const parsed = await parse(cursor, refs[0]!);
     expect(parsed.cwd).toBe("/Users/dev/Documents/Projects/Frugl");
+  });
+});
+
+describe("cursor probe (installed = IDE store OR cursor-agent transcripts)", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(path.join(tmpdir(), "frugl-cursor-probe-"));
+  });
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("is false when neither source exists", async () => {
+    expect(await cursorInstalled({ homeDir: home })).toBe(false);
+    expect(await probe(cursor, { homeDir: home })).toBe(false);
+  });
+
+  it("is true for a terminal-only user (transcripts, no IDE store)", async () => {
+    seedTranscript(home, "Users-dev-Documents-Projects-Frugl", SID);
+    expect(await cursorInstalled({ homeDir: home })).toBe(true);
+    // The descriptor's custom probe must agree — this is what lets upload.ts
+    // detect Cursor for a user who never opened the IDE.
+    expect(await probe(cursor, { homeDir: home })).toBe(true);
+  });
+
+  it("is true when only the IDE global store exists (no transcripts)", async () => {
+    const dir = path.join(
+      home,
+      "Library",
+      "Application Support",
+      "Cursor",
+      "User",
+      "globalStorage",
+    );
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "state.vscdb"), "");
+    expect(await cursorInstalled({ homeDir: home })).toBe(true);
+    expect(await probe(cursor, { homeDir: home })).toBe(true);
   });
 });
 
