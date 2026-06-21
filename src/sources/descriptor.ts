@@ -9,6 +9,13 @@ import {
   discoverCursorComposers,
   isComposerRef,
 } from "./cursor-vscdb.js";
+import {
+  agentTranscriptId,
+  decodeAgentTranscriptCwd,
+  decodeCursorAgentTranscript,
+  discoverCursorAgentTranscripts,
+  isAgentTranscriptRef,
+} from "./cursor-agent.js";
 
 // On-disk record layout. The generic walker's decode dispatch keys off this so a
 // single code path serves every provider — structurally preventing the
@@ -211,8 +218,9 @@ const cursor: ProviderDescriptor = {
   displayName: "Cursor",
   formatVersion: "cursor-jsonl-2026-05",
   layout: {
-    // The Cursor IDE keeps all chat in SQLite, so "installed" = the global
-    // state.vscdb exists. (Discovery itself reads the SQLite store, not the glob.)
+    // "Installed" = the Cursor IDE global state.vscdb exists. (A terminal-only
+    // cursor-agent user without the IDE is still discovered via the transcript
+    // source below — discoverRefs runs regardless of this probe.)
     probeSegments: [
       "Library",
       "Application Support",
@@ -221,23 +229,47 @@ const cursor: ProviderDescriptor = {
       "globalStorage",
       "state.vscdb",
     ],
-    // Retained for descriptor conformance; the vscdb path ignores them (see
-    // discoverRefs/decodeRecords). Kept pointing at the legacy cursor-agent
-    // transcript layout for documentation.
+    // Documentation only — cursor uses custom discoverRefs/decodeRecords, not the
+    // generic glob walk. These point at the cursor-agent transcript layout that
+    // discoverCursorAgentTranscripts globs (cursor-agent.ts).
     rootSegments: [".cursor", "projects"],
     globs: ["**/agent-transcripts/**/*.jsonl"],
   },
   format: { kind: "ndjson" },
-  // SUPERSEDES the legacy `agent-transcripts/**/*.jsonl` glob: a normal Cursor IDE
-  // install has no such files — all chat lives in state.vscdb. discoverRefs reads
-  // every composer from the SQLite store(s); decodeRecords reads one composer's
-  // {composer, bubbles} export. The cloud adapter's shape is unchanged.
-  discoverRefs: (opts) =>
-    discoverCursorComposers(opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
-  decodeRecords: (ref) => decodeCursorComposer(ref),
-  // The composer's UUID, encoded in the synthetic ref path, is reused as the
-  // session id (Cursor composerIds are UUIDs); else identity derives from path.
-  extractNativeId: ({ ref }) => composerIdOf(ref.absolutePath),
+  // TWO sources, unified on the same {composer, bubbles} export shape:
+  //   1. Cursor IDE composers from state.vscdb (`::composer::`-marked refs).
+  //   2. cursor-agent terminal transcripts at
+  //      ~/.cursor/projects/**/agent-transcripts/**/*.jsonl (plain .jsonl refs).
+  // A terminal-only user has an EMPTY vscdb, so source 2 is the only way their
+  // sessions upload; an IDE-only user has no transcripts. discoverRefs returns
+  // both and every later hook branches on which kind a ref is.
+  discoverRefs: async (opts) => {
+    const home = opts?.homeDir !== undefined ? { homeDir: opts.homeDir } : {};
+    const [composers, transcripts] = await Promise.all([
+      discoverCursorComposers(home),
+      discoverCursorAgentTranscripts(home),
+    ]);
+    return [...composers, ...transcripts];
+  },
+  decodeRecords: (ref) =>
+    isAgentTranscriptRef(ref.absolutePath)
+      ? decodeCursorAgentTranscript(ref)
+      : decodeCursorComposer(ref),
+  // Both ids are UUIDs reused as the session id: the composer's (encoded in the
+  // synthetic ref path) or the transcript's `<sessionId>` dir; else path-derived.
+  extractNativeId: ({ ref }) =>
+    isAgentTranscriptRef(ref.absolutePath)
+      ? agentTranscriptId(ref.absolutePath)
+      : composerIdOf(ref.absolutePath),
+  // cursor-agent transcripts encode the session's cwd in their path, so the
+  // opt-in git resolver can attribute a repo + branch (vscdb composers carry no
+  // path link → no cwd, honest absence). recordedBranch has no source signal.
+  extractMetadata: ({ ref }) => {
+    const cwd = isAgentTranscriptRef(ref.absolutePath)
+      ? decodeAgentTranscriptCwd(ref.absolutePath)
+      : undefined;
+    return { cwd };
+  },
   deriveProjects: deriveCursorProjects,
 };
 
