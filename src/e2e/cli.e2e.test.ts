@@ -270,12 +270,14 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
   describe("version gate", () => {
     let server: MockServer;
     let tmp: TempDir;
+    // Mutable so each case can return a different 426 body shape from the one
+    // shared handler.
+    let gateBody: Record<string, unknown>;
 
     beforeAll(async () => {
       server = await new MockServer().start();
-      // Every request returns 426 with minSupportedCliVersion body
       server.on("POST", "/api/uploads/manifest", (_req, res) => {
-        server.json(res, 426, { minSupportedCliVersion: "99.0.0" });
+        server.json(res, 426, gateBody);
       });
       tmp = await makeTempDir();
       await writeTestSessions(tmp.dir, 1);
@@ -288,12 +290,30 @@ describe("frugl CLI – e2e spawn tests", { timeout: 30_000 }, () => {
       await server.close();
     });
 
-    it("→ exit 50 and upgrade message names required version", async () => {
+    it("→ exit 50 and upgrade message names required version (draft camelCase body)", async () => {
+      gateBody = { minSupportedCliVersion: "99.0.0" };
       const { exitCode, stderr } = await runCli(["upload", "--yes", "--endpoint", server.url], {
         env: { FRUGL_HOME_DIR: tmp.dir },
       });
       expect(exitCode).toBe(EXIT.VERSION_GATE_FAILURE);
       expect(stderr).toMatch(/99\.0\.0/);
+    });
+
+    it("→ exit 50 with an actionable upgrade command (deployed snake_case body)", async () => {
+      // The shape the deployed server actually sends (cli-version.ts): a
+      // snake_case `min_version` alongside `error: "cli_too_old"`.
+      gateBody = {
+        error: "cli_too_old",
+        min_version: "99.0.0",
+        message: "Please upgrade frugl to v99.0.0 or later: npm i -g frugl@latest",
+      };
+      const { exitCode, stderr } = await runCli(["upload", "--yes", "--endpoint", server.url], {
+        env: { FRUGL_HOME_DIR: tmp.dir },
+      });
+      expect(exitCode).toBe(EXIT.VERSION_GATE_FAILURE);
+      // Names the required version *and* the exact command to fix it.
+      expect(stderr).toMatch(/99\.0\.0/);
+      expect(stderr).toMatch(/npm install -g frugl@latest/);
     });
   });
 
