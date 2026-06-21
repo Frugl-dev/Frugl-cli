@@ -1,12 +1,13 @@
 import type { SessionClassification } from "../ledger/classify.js";
 
-// ── trivial-session filter ─────────────────────────────────────────────────────
+// ── provider session metrics ───────────────────────────────────────────────────
 
 // Returns true when the record set contains at least one assistant response.
 // A session with no assistant turn never produced useful output.
-function hasAssistantResponse(records: unknown[]): boolean {
+function hasAssistantResponse(records: unknown[], sourceKind = "claude-code"): boolean {
   for (const record of records) {
     if (!record || typeof record !== "object") continue;
+    if (sourceKind === "codex" && isCodexAgentMessage(record)) return true;
     const msg = (record as Record<string, unknown>)["message"];
     if (!msg || typeof msg !== "object") continue;
     if ((msg as Record<string, unknown>)["role"] === "assistant") return true;
@@ -18,7 +19,9 @@ function hasAssistantResponse(records: unknown[]): boolean {
 // anything useful happened. `unchanged` items are always kept (we have no
 // records for them and they're not being uploaded anyway).
 export function filterTrivial(items: SessionClassification[]): SessionClassification[] {
-  return items.filter((c) => c.kind === "unchanged" || hasAssistantResponse(c.parsed.records));
+  return items.filter(
+    (c) => c.kind === "unchanged" || hasAssistantResponse(c.parsed.records, c.ref.sourceKind),
+  );
 }
 
 // ── cost filter ────────────────────────────────────────────────────────────────
@@ -51,11 +54,86 @@ const HAIKU_PRICING: TokenPricing = {
   outputPerMTok: 4.0,
 };
 
+const GPT5_PRICING: TokenPricing = {
+  inputPerMTok: 12,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 3,
+  outputPerMTok: 48,
+};
+
+const GPT4O_PRICING: TokenPricing = {
+  inputPerMTok: 2.5,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 1.25,
+  outputPerMTok: 10,
+};
+
+const GPT4O_MINI_PRICING: TokenPricing = {
+  inputPerMTok: 0.15,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 0.075,
+  outputPerMTok: 0.6,
+};
+
+const O1_PRICING: TokenPricing = {
+  inputPerMTok: 15,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 7.5,
+  outputPerMTok: 60,
+};
+
+const O3_PRICING: TokenPricing = {
+  inputPerMTok: 10,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 2.5,
+  outputPerMTok: 40,
+};
+
+const O3_MINI_PRICING: TokenPricing = {
+  inputPerMTok: 1.1,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 0.55,
+  outputPerMTok: 4.4,
+};
+
+const O4_MINI_PRICING: TokenPricing = {
+  inputPerMTok: 1.1,
+  cacheCreatePerMTok: 0,
+  cacheReadPerMTok: 0.275,
+  outputPerMTok: 4.4,
+};
+
 function getPricing(model: string): TokenPricing {
   const m = model.toLowerCase();
+  if (m === "gpt-4o-mini" || m.startsWith("gpt-4o-mini-")) return GPT4O_MINI_PRICING;
+  if (m === "gpt-4o" || m.startsWith("gpt-4o-")) return GPT4O_PRICING;
+  if (m === "gpt-5" || m.startsWith("gpt-5-")) return GPT5_PRICING;
+  if (m === "o3-mini" || m.startsWith("o3-mini-")) return O3_MINI_PRICING;
+  if (m === "o4-mini" || m.startsWith("o4-mini-")) return O4_MINI_PRICING;
+  if (m === "o1" || m.startsWith("o1-")) return O1_PRICING;
+  if (m === "o3" || m.startsWith("o3-")) return O3_PRICING;
   if (m.includes("opus")) return OPUS_PRICING;
   if (m.includes("haiku")) return HAIKU_PRICING;
   return SONNET_PRICING;
+}
+
+function priceTokens(
+  model: string,
+  tokens: {
+    input: number;
+    output: number;
+    cacheCreate: number;
+    cacheRead: number;
+  },
+): number {
+  const pricing = getPricing(model);
+  return (
+    (tokens.input * pricing.inputPerMTok +
+      tokens.cacheCreate * pricing.cacheCreatePerMTok +
+      tokens.cacheRead * pricing.cacheReadPerMTok +
+      tokens.output * pricing.outputPerMTok) /
+    1_000_000
+  );
 }
 
 function recordCostUSD(record: unknown): number {
@@ -68,23 +146,17 @@ function recordCostUSD(record: unknown): number {
   if (!usage || typeof usage !== "object") return 0;
   const u = usage as Record<string, unknown>;
   const model = typeof m["model"] === "string" ? m["model"] : "";
-  const pricing = getPricing(model);
   const input = typeof u["input_tokens"] === "number" ? u["input_tokens"] : 0;
   const cacheCreate =
     typeof u["cache_creation_input_tokens"] === "number" ? u["cache_creation_input_tokens"] : 0;
   const cacheRead =
     typeof u["cache_read_input_tokens"] === "number" ? u["cache_read_input_tokens"] : 0;
   const output = typeof u["output_tokens"] === "number" ? u["output_tokens"] : 0;
-  return (
-    (input * pricing.inputPerMTok +
-      cacheCreate * pricing.cacheCreatePerMTok +
-      cacheRead * pricing.cacheReadPerMTok +
-      output * pricing.outputPerMTok) /
-    1_000_000
-  );
+  return priceTokens(model, { input, output, cacheCreate, cacheRead });
 }
 
-export function computeSessionCostUSD(records: unknown[]): number {
+export function computeSessionCostUSD(records: unknown[], sourceKind = "claude-code"): number {
+  if (sourceKind === "codex") return computeCodexUsage(records)?.totalCost ?? 0;
   let total = 0;
   for (const record of records) total += recordCostUSD(record);
   return total;
@@ -172,7 +244,12 @@ function recordTimestamp(record: unknown): string | null {
 // sums. `turn_count` counts developer (user) turns. Timestamps come from the
 // records' `timestamp` fields (min/max). Always `partial_data` — a metadata-only
 // session has no message/tool detail.
-export function computeSessionMetrics(records: unknown[]): SessionMetrics {
+export function computeSessionMetrics(
+  records: unknown[],
+  sourceKind = "claude-code",
+): SessionMetrics {
+  if (sourceKind === "codex") return computeCodexSessionMetrics(records);
+
   const perModel = new Map<string, ModelAccum>();
   let turnCount = 0;
   let startedAt: string | null = null;
@@ -278,6 +355,152 @@ export function filterByCost(
 ): SessionClassification[] {
   return items.filter((c) => {
     if (c.kind === "unchanged") return true;
-    return computeSessionCostUSD(c.parsed.records) >= minCost;
+    return computeSessionCostUSD(c.parsed.records, c.ref.sourceKind) >= minCost;
   });
+}
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function codexPayload(record: unknown): Record<string, unknown> | null {
+  if (!isObject(record) || record["type"] !== "event_msg") return null;
+  const payload = record["payload"];
+  return isObject(payload) ? payload : null;
+}
+
+function isCodexAgentMessage(record: unknown): boolean {
+  return codexPayload(record)?.["type"] === "agent_message";
+}
+
+function isCodexUserMessage(record: unknown): boolean {
+  return codexPayload(record)?.["type"] === "user_message";
+}
+
+function readCodexModel(records: unknown[]): string {
+  for (const record of records) {
+    if (!isObject(record) || record["type"] !== "turn_context") continue;
+    const payload = record["payload"];
+    if (!isObject(payload)) continue;
+    const model = payload["model"];
+    if (typeof model === "string" && model.length > 0) return model;
+  }
+  return "unknown";
+}
+
+interface CodexUsage {
+  model: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  reasoning: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
+function finiteNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
+}
+
+function computeCodexUsage(records: unknown[]): CodexUsage | null {
+  const selected = { input: 0, output: 0, cacheRead: 0, reasoning: 0, total: 0 };
+  let observed = false;
+  for (const record of records) {
+    const payload = codexPayload(record);
+    if (payload?.["type"] !== "token_count") continue;
+    const info = payload["info"];
+    if (!isObject(info)) continue;
+    const usage = info["total_token_usage"];
+    if (!isObject(usage)) continue;
+    observed = true;
+    selected.input = finiteNumber(usage["input_tokens"]) ?? selected.input;
+    selected.cacheRead = finiteNumber(usage["cached_input_tokens"]) ?? selected.cacheRead;
+    selected.output = finiteNumber(usage["output_tokens"]) ?? selected.output;
+    selected.reasoning = finiteNumber(usage["reasoning_output_tokens"]) ?? selected.reasoning;
+    selected.total = finiteNumber(usage["total_tokens"]) ?? selected.total;
+  }
+  if (!observed) return null;
+
+  const model = readCodexModel(records);
+  const input = Math.max(0, selected.input - selected.cacheRead);
+  const totalTokens = selected.total || input + selected.cacheRead + selected.output;
+  const totalCost = priceTokens(model, {
+    input,
+    output: selected.output,
+    cacheCreate: 0,
+    cacheRead: selected.cacheRead,
+  });
+  return {
+    model,
+    input,
+    output: selected.output,
+    cacheRead: selected.cacheRead,
+    reasoning: selected.reasoning,
+    totalTokens,
+    totalCost,
+  };
+}
+
+function computeCodexSessionMetrics(records: unknown[]): SessionMetrics {
+  let turnCount = 0;
+  let startedAt: string | null = null;
+  let endedAt: string | null = null;
+
+  for (const record of records) {
+    const ts = recordTimestamp(record);
+    if (ts) {
+      if (startedAt === null || ts < startedAt) startedAt = ts;
+      if (endedAt === null || ts > endedAt) endedAt = ts;
+    }
+    if (isCodexUserMessage(record)) turnCount += 1;
+  }
+
+  const usage = computeCodexUsage(records);
+  if (usage === null) {
+    return {
+      cost_basis: "cli",
+      total_cost_usd: 0,
+      total_tokens: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+      reasoning_tokens: 0,
+      turn_count: turnCount,
+      started_at: startedAt,
+      ended_at: endedAt,
+      primary_model: null,
+      model_provider: null,
+      partial_data: true,
+      models: [],
+    };
+  }
+
+  return {
+    cost_basis: "cli",
+    total_cost_usd: usage.totalCost,
+    total_tokens: usage.totalTokens,
+    input_tokens: usage.input,
+    output_tokens: usage.output,
+    cache_creation_tokens: 0,
+    cache_read_tokens: usage.cacheRead,
+    reasoning_tokens: usage.reasoning,
+    turn_count: turnCount,
+    started_at: startedAt,
+    ended_at: endedAt,
+    primary_model: usage.model,
+    model_provider: vendorOfModel(usage.model),
+    partial_data: true,
+    models: [
+      {
+        model: usage.model,
+        input_tokens: usage.input,
+        output_tokens: usage.output,
+        cache_creation_tokens: 0,
+        cache_read_tokens: usage.cacheRead,
+        reasoning_tokens: usage.reasoning,
+        cost_usd: usage.totalCost,
+      },
+    ],
+  };
 }

@@ -11,9 +11,9 @@ import type { SessionRef } from "../sources/types.js";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-function ref(p = "/a/1.jsonl"): SessionRef {
+function ref(p = "/a/1.jsonl", sourceKind = "claude-code"): SessionRef {
   return {
-    sourceKind: "claude-code",
+    sourceKind,
     absolutePath: p,
     byteSizeOnDisk: 100,
     mtimeMs: 1,
@@ -24,10 +24,10 @@ function identity(sessionId = "sid-1") {
   return { sessionId, derivation: "native" as const };
 }
 
-function parsed(records: unknown[], p = "/a/1.jsonl") {
+function parsed(records: unknown[], p = "/a/1.jsonl", sourceKind = "claude-code") {
   return {
-    sourceKind: "claude-code",
-    ref: ref(p),
+    sourceKind,
+    ref: ref(p, sourceKind),
     identity: identity(),
     records,
   };
@@ -41,17 +41,21 @@ function userRecord(): unknown {
   return { message: { role: "user" }, type: "human" };
 }
 
-function newItem(records: unknown[], p = "/a/1.jsonl"): SessionClassification {
+function newItem(
+  records: unknown[],
+  p = "/a/1.jsonl",
+  sourceKind = "claude-code",
+): SessionClassification {
   return {
     kind: "new",
-    ref: ref(p),
+    ref: ref(p, sourceKind),
     identity: identity(p),
     anonymizationResult: {
       contentHashHex: "abc",
       byteSize: 10,
       redactionsByCategory: {},
     } as any,
-    parsed: parsed(records, p),
+    parsed: parsed(records, p, sourceKind),
   };
 }
 
@@ -89,6 +93,48 @@ function unchangedItem(p = "/a/3.jsonl"): SessionClassification {
   };
 }
 
+function codexRecord(
+  type: string,
+  payload: Record<string, unknown>,
+  timestamp = "2026-06-15T10:00:00.000Z",
+): unknown {
+  return { timestamp, type, payload };
+}
+
+function codexRecords(
+  usage = {
+    input_tokens: 1_000_000,
+    cached_input_tokens: 100_000,
+    output_tokens: 100_000,
+    reasoning_output_tokens: 25_000,
+    total_tokens: 1_100_000,
+  },
+): unknown[] {
+  return [
+    codexRecord(
+      "session_meta",
+      { id: "019e38ab-78b3-7c30-b22d-f27544f97fda", cwd: "/repo/app" },
+      "2026-06-15T10:00:00.000Z",
+    ),
+    codexRecord("turn_context", { model: "gpt-5" }, "2026-06-15T10:00:01.000Z"),
+    codexRecord(
+      "event_msg",
+      { type: "user_message", message: "Fix the failing tests" },
+      "2026-06-15T10:00:02.000Z",
+    ),
+    codexRecord(
+      "event_msg",
+      { type: "agent_message", message: "I'll inspect the test failure." },
+      "2026-06-15T10:00:03.000Z",
+    ),
+    codexRecord(
+      "event_msg",
+      { type: "token_count", info: { total_token_usage: usage } },
+      "2026-06-15T10:00:04.000Z",
+    ),
+  ];
+}
+
 // ── filterTrivial ──────────────────────────────────────────────────────────────
 
 describe("filterTrivial", () => {
@@ -97,6 +143,11 @@ describe("filterTrivial", () => {
       userRecord(),
       assistantRecord("claude-sonnet-4-6", { output_tokens: 100 }),
     ]);
+    expect(filterTrivial([item])).toHaveLength(1);
+  });
+
+  it("keeps Codex sessions with at least one agent_message", () => {
+    const item = newItem(codexRecords(), "/a/codex.jsonl", "codex");
     expect(filterTrivial([item])).toHaveLength(1);
   });
 
@@ -200,6 +251,14 @@ describe("computeSessionCostUSD", () => {
     const records = [assistantRecord("unknown-model-xyz", { input_tokens: 1_000_000 })];
     expect(computeSessionCostUSD(records)).toBeCloseTo(3.0, 6);
   });
+
+  it("computes Codex cost from cumulative token_count usage", () => {
+    const records = codexRecords();
+    // Codex input_tokens includes cached_input_tokens. Bill non-cached input at
+    // gpt-5 input rates, cached input at cache-read rates, and output at output rates.
+    // input: 900k * $12 = $10.80; cache: 100k * $3 = $0.30; output: 100k * $48 = $4.80.
+    expect(computeSessionCostUSD(records, "codex")).toBeCloseTo(15.9, 6);
+  });
 });
 
 // ── filterByCost ───────────────────────────────────────────────────────────────
@@ -242,6 +301,13 @@ describe("filterByCost", () => {
     const result = filterByCost(items, 100);
     expect(result).toHaveLength(1);
     expect(result[0]!.kind).toBe("unchanged");
+  });
+
+  it("keeps Codex sessions whose token_count cost clears the threshold", () => {
+    const items = [newItem(codexRecords(), "/a/codex.jsonl", "codex")];
+    const result = filterByCost(items, 10);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.ref.sourceKind).toBe("codex");
   });
 });
 
@@ -324,5 +390,33 @@ describe("computeSessionMetrics", () => {
     expect(m.model_provider).toBeNull();
     expect(m.turn_count).toBe(2);
     expect(m.started_at).toBeNull();
+  });
+
+  it("computes Codex metadata metrics from cumulative token_count usage", () => {
+    const records = codexRecords();
+    const m = computeSessionMetrics(records, "codex");
+    expect(m.cost_basis).toBe("cli");
+    expect(m.partial_data).toBe(true);
+    expect(m.input_tokens).toBe(900_000);
+    expect(m.cache_read_tokens).toBe(100_000);
+    expect(m.output_tokens).toBe(100_000);
+    expect(m.reasoning_tokens).toBe(25_000);
+    expect(m.total_tokens).toBe(1_100_000);
+    expect(m.turn_count).toBe(1);
+    expect(m.primary_model).toBe("gpt-5");
+    expect(m.model_provider).toBe("openai");
+    expect(m.started_at).toBe("2026-06-15T10:00:00.000Z");
+    expect(m.ended_at).toBe("2026-06-15T10:00:04.000Z");
+    expect(m.models).toEqual([
+      {
+        model: "gpt-5",
+        input_tokens: 900_000,
+        output_tokens: 100_000,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 100_000,
+        reasoning_tokens: 25_000,
+        cost_usd: m.total_cost_usd,
+      },
+    ]);
   });
 });
