@@ -1,7 +1,8 @@
 import { Hook } from "@oclif/core";
 import { resolveEndpoint } from "../../cloud/endpoints.js";
 import { loadAuthSession } from "../../auth/session.js";
-import { color, SIGIL } from "../../lib/theme.js";
+import { color, SIGIL, symbol } from "../../lib/theme.js";
+import { checkForUpdate } from "../../lib/update-check.js";
 
 // The first-run / no-args landing — the frog says hi, the tagline reminds you
 // what frugl is for, and the three most-used commands sit one keystroke away.
@@ -12,6 +13,16 @@ import { color, SIGIL } from "../../lib/theme.js";
 // through. Local-only — a keychain read for the signed-in line — so it stays
 // instant and works offline.
 const hook: Hook<"init"> = async function (opts) {
+  // Run the update check on every invocation; non-blocking, uses a 24h cache.
+  const latestVersion = await checkForUpdate(opts.config.version);
+  if (latestVersion) {
+    process.stderr.write(
+      color.warn(
+        `${symbol.warn}  frugl ${latestVersion} is available — run ${color.bold("npm install -g frugl")} to upgrade.\n`,
+      ),
+    );
+  }
+
   if (opts.id !== undefined || opts.argv.length > 0) return;
 
   const endpoint = resolveEndpoint({ flag: undefined, env: process.env["FRUGL_ENDPOINT"] });
