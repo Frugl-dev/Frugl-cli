@@ -491,7 +491,10 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           const candidates = sortByMtimeDesc([...allBuckets.new, ...allBuckets.updated]);
           const notTrivial = filterTrivial(candidates).filter((c) => c.kind !== "unchanged");
           for (const c of notTrivial) {
-            const tier = classifyTier(computeSessionCostUSD(c.parsed.records), fullThreshold);
+            const tier = classifyTier(
+              computeSessionCostUSD(c.parsed.records, c.ref.sourceKind),
+              fullThreshold,
+            );
             if (tier === "excluded") excludedEmpty += 1;
             else if (tier === "metadata") metadataOnly += 1;
           }
@@ -1167,7 +1170,10 @@ async function buildJobsForSource(
     const raw = await rawFileHash(item.ref.absolutePath);
     const gitContext = gitBySession.get(item.identity.sessionId);
     const worktreePath = extractWorktreePath(item.ref.absolutePath);
-    const tier = classifyTier(computeSessionCostUSD(item.parsed.records), minCostUsd);
+    const tier = classifyTier(
+      computeSessionCostUSD(item.parsed.records, item.ref.sourceKind),
+      minCostUsd,
+    );
     // A tier of "excluded" can't occur for an item the selection passed through,
     // but guard anyway rather than silently ship an empty session.
     if (tier === "excluded") continue;
@@ -1179,7 +1185,9 @@ async function buildJobsForSource(
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
       tier,
-      ...(tier === "metadata" ? { metrics: computeSessionMetrics(item.parsed.records) } : {}),
+      ...(tier === "metadata"
+        ? { metrics: computeSessionMetrics(item.parsed.records, item.ref.sourceKind) }
+        : {}),
       ...(gitContext ? { gitContext } : {}),
       ...(worktreePath ? { worktreePath } : {}),
     });
