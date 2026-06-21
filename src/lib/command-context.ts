@@ -1,9 +1,9 @@
 import { Flags } from "@oclif/core";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
+import { resolveEndpoint, safeEndpoint, type Endpoint } from "../cloud/endpoints.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
-import { getPendingAuthFailure } from "./config.js";
+import { getPendingAuthFailure, getSavedEndpoint } from "./config.js";
 import { isFruglError, printFruglError } from "./errors.js";
 import { resolveDebug, resolveOutputMode, FORMAT_FLAG, type OutputMode } from "./output-mode.js";
 import { color, symbol } from "./theme.js";
@@ -45,9 +45,9 @@ export interface CommandContext<A extends AuthMode> {
 
 /**
  * The shared command preamble: output mode, endpoint resolution (incl. the
- * `FRUGL_ENDPOINT` env read and the precedence flag > env > default), CLI
- * version lookup, the session load/require policy, and CloudClient construction
- * with the `endpointExplicit === (resolvedFrom !== "default")` rule.
+ * `FRUGL_ENDPOINT` env read and the precedence flag > env > saved > default),
+ * CLI version lookup, the session load/require policy, and CloudClient
+ * construction with the `endpointExplicit === (resolvedFrom !== "default")` rule.
  *
  * This is the single place that knows those invariants — generalising the
  * org-only `org/runtime.ts:authedClient` shape across every command.
@@ -60,6 +60,10 @@ export async function buildCommandContext<A extends AuthMode>(
   const endpoint = resolveEndpoint({
     flag: flags.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
+    // Endpoint remembered from the last login (lib/config.ts). Read defensively
+    // and normalized through safeEndpoint so a missing/corrupted config never
+    // throws here — it just falls through to the prod default.
+    saved: safeEndpoint(readSavedEndpoint()),
   });
 
   // Surface a prior background auth failure (hook/CI) the moment the user runs an
@@ -84,6 +88,16 @@ export async function buildCommandContext<A extends AuthMode>(
   });
 
   return { mode, endpoint, client, session: session as SessionFor<A> };
+}
+
+// Read the remembered endpoint without ever throwing — the config is a
+// convenience, not a contract, so a store glitch must not block the command.
+function readSavedEndpoint(): string | undefined {
+  try {
+    return getSavedEndpoint();
+  } catch {
+    return undefined;
+  }
 }
 
 // Human-friendly "how long ago" for the pending-failure warning. Coarse on

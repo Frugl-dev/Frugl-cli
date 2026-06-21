@@ -11,6 +11,9 @@ import {
   getPendingAuthFailure,
   recordPendingAuthFailure,
   clearPendingAuthFailure,
+  getSavedEndpoint,
+  setSavedEndpoint,
+  clearSavedEndpoint,
 } from "./config.js";
 
 let dir: string;
@@ -134,5 +137,59 @@ describe("frugl-config (pendingAuthFailure)", () => {
     );
     expect(() => getPendingAuthFailure({ cwd: dir })).not.toThrow();
     expect(getPendingAuthFailure({ cwd: dir })).toBeUndefined();
+  });
+});
+
+describe("frugl-config (endpoint)", () => {
+  const LOCAL = "http://localhost:4321";
+  const PROD = "https://app.frugl.dev";
+
+  it("is undefined on a fresh store", () => {
+    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
+  });
+
+  it("round-trips set/get", () => {
+    setSavedEndpoint(LOCAL, { cwd: dir });
+    expect(getSavedEndpoint({ cwd: dir })).toBe(LOCAL);
+    setSavedEndpoint(PROD, { cwd: dir });
+    expect(getSavedEndpoint({ cwd: dir })).toBe(PROD);
+  });
+
+  it("clears the endpoint when it matches", () => {
+    setSavedEndpoint(LOCAL, { cwd: dir });
+    clearSavedEndpoint(LOCAL, { cwd: dir });
+    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
+  });
+
+  it("does NOT clear an endpoint saved for a different stack", () => {
+    setSavedEndpoint(LOCAL, { cwd: dir });
+    clearSavedEndpoint(PROD, { cwd: dir });
+    expect(getSavedEndpoint({ cwd: dir })).toBe(LOCAL);
+  });
+
+  it("co-exists with other preferences without clobbering them", () => {
+    setLinkPrs(true, { cwd: dir });
+    setLastLoginMethod("github", { cwd: dir });
+    setSavedEndpoint(LOCAL, { cwd: dir });
+    expect(getLinkPrs({ cwd: dir })).toBe(true);
+    expect(getLastLoginMethod({ cwd: dir })).toBe("github");
+    clearSavedEndpoint(LOCAL, { cwd: dir });
+    expect(getLinkPrs({ cwd: dir })).toBe(true);
+    expect(getLastLoginMethod({ cwd: dir })).toBe("github");
+    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
+  });
+
+  it("ignores a malformed stored endpoint, falling back to defaults", () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, "frugl-config.json"),
+      JSON.stringify({ data: { schemaVersion: 1, linkPrs: false, endpoint: "not-a-url" } }),
+    );
+    expect(() => getSavedEndpoint({ cwd: dir })).not.toThrow();
+    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
+  });
+
+  it("stays out of the key set until explicitly saved", () => {
+    expect(Object.keys(readConfig({ cwd: dir })).toSorted()).toEqual(["linkPrs", "schemaVersion"]);
   });
 });

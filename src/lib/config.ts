@@ -27,6 +27,13 @@ export const fruglConfigSchema = z.object({
   // Optional so configs written before these fields existed still validate.
   lastLoginMethod: loginMethodSchema.optional(),
   pendingAuthFailure: pendingAuthFailureSchema.optional(),
+  // The API endpoint persisted at the last successful `frugl login`. Lets the
+  // installed binary keep targeting a non-default stack (e.g. a local dev
+  // server) without re-passing --endpoint/FRUGL_ENDPOINT every command. An
+  // invalid stored value is dropped by safeParse (treated as absent), so a
+  // corrupted entry degrades to the prod default rather than failing. Resolution
+  // precedence lives in cloud/endpoints.ts: flag ?? env ?? saved ?? default.
+  endpoint: z.string().url().optional(),
 });
 
 export type FruglConfig = z.infer<typeof fruglConfigSchema>;
@@ -97,5 +104,28 @@ export function clearPendingAuthFailure(endpoint: string, options: ConfigStoreOp
   const current = readConfig(options).pendingAuthFailure;
   if (current?.endpoint === endpoint) {
     writeConfig({ pendingAuthFailure: undefined }, options);
+  }
+}
+
+// The endpoint remembered from the last successful login (see schema comment).
+// undefined when the user has never logged in to a non-default stack — callers
+// then fall through to FRUGL_ENDPOINT / the prod default.
+export function getSavedEndpoint(options: ConfigStoreOptions = {}): string | undefined {
+  return readConfig(options).endpoint;
+}
+
+// Persist the endpoint a successful login resolved to, so subsequent commands
+// reuse it. Best-effort at the call site (a failed write must never break an
+// otherwise-successful sign-in).
+export function setSavedEndpoint(endpoint: string, options: ConfigStoreOptions = {}): void {
+  writeConfig({ endpoint }, options);
+}
+
+// Forget the remembered endpoint — but only when it matches `endpoint`, so
+// logging out of stack A never resets a default pointed at stack B. Mirrors
+// clearPendingAuthFailure's endpoint-scoped semantics.
+export function clearSavedEndpoint(endpoint: string, options: ConfigStoreOptions = {}): void {
+  if (readConfig(options).endpoint === endpoint) {
+    writeConfig({ endpoint: undefined }, options);
   }
 }
