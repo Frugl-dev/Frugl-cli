@@ -46,4 +46,24 @@ describe("claudePathsRule", () => {
     expect(projA).toBeDefined();
     expect(projA).toBe(projB);
   });
+
+  it("reduces an absolute-path memory file to just the filename", () => {
+    const input = `${HOME}/.claude/projects/-Users-alice-Documents-Projects-Acme/memory/MEMORY.md is loaded`;
+    const { output } = claudePathsRule.apply(input, makeCtx());
+    expect(output).toBe("MEMORY.md is loaded");
+  });
+
+  it("reduces a tilde-prefixed memory file to just the filename", () => {
+    const input = `~/.claude/projects/-Users-alice-Documents-Projects-Acme/memory/MEMORY.md is loaded`;
+    const { output, counts } = claudePathsRule.apply(input, makeCtx());
+    expect(output).toBe("MEMORY.md is loaded");
+    expect(counts["home-path"]).toBe(1);
+    expect(counts["project-name"]).toBe(1);
+  });
+
+  it("works for any .md file in the memory directory", () => {
+    const input = `~/.claude/projects/secret-proj/memory/notes.md`;
+    const { output } = claudePathsRule.apply(input, makeCtx());
+    expect(output).toBe("notes.md");
+  });
 });
