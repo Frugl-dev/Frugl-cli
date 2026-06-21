@@ -31,11 +31,32 @@ pnpm format:check
 pnpm dev <command>      # tsx-driven oclif dev entrypoint
 ```
 
-Point the CLI at a local dev stack:
+### Pointing the CLI at a local dev stack
+
+The CLI talks to the **Astro app** (default `http://localhost:4321`), not
+Supabase's port. There are three ways to target it, in precedence order:
 
 ```bash
-FRUGL_ENDPOINT=http://localhost:54321 pnpm dev login
+# 1. Per-command flag (highest precedence)
+pnpm dev login --endpoint http://localhost:4321
+
+# 2. Environment variable — bin/dev.js auto-loads .env (FRUGL_ENDPOINT=...),
+#    so plain `pnpm dev <cmd>` already targets local inside this repo.
+FRUGL_ENDPOINT=http://localhost:4321 pnpm dev login
+
+# 3. Persisted at login — a successful `login` REMEMBERS its endpoint, so
+#    every later command (including the globally-installed `frugl`) keeps
+#    targeting it with no flag/env. `frugl logout` clears it back to prod.
+frugl login --endpoint http://localhost:4321
+frugl snapshot context        # now goes to local, not app.frugl.dev
 ```
+
+> **Heads-up:** the installed global `frugl` does **not** read this repo's
+> `.env` (only `pnpm dev` does), and it defaults to **production**
+> (`https://app.frugl.dev`). Sign in once with an explicit
+> `--endpoint http://localhost:4321` and the saved endpoint sticks — otherwise
+> an unprefixed `frugl <cmd>` uploads to prod. A one-off `--endpoint` /
+> `FRUGL_ENDPOINT` always overrides the saved value.
 
 The local stack itself (Supabase + MinIO) is brought up from the
 `frugl/` repo via `pnpm stack:up`.

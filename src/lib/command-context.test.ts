@@ -39,6 +39,16 @@ vi.mock("../auth/session.js", () => ({
 
 vi.mock("./cli-version.js", () => ({ getCliVersion: () => "9.9.9" }));
 
+// Control the persisted endpoint per-test, and keep the real OS config store out
+// of these tests. getPendingAuthFailure is stubbed to "nothing pending" — its
+// only caller is gated on a TTY, which vitest doesn't have, but mocking it keeps
+// the suite from touching disk.
+let savedEndpoint: string | undefined;
+vi.mock("./config.js", () => ({
+  getSavedEndpoint: () => savedEndpoint,
+  getPendingAuthFailure: () => undefined,
+}));
+
 // Import after mocks are registered.
 const { buildCommandContext } = await import("./command-context.js");
 const { AuthError, UsageError } = await import("./errors.js");
@@ -55,6 +65,7 @@ beforeEach(() => {
   clientConstructions.length = 0;
   loadAuthSession.mockReset();
   requireAuthSession.mockReset();
+  savedEndpoint = undefined;
   delete process.env["FRUGL_ENDPOINT"];
 });
 
@@ -87,6 +98,39 @@ describe("buildCommandContext — endpoint precedence", () => {
     expect(ctx.endpoint.url).toBe("https://app.frugl.dev");
     expect(ctx.endpoint.resolvedFrom).toBe("default");
     expect(clientConstructions[0]?.endpointExplicit).toBe(false);
+  });
+
+  it("uses the saved (last-login) endpoint over the default; endpointExplicit true", async () => {
+    savedEndpoint = "http://localhost:4321";
+    const ctx = await buildCommandContext({}, { auth: "none" });
+    expect(ctx.endpoint.url).toBe("http://localhost:4321");
+    expect(ctx.endpoint.resolvedFrom).toBe("saved");
+    expect(clientConstructions[0]?.endpointExplicit).toBe(true);
+  });
+
+  it("env wins over the saved endpoint", async () => {
+    savedEndpoint = "http://localhost:4321";
+    process.env["FRUGL_ENDPOINT"] = "https://env.example.com";
+    const ctx = await buildCommandContext({}, { auth: "none" });
+    expect(ctx.endpoint.url).toBe("https://env.example.com");
+    expect(ctx.endpoint.resolvedFrom).toBe("env");
+  });
+
+  it("flag wins over the saved endpoint", async () => {
+    savedEndpoint = "http://localhost:4321";
+    const ctx = await buildCommandContext(
+      { endpoint: "https://flag.example.com" },
+      { auth: "none" },
+    );
+    expect(ctx.endpoint.url).toBe("https://flag.example.com");
+    expect(ctx.endpoint.resolvedFrom).toBe("flag");
+  });
+
+  it("ignores a corrupted saved endpoint and falls back to the default", async () => {
+    savedEndpoint = "http://evil.example.com"; // plain-http non-localhost → invalid
+    const ctx = await buildCommandContext({}, { auth: "none" });
+    expect(ctx.endpoint.url).toBe("https://app.frugl.dev");
+    expect(ctx.endpoint.resolvedFrom).toBe("default");
   });
 
   it("surfaces a UsageError (exit 2) for an invalid endpoint", async () => {
