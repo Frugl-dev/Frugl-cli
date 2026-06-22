@@ -159,11 +159,17 @@ export class CloudClient {
       );
     }
     if (!response.ok) {
-      let body: unknown;
+      // Read the body once as text, then try to parse it as JSON. A Response
+      // stream can only be consumed once, so reading json() first and falling
+      // back to text() would always yield "" for a non-JSON error body (e.g. a
+      // proxy/gateway plain-text or HTML error) — losing the diagnostic exactly
+      // when it matters most.
+      const raw = await response.text().catch(() => "");
+      let body: unknown = raw;
       try {
-        body = await response.json();
+        body = JSON.parse(raw);
       } catch {
-        body = await response.text().catch(() => "");
+        body = raw;
       }
       const bodyDesc =
         typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200);
