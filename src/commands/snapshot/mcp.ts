@@ -4,6 +4,7 @@ import {
   COMMON_FLAGS,
   handleCommandError,
 } from "../../lib/command-context.js";
+import { resolveOutputMode } from "../../lib/output-mode.js";
 import { reportMcp, runMcpSnapshot } from "../../mcp-snapshot/run.js";
 
 export default class SnapshotMcp extends Command {
@@ -26,12 +27,13 @@ Exit codes:
 
   async run(): Promise<void> {
     const { flags } = await this.parse(SnapshotMcp);
-    const ctx = await buildCommandContext(flags, { auth: "require" });
+    const mode = resolveOutputMode({ format: flags.format });
     try {
+      const ctx = await buildCommandContext(flags, { auth: "require" });
       const report = await runMcpSnapshot(ctx);
       reportMcp(report, ctx.mode);
     } catch (err) {
-      handleCommandError(err, ctx.mode);
+      handleCommandError(err, mode);
     }
   }
 }
