@@ -1,4 +1,5 @@
 import type { AnonymizationResult } from "../anonymize/index.js";
+import type { WireSkillScopesPayload } from "../cloud/schemas.js";
 import type { UploadCloudPort } from "../upload/cloud-port.js";
 import { uploadSnapshot, type SnapshotUploadResult } from "../upload/snapshot.js";
 
@@ -16,6 +17,9 @@ export interface ContextUploadInput {
   // Declared MCP server inventory (names-only, fail-open) recorded on the
   // upload row server-side; omitted when the capture failed or found nothing.
   mcpServers?: { name: string; status: "connected" | "failed" | "pending" | "unknown" }[];
+  // Skill-scope map parsed from the /context Source column (fail-open); omitted
+  // when the breakdown has no scope-bearing skills.
+  skillScopes?: WireSkillScopesPayload;
 }
 
 export type ContextUploadResult = SnapshotUploadResult;
@@ -41,5 +45,6 @@ export async function uploadContextSnapshot(
     contentHash: input.anonymization.contentHashHex,
     redactionSummary: input.anonymization.redactionsByCategory,
     ...(input.mcpServers?.length ? { mcpServers: input.mcpServers } : {}),
+    ...(input.skillScopes ? { skillScopes: input.skillScopes } : {}),
   });
 }
