@@ -11,6 +11,7 @@ import { color, symbol } from "../lib/theme.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import type { SnapshotRunContext } from "../snapshot/shared.js";
 import { captureContext } from "./capture.js";
+import { parseSkillScopesFromContext } from "./skill-scopes.js";
 import { uploadContextSnapshot } from "./upload.js";
 
 // v1 has no built-in scheduler. To capture snapshots on a cadence, drive
@@ -61,6 +62,11 @@ export async function runContextSnapshot(ctx: SnapshotRunContext): Promise<Conte
   // `claude mcp list` simply omits it, never blocking the snapshot.
   const cloud = new HttpCloudAdapter(ctx.client);
   const mcpServers = captureDeclaredMcpServers();
+  // Skill scopes ride the manifest too (fail-open): parse from the anonymized
+  // payload — the exact bytes the server parses for skill items — so the names
+  // line up 1:1. A capture with no scope-bearing skills yields null and the
+  // field is omitted.
+  const skillScopes = parseSkillScopesFromContext(String(result.payload), capture.capturedAt);
   const upload = await uploadContextSnapshot({
     cloud,
     cliVersion: ctx.client.cliVersion,
@@ -69,6 +75,7 @@ export async function runContextSnapshot(ctx: SnapshotRunContext): Promise<Conte
     capturedAt: capture.capturedAt,
     anonymization: result,
     ...(mcpServers ? { mcpServers } : {}),
+    ...(skillScopes ? { skillScopes } : {}),
   });
 
   if (upload.status === "no_change") return { status: "no_change" };

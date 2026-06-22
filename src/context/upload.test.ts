@@ -114,6 +114,36 @@ describe("uploadContextSnapshot", () => {
     expect(a.sessionId).not.toBe(b.sessionId);
   });
 
+  it("rides the skill_scopes payload on the manifest when provided", async () => {
+    const cloud = new InMemoryCloud();
+    const result = anonymized();
+    await uploadContextSnapshot({
+      ...baseInput(cloud, result, "2026-06-06T09:00:00.000Z"),
+      skillScopes: {
+        schema: "frugl.skill-scopes",
+        schema_version: 1,
+        captured_at: "2026-06-06T09:00:00.000Z",
+        provider: "claude_code",
+        skills: [{ name: "obsidian", scope: "user", project_key: null }],
+      },
+    });
+
+    const manifest = [...cloud.manifests.values()][0]!;
+    expect(manifest.skill_scopes).toEqual({
+      schema: "frugl.skill-scopes",
+      schema_version: 1,
+      captured_at: "2026-06-06T09:00:00.000Z",
+      provider: "claude_code",
+      skills: [{ name: "obsidian", scope: "user", project_key: null }],
+    });
+  });
+
+  it("omits skill_scopes from the manifest when none are provided", async () => {
+    const cloud = new InMemoryCloud();
+    await uploadContextSnapshot(baseInput(cloud, anonymized(), "2026-06-06T09:00:00.000Z"));
+    expect([...cloud.manifests.values()][0]!.skill_scopes).toBeUndefined();
+  });
+
   it("skips the upload when the server reports no_change (spec 052)", async () => {
     const cloud = new InMemoryCloud({ manifestNoChange: true });
     const r = await uploadContextSnapshot(

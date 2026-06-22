@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { withRetry } from "../lib/retry.js";
-import type { ArtifactKind, WireDeclaredMcpServer } from "../cloud/schemas.js";
+import type {
+  ArtifactKind,
+  WireDeclaredMcpServer,
+  WireSkillScopesPayload,
+} from "../cloud/schemas.js";
 import type { UploadCloudPort } from "./cloud-port.js";
 
 // The shared manifest -> presign -> PUT -> complete handshake for a single
@@ -35,6 +39,9 @@ export interface SnapshotUploadInput {
   // Declared MCP server inventory (names-only, fail-open) recorded on the upload
   // row server-side; rides the context manifest, omitted otherwise.
   mcpServers?: WireDeclaredMcpServer[];
+  // Skill-scope map (names + scope, fail-open) for a context snapshot's loaded
+  // skills; rides the context manifest, omitted when there are none.
+  skillScopes?: WireSkillScopesPayload;
 }
 
 export type SnapshotUploadResult =
@@ -57,6 +64,7 @@ export async function uploadSnapshot(input: SnapshotUploadInput): Promise<Snapsh
     expected_session_count: 1,
     artifact_kind: input.artifactKind,
     ...(input.mcpServers?.length ? { mcp_servers: input.mcpServers } : {}),
+    ...(input.skillScopes?.skills.length ? { skill_scopes: input.skillScopes } : {}),
     sessions: [
       {
         session_id: sessionId,

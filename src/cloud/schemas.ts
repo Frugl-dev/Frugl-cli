@@ -130,6 +130,30 @@ export const declaredMcpServerSchema = z.object({
 });
 export type WireDeclaredMcpServer = z.infer<typeof declaredMcpServerSchema>;
 
+// Skill-scope map (spec 047 Phase 8): the on-disk scope of each skill LOADED in
+// a context snapshot, which the raw /context text alone can't express to the
+// cloud's typed store. Carries NO content/scores — only name → scope so ingest
+// can stamp scope onto the snapshot's skill items. `provider` is the underscored
+// canonical key ("claude_code"), distinct from the dashed source_kind. Mirrors
+// the cloud's frugl.skill-scopes contract (packages/schema/src/skill-scopes.ts);
+// the server re-validates at the manifest trust boundary and again at ingest.
+export const skillScopeEntrySchema = z.object({
+  name: z.string().min(1).max(200),
+  scope: z.enum(["user", "project", "plugin"]),
+  // Anonymized project identity, present ONLY for project scope; null otherwise.
+  project_key: z.string().max(200).nullable(),
+});
+export type WireSkillScopeEntry = z.infer<typeof skillScopeEntrySchema>;
+
+export const skillScopesPayloadSchema = z.object({
+  schema: z.literal("frugl.skill-scopes"),
+  schema_version: z.literal(1),
+  captured_at: z.string().min(1),
+  provider: z.literal("claude_code"),
+  skills: z.array(skillScopeEntrySchema).max(500),
+});
+export type WireSkillScopesPayload = z.infer<typeof skillScopesPayloadSchema>;
+
 export const createManifestRequestSchema = z.object({
   cli_version: z.string(),
   redaction_policy_version: z.string().min(1),
@@ -140,6 +164,9 @@ export const createManifestRequestSchema = z.object({
   // context snapshots so older flows are untouched.
   artifact_kind: artifactKindSchema.optional(),
   mcp_servers: z.array(declaredMcpServerSchema).max(100).optional(),
+  // Skill scopes ride the context snapshot manifest (the mcp_servers precedent);
+  // omitted when the capture has no scope-bearing skills.
+  skill_scopes: skillScopesPayloadSchema.optional(),
 });
 export type CreateManifestRequest = z.infer<typeof createManifestRequestSchema>;
 
