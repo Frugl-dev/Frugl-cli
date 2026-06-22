@@ -82,9 +82,9 @@ describe("DESCRIPTORS registry", () => {
   it("every descriptor carries the wire-stable metadata invariants", () => {
     const expected = {
       claude: { sourceKind: "claude-code", displayName: "Claude Code" },
-      codex: { sourceKind: "codex", displayName: "Codex" },
-      cursor: { sourceKind: "cursor", displayName: "Cursor" },
-      gemini: { sourceKind: "gemini", displayName: "Gemini" },
+      codex: { sourceKind: "codex", displayName: "Codex (beta)" },
+      cursor: { sourceKind: "cursor", displayName: "Cursor (beta)" },
+      gemini: { sourceKind: "gemini", displayName: "Gemini (beta)" },
     } as const;
     for (const d of DESCRIPTORS) {
       expect(d.sourceKind).toBe(expected[d.id].sourceKind);

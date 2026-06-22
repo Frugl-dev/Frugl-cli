@@ -197,7 +197,7 @@ const claude: ProviderDescriptor = {
 const codex: ProviderDescriptor = {
   id: "codex",
   sourceKind: "codex",
-  displayName: "Codex",
+  displayName: "Codex (beta)",
   formatVersion: "codex-jsonl-2026-05",
   layout: {
     probeSegments: [".codex", "sessions"],
@@ -221,7 +221,7 @@ const cursor: ProviderDescriptor = {
   // The cloud routes the parse path on sourceKind ("cursor"); the export shape the
   // adapter parses ({composer, bubbles}) is the SAME whether it came from the IDE
   // vscdb or a cursor-agent transcript, so this stays wire-stable.
-  displayName: "Cursor",
+  displayName: "Cursor (beta)",
   formatVersion: "cursor-jsonl-2026-05",
   layout: {
     // Documentation only — cursor uses a custom `probe` (installed = IDE store OR
@@ -282,7 +282,7 @@ const cursor: ProviderDescriptor = {
 const gemini: ProviderDescriptor = {
   id: "gemini",
   sourceKind: "gemini",
-  displayName: "Gemini",
+  displayName: "Gemini (beta)",
   formatVersion: "gemini-jsonl-2026-06",
   layout: {
     probeSegments: [".gemini", "tmp"],
