@@ -48,7 +48,8 @@
     "format:check": "oxfmt --check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
@@ -69,6 +70,7 @@
     "@types/picomatch": "^4.0.3",
     "@types/retry": "^0.12.5",
     "@types/semver": "^7.5.8",
+    "@vitest/coverage-v8": "4.1.7",
     "oclif": "^4.15.0",
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
