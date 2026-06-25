@@ -1,6 +1,7 @@
 import { Flags } from "@oclif/core";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint, safeEndpoint, type Endpoint } from "../cloud/endpoints.js";
+import { loadProjectPin } from "../cloud/project-pin.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
 import { getPendingAuthFailure, getSavedEndpoint } from "./config.js";
@@ -11,6 +12,7 @@ import { color, symbol } from "./theme.js";
 export interface CommandFlags {
   format?: string | undefined;
   endpoint?: string | undefined;
+  "force-endpoint"?: boolean | undefined;
 }
 
 /**
@@ -57,6 +59,9 @@ export async function buildCommandContext<A extends AuthMode>(
   opts: { auth: A },
 ): Promise<CommandContext<A>> {
   const mode = resolveOutputMode({ format: flags.format });
+  // A checked-in `.frugl.json` (self-host pin). Loaded eagerly and allowed to
+  // THROW — a malformed pin must fail closed, never degrade to the public cloud.
+  const pin = loadProjectPin();
   const endpoint = resolveEndpoint({
     flag: flags.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
@@ -64,6 +69,9 @@ export async function buildCommandContext<A extends AuthMode>(
     // and normalized through safeEndpoint so a missing/corrupted config never
     // throws here — it just falls through to the prod default.
     saved: safeEndpoint(readSavedEndpoint()),
+    pinned: pin?.endpoint,
+    pinPath: pin?.path,
+    forceEndpoint: flags["force-endpoint"],
   });
 
   // Surface a prior background auth failure (hook/CI) the moment the user runs an
@@ -155,5 +163,11 @@ export function handleCommandError(err: unknown, mode: OutputMode): never {
 export const COMMON_FLAGS = {
   // Development-only: point the CLI at a non-production cloud. Hidden from help.
   endpoint: Flags.string({ description: "Override the API endpoint", hidden: true }),
+  // Escape hatch: let an explicit --endpoint override a disagreeing `.frugl.json`
+  // pin. Hidden — only an operator deliberately leaving a pinned repo needs it.
+  "force-endpoint": Flags.boolean({
+    description: "Override a project's pinned endpoint (.frugl.json)",
+    hidden: true,
+  }),
   format: FORMAT_FLAG,
 };
