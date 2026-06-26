@@ -12,7 +12,6 @@ import { color, symbol } from "./theme.js";
 export interface CommandFlags {
   format?: string | undefined;
   endpoint?: string | undefined;
-  "force-endpoint"?: boolean | undefined;
 }
 
 /**
@@ -64,14 +63,12 @@ export async function buildCommandContext<A extends AuthMode>(
   const pin = loadProjectPin();
   const endpoint = resolveEndpoint({
     flag: flags.endpoint,
+    pinned: pin?.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
     // Endpoint remembered from the last login (lib/config.ts). Read defensively
     // and normalized through safeEndpoint so a missing/corrupted config never
     // throws here — it just falls through to the prod default.
     saved: safeEndpoint(readSavedEndpoint()),
-    pinned: pin?.endpoint,
-    pinPath: pin?.path,
-    forceEndpoint: flags["force-endpoint"],
   });
 
   // Surface a prior background auth failure (hook/CI) the moment the user runs an
@@ -162,12 +159,7 @@ export function handleCommandError(err: unknown, mode: OutputMode): never {
  */
 export const COMMON_FLAGS = {
   // Development-only: point the CLI at a non-production cloud. Hidden from help.
+  // Also the escape hatch from a `.frugl.json` pin — an explicit --endpoint wins.
   endpoint: Flags.string({ description: "Override the API endpoint", hidden: true }),
-  // Escape hatch: let an explicit --endpoint override a disagreeing `.frugl.json`
-  // pin. Hidden — only an operator deliberately leaving a pinned repo needs it.
-  "force-endpoint": Flags.boolean({
-    description: "Override a project's pinned endpoint (.frugl.json)",
-    hidden: true,
-  }),
   format: FORMAT_FLAG,
 };

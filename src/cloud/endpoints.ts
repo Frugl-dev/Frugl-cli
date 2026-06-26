@@ -1,24 +1,28 @@
-import { EndpointError, UsageError } from "../lib/errors.js";
+import { UsageError } from "../lib/errors.js";
 
 export const DEFAULT_ENDPOINT = "https://app.frugl.dev";
 
-// "saved" is the endpoint persisted at the last successful `frugl login` (see
-// lib/config.ts). It sits BELOW the per-invocation overrides (flag, env) and
-// ABOVE the prod default, so a developer who logs in to a local stack keeps
-// targeting it without re-passing --endpoint every time — but a one-off flag or
-// FRUGL_ENDPOINT still wins, and an account that never chose a non-default
-// endpoint still defaults to prod. Crucially this is an EXPLICIT, per-user
-// choice, not an ambient read of whatever dotenv sits in the cwd — so it can't
-// be hijacked into redirecting uploads/login by the directory you happen to be in.
+// Endpoint precedence: flag ?? pin ?? env ?? saved ?? default.
 //
-// "pin" is the one deliberate exception: a checked-in `.frugl.json` (see
-// cloud/project-pin.ts) for the self-host case. It is fail-closed by
-// construction — it can only RESTRICT, never silently redirect: it overrides the
-// ambient saved/env layers and never falls back to the public default, but a
-// *disagreeing* explicit --endpoint is refused (unless --force-endpoint), and
-// because auth is endpoint-scoped, a malicious pin you've never logged into
-// can't reuse your token (upload → AuthError, not a silent leak).
-export type EndpointSource = "flag" | "env" | "saved" | "pin" | "default";
+// "saved" is the endpoint persisted at the last successful `frugl login` (see
+// lib/config.ts). It sits ABOVE the prod default so a developer who logs in to a
+// local stack keeps targeting it without re-passing --endpoint every time, and
+// an account that never chose a non-default endpoint still defaults to prod.
+//
+// "pin" is a checked-in `.frugl.json` (see cloud/project-pin.ts) for the
+// self-host case. It slots just BELOW the hand-typed --endpoint flag and ABOVE
+// every ambient layer (env, saved, default). This is what makes it a safety
+// precaution rather than a footgun: the danger self-hosting fears is *silent*
+// misrouting to the public cloud (a stale saved login, a forgotten
+// FRUGL_ENDPOINT in a shell profile, the hardcoded default) — the pin overrides
+// all of those and, when set, never falls back to the public default. It does
+// NOT need to override the flag, because an explicit --endpoint typed on this
+// invocation is a deliberate, visible act — so the flag simply wins and IS the
+// escape hatch (no separate --force flag). A malformed pin fails closed at load
+// time (project-pin.ts validates the URL) rather than degrading to the default.
+// Hijack stays defanged regardless: auth is endpoint-scoped, so a malicious repo
+// pin you've never logged into yields AuthError on upload, not a silent leak.
+export type EndpointSource = "flag" | "pin" | "env" | "saved" | "default";
 
 export interface Endpoint {
   url: string;
@@ -27,53 +31,24 @@ export interface Endpoint {
 
 export interface ResolveEndpointInput {
   flag?: string | undefined;
-  env?: string | undefined;
-  saved?: string | undefined;
   /** Endpoint declared by a checked-in `.frugl.json` (self-host pin). */
   pinned?: string | undefined;
-  /** Path to the `.frugl.json` that declared the pin (for the refusal message). */
-  pinPath?: string | undefined;
-  /** Allow an explicit --endpoint to override a disagreeing pin (operator escape hatch). */
-  forceEndpoint?: boolean | undefined;
+  env?: string | undefined;
+  saved?: string | undefined;
 }
 
 export function resolveEndpoint(input: ResolveEndpointInput): Endpoint {
-  if (input.pinned !== undefined) {
-    // Validate the pin loudly — a malformed pin must NEVER degrade to the public
-    // default (that silent fall-through is the exact leak self-hosting fears).
-    const pinnedUrl = validateEndpoint(input.pinned);
-
-    // An explicit per-invocation choice (flag, then env) may match the pin, or
-    // override it with --force-endpoint; a disagreeing one is refused.
-    const explicit = input.flag ?? input.env;
-    const explicitSource: EndpointSource = input.flag !== undefined ? "flag" : "env";
-    if (explicit !== undefined) {
-      const explicitUrl = validateEndpoint(explicit);
-      if (explicitUrl === pinnedUrl) return { url: pinnedUrl, resolvedFrom: explicitSource };
-      if (input.forceEndpoint) return { url: explicitUrl, resolvedFrom: explicitSource };
-      throw new EndpointError(
-        `This project pins the Frugl endpoint to ${pinnedUrl}` +
-          (input.pinPath ? ` (${input.pinPath})` : "") +
-          `, but ${explicitSource === "flag" ? "--endpoint" : "FRUGL_ENDPOINT"} ${explicitUrl} was given. ` +
-          `Refusing to send data elsewhere — re-run with --force-endpoint to override.`,
-      );
-    }
-
-    // No explicit override: the pin wins over the ambient saved layer and the
-    // default. A stale "logged into the public cloud" saved endpoint can NOT
-    // redirect a pinned repo's uploads.
-    return { url: pinnedUrl, resolvedFrom: "pin" };
-  }
-
-  const raw = input.flag ?? input.env ?? input.saved ?? DEFAULT_ENDPOINT;
+  const raw = input.flag ?? input.pinned ?? input.env ?? input.saved ?? DEFAULT_ENDPOINT;
   const resolvedFrom: EndpointSource =
     input.flag !== undefined
       ? "flag"
-      : input.env !== undefined
-        ? "env"
-        : input.saved !== undefined
-          ? "saved"
-          : "default";
+      : input.pinned !== undefined
+        ? "pin"
+        : input.env !== undefined
+          ? "env"
+          : input.saved !== undefined
+            ? "saved"
+            : "default";
   const url = validateEndpoint(raw);
   return { url, resolvedFrom };
 }

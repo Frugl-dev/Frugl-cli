@@ -1,22 +1,23 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, parse as parsePath } from "node:path";
+import { safeEndpoint } from "./endpoints.js";
 import { EndpointError } from "../lib/errors.js";
 
 // A checked-in, repo-local endpoint pin. Unlike `saved` (an explicit per-user
 // login choice) this IS an ambient read of the cwd — deliberately so, for the
 // self-host case: a company drops `.frugl.json` at its repo root and every
 // clone targets the internal Frugl instead of the public cloud. The hijack risk
-// of trusting cwd config (a malicious repo redirecting uploads) is contained by
-// two rules enforced in cloud/endpoints.ts: the pin can only RESTRICT (it never
-// silently falls back to the public default, and refuses a disagreeing
-// --endpoint without --force-endpoint), and auth is endpoint-scoped — uploading
-// to a pinned endpoint you've never logged into fails with AuthError rather than
-// silently shipping a token, so adopting a new endpoint stays a consensual
-// `frugl login`.
+// of trusting cwd config (a malicious repo redirecting uploads) is contained two
+// ways: the pin can only RESTRICT — it overrides the ambient env/saved/default
+// layers but loses to a hand-typed --endpoint, and never falls back to the
+// public default (precedence lives in cloud/endpoints.ts) — and auth is
+// endpoint-scoped, so uploading to a pinned endpoint you've never logged into
+// fails with AuthError rather than silently shipping a token, keeping adoption
+// of a new endpoint a consensual `frugl login`.
 export const PROJECT_PIN_FILENAME = ".frugl.json";
 
 export interface ProjectPin {
-  /** The pinned endpoint as written; validated downstream by resolveEndpoint. */
+  /** The pinned endpoint, already validated + normalized. */
   endpoint: string;
   /** Absolute path to the `.frugl.json` that declared it (for messages). */
   path: string;
@@ -74,5 +75,15 @@ export function loadProjectPin(startDir: string = process.cwd()): ProjectPin | u
     throw new EndpointError(`${file} has an invalid "endpoint" — expected a non-empty URL string.`);
   }
 
-  return { endpoint: endpoint.trim(), path: file };
+  // Validate at load (not downstream) so a malformed pin fails closed even when
+  // an explicit --endpoint flag would otherwise short-circuit resolution — a
+  // self-host repo must never quietly fall through to the public cloud.
+  const normalized = safeEndpoint(endpoint.trim());
+  if (normalized === undefined) {
+    throw new EndpointError(
+      `${file} has an invalid "endpoint" (${endpoint.trim()}) — must be https (or http on localhost).`,
+    );
+  }
+
+  return { endpoint: normalized, path: file };
 }

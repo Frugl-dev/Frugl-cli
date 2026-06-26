@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ENDPOINT, resolveEndpoint, safeEndpoint } from "./endpoints.js";
-import { EndpointError, UsageError } from "../lib/errors.js";
+import { UsageError } from "../lib/errors.js";
 
 describe("resolveEndpoint — precedence flag ?? env ?? saved ?? default", () => {
   it("flag wins over env, saved, and default", () => {
@@ -64,57 +64,28 @@ describe("safeEndpoint — tolerant normalize for the persisted/untrusted layer"
   });
 });
 
-describe("resolveEndpoint — a `.frugl.json` pin is fail-closed (self-host)", () => {
+describe("resolveEndpoint — a `.frugl.json` pin (self-host safety precaution)", () => {
   const PIN = "https://frugl.internal";
 
-  it("uses the pin over a stale saved/env, and never the public default", () => {
+  it("the pin overrides a stale env/saved, and never the public default", () => {
     const r = resolveEndpoint({
-      saved: DEFAULT_ENDPOINT, // a stale 'logged into the public cloud' session
       pinned: PIN,
+      env: DEFAULT_ENDPOINT, // a forgotten FRUGL_ENDPOINT in a shell profile
+      saved: DEFAULT_ENDPOINT, // a stale 'logged into the public cloud' session
     });
     expect(r.url).toBe(PIN);
     expect(r.resolvedFrom).toBe("pin");
   });
 
-  it("pins even when nothing else is supplied (no fall-through to default)", () => {
+  it("the pin is used when nothing else is supplied (no fall-through to default)", () => {
     const r = resolveEndpoint({ pinned: PIN });
     expect(r.url).toBe(PIN);
     expect(r.resolvedFrom).toBe("pin");
   });
 
-  it("accepts an explicit --endpoint that AGREES with the pin", () => {
-    const r = resolveEndpoint({ flag: `${PIN}/`, pinned: PIN });
-    expect(r.url).toBe(PIN);
-    expect(r.resolvedFrom).toBe("flag");
-  });
-
-  it("REFUSES a --endpoint that disagrees with the pin", () => {
-    expect(() =>
-      resolveEndpoint({
-        flag: "https://elsewhere.example.com",
-        pinned: PIN,
-        pinPath: "/repo/.frugl.json",
-      }),
-    ).toThrow(EndpointError);
-  });
-
-  it("REFUSES a FRUGL_ENDPOINT env that disagrees with the pin", () => {
-    expect(() => resolveEndpoint({ env: "https://elsewhere.example.com", pinned: PIN })).toThrow(
-      EndpointError,
-    );
-  });
-
-  it("--force-endpoint overrides a disagreeing pin (operator escape hatch)", () => {
-    const r = resolveEndpoint({
-      flag: "https://elsewhere.example.com",
-      pinned: PIN,
-      forceEndpoint: true,
-    });
+  it("a hand-typed --endpoint flag wins over the pin (the flag IS the escape hatch)", () => {
+    const r = resolveEndpoint({ flag: "https://elsewhere.example.com", pinned: PIN });
     expect(r.url).toBe("https://elsewhere.example.com");
     expect(r.resolvedFrom).toBe("flag");
-  });
-
-  it("throws on a malformed pin rather than degrading to the public default", () => {
-    expect(() => resolveEndpoint({ pinned: "not a url" })).toThrow(UsageError);
   });
 });

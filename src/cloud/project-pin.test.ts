@@ -59,4 +59,19 @@ describe("loadProjectPin — checked-in `.frugl.json` (self-host)", () => {
     writePin(root, JSON.stringify({ endpoint: "" }));
     expect(() => loadProjectPin(root)).toThrow(EndpointError);
   });
+
+  it("FAIL-CLOSED: throws on a malformed endpoint URL rather than degrading", () => {
+    writePin(root, JSON.stringify({ endpoint: "not a url" }));
+    expect(() => loadProjectPin(root)).toThrow(EndpointError);
+  });
+
+  it("FAIL-CLOSED: throws on a non-localhost http endpoint (https-only rule)", () => {
+    writePin(root, JSON.stringify({ endpoint: "http://evil.example.com" }));
+    expect(() => loadProjectPin(root)).toThrow(EndpointError);
+  });
+
+  it("normalizes a valid endpoint (trailing slash stripped)", () => {
+    writePin(root, JSON.stringify({ endpoint: "https://frugl.internal/" }));
+    expect(loadProjectPin(root)?.endpoint).toBe("https://frugl.internal");
+  });
 });
