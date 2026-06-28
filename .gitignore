@@ -3,6 +3,7 @@ dist
 build
 out
 oclif.manifest.json
+man/frugl.1
 .env
 .env.*
 !.env.example

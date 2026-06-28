@@ -10,6 +10,11 @@ export default class HookInstall extends Command {
   static override description =
     "Install a Claude Code hook that runs a headless Frugl upload when a session ends.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>            # this project (./.claude/settings.json)",
+    "<%= config.bin %> <%= command.id %> --global   # everywhere (~/.claude/settings.json)",
+  ];
+
   static override flags = {
     global: Flags.boolean({
       description: "Write ~/.claude/settings.json instead of ./.claude/settings.json.",

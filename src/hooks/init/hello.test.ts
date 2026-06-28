@@ -81,7 +81,6 @@ describe("init hook", () => {
       expect(screen).toContain("1.2.3");
       expect(screen).toContain("USED MOST");
       expect(screen).toContain("upload");
-      expect(screen).toContain("recs");
       expect(screen).toContain("snapshot");
     });
 

@@ -51,6 +51,12 @@ export default class Recommendations extends Command {
   static override hidden = true;
   static override hiddenAliases = ["recs"];
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>                 # list open recommendations, ranked by $/mo",
+    "<%= config.bin %> <%= command.id %> --fix <id>      # print a fix prompt to paste into your agent",
+    "<%= config.bin %> <%= command.id %> --status all    # include applied/dismissed/resolved",
+  ];
+
   static override flags = {
     ...COMMON_FLAGS,
     status: Flags.string({

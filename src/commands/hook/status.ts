@@ -6,6 +6,11 @@ import { color, symbol } from "../../lib/theme.js";
 export default class HookStatus extends Command {
   static override description = "Report whether the Frugl upload hook is installed in Claude Code.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>",
+    "<%= config.bin %> <%= command.id %> --global",
+  ];
+
   static override flags = {
     global: Flags.boolean({
       description: "Check ~/.claude/settings.json instead of ./.claude/settings.json.",

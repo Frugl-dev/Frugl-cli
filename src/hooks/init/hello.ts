@@ -53,7 +53,6 @@ const hook: Hook<"init"> = async function (opts) {
     "upload",
     `${color.dim("anonymize on your machine, ")}${color.bold("then")}${color.dim(" send.")}`,
   );
-  row("recs", color.dim("what's worth fixing this week — ranked by $/mo."));
   row("snapshot", color.dim("capture your context window + MCP servers."));
   out.write("\n");
   out.write(
