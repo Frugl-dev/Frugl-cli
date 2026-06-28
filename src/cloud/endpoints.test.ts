@@ -63,3 +63,29 @@ describe("safeEndpoint — tolerant normalize for the persisted/untrusted layer"
     expect(safeEndpoint("http://evil.example.com")).toBeUndefined();
   });
 });
+
+describe("resolveEndpoint — a `.frugl.json` pin (self-host safety precaution)", () => {
+  const PIN = "https://frugl.internal";
+
+  it("the pin overrides a stale env/saved, and never the public default", () => {
+    const r = resolveEndpoint({
+      pinned: PIN,
+      env: DEFAULT_ENDPOINT, // a forgotten FRUGL_ENDPOINT in a shell profile
+      saved: DEFAULT_ENDPOINT, // a stale 'logged into the public cloud' session
+    });
+    expect(r.url).toBe(PIN);
+    expect(r.resolvedFrom).toBe("pin");
+  });
+
+  it("the pin is used when nothing else is supplied (no fall-through to default)", () => {
+    const r = resolveEndpoint({ pinned: PIN });
+    expect(r.url).toBe(PIN);
+    expect(r.resolvedFrom).toBe("pin");
+  });
+
+  it("a hand-typed --endpoint flag wins over the pin (the flag IS the escape hatch)", () => {
+    const r = resolveEndpoint({ flag: "https://elsewhere.example.com", pinned: PIN });
+    expect(r.url).toBe("https://elsewhere.example.com");
+    expect(r.resolvedFrom).toBe("flag");
+  });
+});

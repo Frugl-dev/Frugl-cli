@@ -1,6 +1,7 @@
 import { Flags } from "@oclif/core";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint, safeEndpoint, type Endpoint } from "../cloud/endpoints.js";
+import { loadProjectPin } from "../cloud/project-pin.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
 import { getPendingAuthFailure, getSavedEndpoint } from "./config.js";
@@ -57,8 +58,12 @@ export async function buildCommandContext<A extends AuthMode>(
   opts: { auth: A },
 ): Promise<CommandContext<A>> {
   const mode = resolveOutputMode({ format: flags.format });
+  // A checked-in `.frugl.json` (self-host pin). Loaded eagerly and allowed to
+  // THROW — a malformed pin must fail closed, never degrade to the public cloud.
+  const pin = loadProjectPin();
   const endpoint = resolveEndpoint({
     flag: flags.endpoint,
+    pinned: pin?.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
     // Endpoint remembered from the last login (lib/config.ts). Read defensively
     // and normalized through safeEndpoint so a missing/corrupted config never
@@ -154,6 +159,7 @@ export function handleCommandError(err: unknown, mode: OutputMode): never {
  */
 export const COMMON_FLAGS = {
   // Development-only: point the CLI at a non-production cloud. Hidden from help.
+  // Also the escape hatch from a `.frugl.json` pin — an explicit --endpoint wins.
   endpoint: Flags.string({ description: "Override the API endpoint", hidden: true }),
   format: FORMAT_FLAG,
 };
