@@ -23,6 +23,11 @@ function badCode(problem: string) {
 export default class OrgJoin extends Command {
   static override description = "Join an existing org with an invite code from a teammate.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %> pop_inv_…   # redeem a teammate's invite code",
+    "<%= config.bin %> <%= command.id %>             # prompts for the code",
+  ];
+
   static override args = {
     code: Args.string({ description: "Invite code (e.g. pop_inv_…)", required: false }),
   };

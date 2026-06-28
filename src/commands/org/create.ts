@@ -17,6 +17,11 @@ import { color, symbol } from "../../lib/theme.js";
 export default class OrgCreate extends Command {
   static override description = "Create a new org. You become the owner.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>                      # prompts for a name",
+    '<%= config.bin %> <%= command.id %> --name "Acme Corp"   # non-interactive (slug auto-derived)',
+  ];
+
   static override flags = {
     name: Flags.string({ description: "Org name (skips the interactive prompt)" }),
     ...COMMON_FLAGS,

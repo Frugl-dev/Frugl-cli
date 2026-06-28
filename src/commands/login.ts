@@ -84,6 +84,12 @@ Exit codes:
  11   OS keychain unavailable
  40   network error`;
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>                          # email one-time code (the default)",
+    "<%= config.bin %> <%= command.id %> --github                 # sign in with GitHub in the browser",
+    "<%= config.bin %> <%= command.id %> --email you@team.com     # skip the email prompt",
+  ];
+
   static override flags = {
     email: Flags.string({ description: "Email address to sign in with" }),
     token: Flags.string({

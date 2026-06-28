@@ -9,6 +9,10 @@ export default class OrgUse extends Command {
   static override description =
     "Set the active org for subsequent uploads. (Not implemented — an account belongs to one org today; this only confirms the org you're already on.)";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %> acme   # confirm the active org (one org per account today)",
+  ];
+
   static override args = {
     slug: Args.string({ description: "Org slug to switch to", required: true }),
   };

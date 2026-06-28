@@ -64,10 +64,24 @@ The local stack itself (Supabase + MinIO) is brought up from the
 ## Releasing
 
 `frugl` ships to npm as a compiled oclif CLI. `pnpm build` compiles `src/` to
-`dist/` (preserving the per-command file layout oclif discovers at runtime) and
-generates `oclif.manifest.json`. The published tarball contains only
-`bin/run.js`, `dist/`, the manifest, `brand/`, `README.md`, and `LICENSE` (see
-the `files` field) — never `src/`, tests, or `bin/dev.js`.
+`dist/` (preserving the per-command file layout oclif discovers at runtime),
+generates `oclif.manifest.json`, and renders the man page to `man/frugl.1`. The
+published tarball contains only `bin/run.js`, `dist/`, the manifest, `man/frugl.1`,
+`scripts/postinstall-man.mjs`, `brand/`, `README.md`, and `LICENSE` (see the
+`files` field) — never `src/`, tests, or `bin/dev.js`.
+
+### Man page
+
+`man frugl` is generated, never hand-written — `scripts/build-manpage.mjs` reads
+`oclif.manifest.json` (the same metadata behind `frugl --help`) and emits roff to
+`man/frugl.1`, so the page can't drift from the real command surface. It runs as
+the last step of `pnpm build`; the output is gitignored and regenerated each build.
+
+npm stopped linking `package.json` `man` entries in v9, so a `postinstall`
+(`scripts/postinstall-man.mjs`) links the shipped page into `<prefix>/share/man/man1/`
+on a **global** install — `man` finds it there because `<prefix>/bin` is already on
+`$PATH`. It is best-effort and a strict no-op on local installs, so it never
+blocks `npm install`. Preview locally without installing: `man ./man/frugl.1`.
 
 Inspect exactly what would be published without uploading anything:
 

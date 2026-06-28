@@ -36,6 +36,12 @@ export default class Setup extends Command {
   static override description =
     "Authenticate and set up your organization in one step. Idempotent — safe to re-run.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>                                          # interactive: sign in, then create or join an org",
+    '<%= config.bin %> <%= command.id %> --email you@team.com --org-name "Acme"   # non-interactive: sign in and create',
+    "<%= config.bin %> <%= command.id %> --invite-code pop_inv_…                  # sign in and join with a teammate's code",
+  ];
+
   static override flags = {
     email: Flags.string({ description: "Email address to sign in with" }),
     "org-name": Flags.string({ description: "Organization name (skips interactive prompt)" }),

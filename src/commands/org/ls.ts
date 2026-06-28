@@ -5,6 +5,8 @@ import { COMMON_FLAGS } from "../../lib/command-context.js";
 export default class OrgLs extends Command {
   static override description = "List the orgs you belong to and which is active.";
 
+  static override examples = ["<%= config.bin %> <%= command.id %>"];
+
   static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {

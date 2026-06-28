@@ -6,6 +6,10 @@ import { color, symbol } from "../../lib/theme.js";
 export default class OrgInvites extends Command {
   static override description = "How to accept an invite to an org.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>   # how to get and redeem an invite",
+  ];
+
   static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {

@@ -94,9 +94,7 @@ export class AuthService {
     });
 
     if (!resolved) {
-      throw new AuthError(
-        "Not logged in. Provide a token via --token or FRUGL_TOKEN, or run 'frugl login'.",
-      );
+      throw new AuthError("Not logged in. Run 'frugl login', or set FRUGL_TOKEN for CI / hooks.");
     }
 
     if (resolved.source === "session") {

@@ -21,6 +21,11 @@ type OrgResult = OrgInfo | "none" | "unknown";
 export default class Whoami extends Command {
   static override description = "Print the signed-in user's email and active org.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>",
+    "<%= config.bin %> <%= command.id %> --format json   # scriptable identity check",
+  ];
+
   static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {

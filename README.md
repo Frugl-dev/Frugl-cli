@@ -51,8 +51,9 @@ burning tokens. Everything below is the detail.
 | `frugl org`          | Manage your org (`create`, `join`, `use`, `invites`, `ls`).                                    |
 | `frugl hook install` | Auto-upload from a Claude Code hook when a session ends.                                       |
 
-Every command supports `--format` to control output, and `--help` for the full
-flag list. The formats are:
+Every command supports `--format` to control output, and `--help` (or `-h`) for
+the full flag list. `frugl help <command>` does the same, and `man frugl` opens
+the complete manual offline. The formats are:
 
 | `--format` | For                                                                                             |
 | ---------- | ----------------------------------------------------------------------------------------------- |

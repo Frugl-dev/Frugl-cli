@@ -9,6 +9,8 @@ import { color, symbol } from "../lib/theme.js";
 export default class Logout extends Command {
   static override description = "Forget the local token and revoke this device's session.";
 
+  static override examples = ["<%= config.bin %> <%= command.id %>"];
+
   static override flags = COMMON_FLAGS;
 
   async run(): Promise<void> {

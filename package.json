@@ -21,6 +21,7 @@
     "type": "git",
     "url": "git+https://github.com/Frugl-dev/Frugl-cli.git"
   },
+  "man": "./man/frugl.1",
   "bin": {
     "frugl": "./bin/run.js"
   },
@@ -28,7 +29,9 @@
     "bin/run.js",
     "brand",
     "dist",
+    "man/frugl.1",
     "oclif.manifest.json",
+    "scripts/postinstall-man.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -38,10 +41,11 @@
   },
   "scripts": {
     "dev": "tsx bin/dev.js",
-    "clean": "rm -rf dist oclif.manifest.json",
-    "build": "npm run clean && tsc -p tsconfig.build.json && oclif manifest",
+    "clean": "rm -rf dist oclif.manifest.json man",
+    "build": "npm run clean && tsc -p tsconfig.build.json && oclif manifest && node scripts/build-manpage.mjs",
     "prepack": "npm run build",
     "postpack": "rm -f oclif.manifest.json",
+    "postinstall": "node scripts/postinstall-man.mjs",
     "lint": "oxlint --ignore-pattern '.claude/**'",
     "lint:fix": "oxlint --fix --ignore-pattern '.claude/**'",
     "format": "oxfmt",
@@ -55,6 +59,7 @@
     "@inquirer/prompts": "^8.5.2",
     "@napi-rs/keyring": "^1.1.6",
     "@oclif/core": "^4.0.30",
+    "@oclif/plugin-help": "^6.2.52",
     "conf": "^15.1.0",
     "env-paths": "^4.0.0",
     "p-limit": "^7.3.0",
@@ -87,12 +92,21 @@
     "test"
   ],
   "oclif": {
+    "additionalHelpFlags": [
+      "-h"
+    ],
+    "additionalVersionFlags": [
+      "-v"
+    ],
     "bin": "frugl",
     "commands": "./dist/commands",
     "dirname": "frugl",
     "hooks": {
       "init": "./dist/hooks/init/hello"
     },
+    "plugins": [
+      "@oclif/plugin-help"
+    ],
     "topicSeparator": " "
   },
   "engines": {

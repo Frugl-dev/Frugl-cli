@@ -117,10 +117,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     "dry-run": Flags.boolean({ description: "Anonymize but do not transmit." }),
     // Development-only: point the CLI at a non-production cloud. Hidden from help.
     endpoint: Flags.string({ description: "Override the API endpoint.", hidden: true }),
-    token: Flags.string({
-      description:
-        "Access token for non-interactive auth (CI / hooks). Overrides FRUGL_TOKEN and any stored login.",
-    }),
     concurrency: Flags.integer({
       description: "Per-session upload concurrency (default 4).",
     }),
@@ -226,7 +222,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           cliVersion: getCliVersion(),
         }),
       });
-      const session = await auth.resolveRequestAuth({ flagToken: flags.token });
+      // Non-interactive auth (CI / hooks) comes from FRUGL_TOKEN or a prior
+      // `frugl login` (incl. `login --token`); upload itself takes no token flag.
+      const session = await auth.resolveRequestAuth({});
       const client = new CloudClient({
         endpointUrl: endpoint.url,
         cliVersion: getCliVersion(),
@@ -729,9 +727,6 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         rrow(
           "Raw secrets transmitted",
           `${color.frogBold("0 bytes")}   ${color.dim("← the number that matters")}`,
-        );
-        process.stdout.write(
-          `\n  ${color.dim("→ run ")}${color.frog("frugl recs")}${color.dim(" to see what's worth fixing.")}\n`,
         );
       }
 

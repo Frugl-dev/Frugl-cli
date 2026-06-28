@@ -7,6 +7,11 @@ import { color, symbol } from "../../lib/theme.js";
 export default class HookUninstall extends Command {
   static override description = "Remove the Frugl upload hook from Claude Code settings.";
 
+  static override examples = [
+    "<%= config.bin %> <%= command.id %>",
+    "<%= config.bin %> <%= command.id %> --global",
+  ];
+
   static override flags = {
     global: Flags.boolean({
       description: "Operate on ~/.claude/settings.json instead of ./.claude/settings.json.",
