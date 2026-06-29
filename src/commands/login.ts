@@ -88,6 +88,7 @@ Exit codes:
     "<%= config.bin %> <%= command.id %>                          # email one-time code (the default)",
     "<%= config.bin %> <%= command.id %> --github                 # sign in with GitHub in the browser",
     "<%= config.bin %> <%= command.id %> --email you@team.com     # skip the email prompt",
+    "<%= config.bin %> <%= command.id %> --endpoint https://frugl.yourco.com   # sign in to a self-hosted instance",
   ];
 
   static override flags = {
@@ -105,6 +106,14 @@ Exit codes:
       exclusive: ["google", "token"],
     }),
     ...COMMON_FLAGS,
+    // Self-host: override the hidden dev-only `endpoint` from COMMON_FLAGS with a
+    // visible, self-host-framed one — but ONLY on `login`. Customers sign in to
+    // their own deployment, and login persists the endpoint, so later commands
+    // inherit it without re-passing the flag (keeping their --help uncluttered).
+    endpoint: Flags.string({
+      description:
+        "URL of your Frugl instance to sign in to (e.g. https://frugl.yourco.com). Remembered for later commands.",
+    }),
   };
 
   async run(): Promise<void> {
