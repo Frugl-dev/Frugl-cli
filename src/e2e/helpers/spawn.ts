@@ -15,6 +15,10 @@ export interface RunResult {
 export interface RunOptions {
   env?: Record<string, string | undefined>;
   timeoutMs?: number;
+  // Working directory for the spawned CLI. Commands that read/write project-local
+  // files (e.g. `init` writing `.frugl.json`) need this pointed at a temp dir so
+  // the test never touches the repo's own cwd.
+  cwd?: string;
 }
 
 export async function runCli(args: string[], opts: RunOptions = {}): Promise<RunResult> {
@@ -26,6 +30,7 @@ export async function runCli(args: string[], opts: RunOptions = {}): Promise<Run
   const child = spawn(TSX, [BIN, ...args], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
+    ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
   });
 
   let stdout = "";

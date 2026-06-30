@@ -4,6 +4,7 @@ import path from "node:path";
 import picomatch from "picomatch";
 import { z } from "zod";
 import { UsageError } from "../lib/errors.js";
+import { readProjectConfig, type ProjectConfig } from "./project-config.js";
 import type { DetectedProvider, ProjectGroup } from "../sources/providers.js";
 import type { Selection } from "../select/selection.js";
 
@@ -54,18 +55,59 @@ function findNearestConfig(cwd: string, home: string): string | null {
   return null;
 }
 
+// Project the `.frugl.json` upload block onto the `UploadConfig` shape the
+// upload command already consumes. Returns null when the file has no `upload`
+// block, so the caller can fall back to the deprecated frugl.config.json. The
+// top-level `org` is carried into `upload.org` (the canonical file keeps `org`
+// at the root, but `UploadConfig` groups it under `upload`). `minCost`/`snapshot`
+// have no slot in `UploadConfig` (the command reads `--min-cost` from its flag),
+// so they are intentionally dropped here.
+function uploadConfigFromProject(config: ProjectConfig | null): UploadConfig | null {
+  if (!config?.upload) return null;
+  const up = config.upload;
+
+  const uploadBlock: NonNullable<UploadConfig["upload"]> = {
+    ...(up.concurrency !== undefined ? { concurrency: up.concurrency } : {}),
+    ...(up.linkPrs !== undefined ? { linkPrs: up.linkPrs } : {}),
+    ...(config.org !== undefined ? { org: config.org } : {}),
+  };
+
+  return {
+    schemaVersion: 1,
+    ...(up.providers ? { providers: up.providers } : {}),
+    ...(up.projects ? { projects: up.projects } : {}),
+    ...(Object.keys(uploadBlock).length > 0 ? { upload: uploadBlock } : {}),
+  };
+}
+
 // Fail-closed: an explicit --config that can't be read, malformed JSON, or a
 // schema violation all throw — the run uploads nothing rather than silently
 // falling back to "everything" (FR-027). A missing file with no --config
 // returns null so the caller uses its default scope (FR-003).
 export function loadUploadConfig(opts: LoadConfigOptions = {}): UploadConfig | null {
   const home = opts.home ?? homedir();
+  const cwd = opts.cwd ?? process.cwd();
+
+  // `.frugl.json` is the canonical project config (spec 007); its `upload` block
+  // takes precedence over the deprecated `frugl.config.json`. We only consult it
+  // when no explicit `--config` path was given — `--config` is an intentional,
+  // visible override that still points at a frugl.config.json. Reading
+  // `.frugl.json` is fail-closed: a malformed file throws here (exit 2) rather
+  // than silently falling through to the deprecated file or "upload everything".
+  if (!opts.explicitPath) {
+    const projectConfig = readProjectConfig(cwd, home);
+    const fromProject = uploadConfigFromProject(projectConfig);
+    if (fromProject) return fromProject;
+    // Else: `.frugl.json` carries no upload block — fall through to the
+    // deprecated frugl.config.json discovery below.
+  }
+
   let found: string;
   if (opts.explicitPath) {
     found = path.resolve(opts.explicitPath);
     if (!existsSync(found)) throw new UsageError(`Config file not found: ${found}`);
   } else {
-    const nearest = findNearestConfig(opts.cwd ?? process.cwd(), home);
+    const nearest = findNearestConfig(cwd, home);
     if (!nearest) return null;
     found = nearest;
   }
