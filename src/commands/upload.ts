@@ -74,6 +74,7 @@ import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { getLinkPrs, recordPendingAuthFailure, clearPendingAuthFailure } from "../lib/config.js";
 import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
+import { findProjectConfigDir } from "../config/project-config.js";
 import {
   resolveDebug,
   resolveOutputMode,
@@ -207,6 +208,17 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     try {
       // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
       const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
+      if (uploadConfig?.upload?.enabled === false) {
+        if (mode !== "json") {
+          process.stderr.write(color.dim("Upload disabled in .frugl.json — nothing sent.\n"));
+        } else {
+          process.stdout.write(
+            `${JSON.stringify({ command: "upload", ok: true, skipped: true, reason: "disabled" })}\n`,
+          );
+        }
+        return;
+      }
+      const autoMode = uploadConfig?.upload?.auto ?? false;
       // Precedence (FR-026): flag > config file > default. The summary builder
       // owns the precedence rule; the command only asks whether linking is active
       // so it can decide whether to run the (expensive) git-context pass.
@@ -281,7 +293,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         const interactive = isInteractive({
           mode,
-          yes: flags.yes,
+          yes: flags.yes || autoMode,
           isTTY: Boolean(process.stdin.isTTY),
         });
 
@@ -364,8 +376,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         if (uploadConfig) {
           // Config-driven scope: derive all supported providers' projects, then
-          // filter by the config's providers + project include/exclude globs. No
-          // picker, so only the config-selected refs are parsed.
+          // either scope to the .frugl.json directory (auto mode) or filter by the
+          // config's providers + project include/exclude globs. No picker either way.
           for (const d of supportedDetected) {
             const descriptor = getProvider(d.descriptor.id);
             if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
@@ -373,7 +385,32 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             const providerRefs = await descriptor.source.discover(discoverOpts);
             groups.push(...descriptor.deriveProjects(providerRefs));
           }
-          selection = resolveConfigSelection(uploadConfig, detected, groups);
+
+          if (autoMode) {
+            // auto:true means the .frugl.json IS the project declaration — scope
+            // strictly to the directory that contains it. upload.projects globs are
+            // superseded; each repo opts in by having its own .frugl.json.
+            // upload.providers defaults to all supported but can restrict the set.
+            const supportedIds = supportedDetected.map((d) => d.descriptor.id);
+            const providerIds = uploadConfig.providers
+              ? supportedIds.filter((id) => uploadConfig.providers!.includes(id))
+              : supportedIds;
+            const providerSet = new Set(providerIds);
+            const configDir = findProjectConfigDir();
+            const scopedGroups = groups.filter(
+              (g) =>
+                providerSet.has(g.providerId) &&
+                (!configDir ||
+                  g.displayName === configDir ||
+                  g.displayName.startsWith(configDir + path.sep)),
+            );
+            selection = {
+              providerIds,
+              projectIds: scopedGroups.map((g) => g.projectId),
+            };
+          } else {
+            selection = resolveConfigSelection(uploadConfig, detected, groups);
+          }
           allClassifications = await classifyRefs(applySelection(groups, selection));
         } else {
           // 2) Choose providers — interactive picker, or auto-select-all when not.
@@ -625,7 +662,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
 
         if (willUpload.length > 0) {
-          if (!flags.yes) {
+          if (!flags.yes && !autoMode) {
             const ok = await confirm({
               message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
               default: true,
@@ -698,8 +735,15 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         } // end if (willUpload.length > 0)
       } // end if (uploadSessions)
 
-      // Context snapshots are no longer captured here — `frugl context` is the
-      // sole entry point for them. `upload` only ships AI coding sessions.
+      // When upload.auto is set in .frugl.json, treat upload as the full "sync"
+      // command: run snapshot automatically so context + MCP inventory stay fresh
+      // alongside the session data. Failure is non-fatal — it is printed but does
+      // not affect the upload's exit code.
+      if (autoMode && uploadConfig?.snapshot?.enabled !== false) {
+        const snapshotArgv: string[] = [];
+        if (flags.endpoint) snapshotArgv.push("--endpoint", flags.endpoint);
+        await this.config.runCommand("snapshot", snapshotArgv);
+      }
 
       // The payoff. The one place upload lets itself celebrate — a receipt that
       // makes the redaction story tangible: what was scrubbed on your machine,

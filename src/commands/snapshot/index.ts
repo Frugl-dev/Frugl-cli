@@ -1,5 +1,6 @@
 import { Command } from "@oclif/core";
 import { buildCommandContext, COMMON_FLAGS } from "../../lib/command-context.js";
+import { readProjectConfig } from "../../config/project-config.js";
 import { runAllSnapshots } from "../../snapshot/all.js";
 
 export default class Snapshot extends Command {
@@ -25,6 +26,10 @@ Exit codes:
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Snapshot);
+    if (readProjectConfig()?.snapshot?.enabled === false) {
+      process.stderr.write("Snapshot disabled in .frugl.json — nothing captured.\n");
+      return;
+    }
     const ctx = await buildCommandContext(flags, { auth: "require" });
     const exitCode = await runAllSnapshots(ctx);
     if (exitCode !== 0) process.exit(exitCode);

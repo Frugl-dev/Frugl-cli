@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   PROJECT_CONFIG_FILENAME,
+  findProjectConfigDir,
   readProjectConfig,
   writeProjectConfig,
 } from "./project-config.js";
@@ -54,6 +55,27 @@ describe("readProjectConfig", () => {
     expect(cfg?.endpoint).toBe("https://frugl.internal");
     expect(cfg?.upload?.minCost).toBe(25);
     expect(cfg?.upload?.providers).toEqual(["claude-code"]);
+  });
+
+  it("parses upload.auto, upload.enabled, and snapshot.enabled", () => {
+    write(
+      root,
+      JSON.stringify({
+        version: 1,
+        org: "acme",
+        upload: { auto: true, enabled: false },
+        snapshot: { enabled: false },
+      }),
+    );
+    const cfg = readProjectConfig(root, root);
+    expect(cfg?.upload?.auto).toBe(true);
+    expect(cfg?.upload?.enabled).toBe(false);
+    expect(cfg?.snapshot?.enabled).toBe(false);
+  });
+
+  it("FAIL-CLOSED: throws on unknown key inside snapshot block", () => {
+    write(root, JSON.stringify({ version: 1, snapshot: { enabled: false, typo: true } }));
+    expect(() => readProjectConfig(root, root)).toThrow(UsageError);
   });
 
   it("walks UP from a nested cwd to the project-root config", () => {
@@ -146,9 +168,14 @@ describe("writeProjectConfig", () => {
     expect(parsed.org).toBe("acme");
   });
 
-  it("emits keys in fixed order: $schema, version, endpoint, org, upload", () => {
+  it("emits keys in fixed order: $schema, version, endpoint, org, upload, snapshot", () => {
     writeProjectConfig(
-      { org: "acme", endpoint: "https://frugl.internal", upload: { minCost: 25 } },
+      {
+        org: "acme",
+        endpoint: "https://frugl.internal",
+        upload: { minCost: 25 },
+        snapshot: { enabled: false },
+      },
       { dir: root },
     );
     expect(Object.keys(JSON.parse(read()))).toEqual([
@@ -157,6 +184,7 @@ describe("writeProjectConfig", () => {
       "endpoint",
       "org",
       "upload",
+      "snapshot",
     ]);
   });
 
@@ -210,5 +238,109 @@ describe("writeProjectConfig", () => {
     const second = writeProjectConfig({ org: "acme", upload: { minCost: 25 } }, { dir: root });
     expect(second.changed).toBe(false);
     expect(read()).toBe(before);
+  });
+
+  it("writes upload.auto:true and omits it when false (default)", () => {
+    writeProjectConfig({ org: "acme", upload: { auto: true } }, { dir: root });
+    expect(JSON.parse(read()).upload.auto).toBe(true);
+    // false is the default — omitted
+    writeProjectConfig({ org: "acme", upload: { auto: false } }, { dir: root });
+    expect(JSON.parse(read()).upload?.auto).toBeUndefined();
+  });
+
+  it("writes upload.enabled:false and omits it when true (default)", () => {
+    writeProjectConfig({ org: "acme", upload: { enabled: false } }, { dir: root });
+    expect(JSON.parse(read()).upload.enabled).toBe(false);
+    // true is the default — omitted
+    writeProjectConfig({ org: "acme", upload: { enabled: true } }, { dir: root });
+    expect(JSON.parse(read()).upload?.enabled).toBeUndefined();
+  });
+
+  it("writes snapshot.enabled:false and omits it when true (default)", () => {
+    writeProjectConfig({ org: "acme", snapshot: { enabled: false } }, { dir: root });
+    const parsed = JSON.parse(read());
+    expect(parsed.snapshot.enabled).toBe(false);
+    // true is the default — omitted, and the whole snapshot block is gone
+    writeProjectConfig({ org: "acme", snapshot: { enabled: true } }, { dir: root });
+    expect(JSON.parse(read()).snapshot).toBeUndefined();
+  });
+
+  it("upload block is omitted entirely when all values equal their defaults", () => {
+    writeProjectConfig(
+      {
+        org: "acme",
+        upload: {
+          enabled: true,
+          auto: false,
+          minCost: 10,
+          snapshot: true,
+          concurrency: 4,
+          linkPrs: false,
+        },
+      },
+      { dir: root },
+    );
+    expect(JSON.parse(read()).upload).toBeUndefined();
+  });
+
+  it("merges snapshot block over an existing one without clobbering other upload keys", () => {
+    writeProjectConfig(
+      { org: "acme", upload: { minCost: 25 }, snapshot: { enabled: false } },
+      { dir: root },
+    );
+    writeProjectConfig({ snapshot: { enabled: true } }, { dir: root });
+    const parsed = JSON.parse(read());
+    expect(parsed.upload.minCost).toBe(25); // preserved
+    expect(parsed.snapshot).toBeUndefined(); // enabled:true → omitted
+  });
+});
+
+describe("findProjectConfigDir", () => {
+  let root: string;
+  const savedConfigEnv = process.env["FRUGL_CONFIG"];
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "frugl-pcd-"));
+    delete process.env["FRUGL_CONFIG"];
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+    if (savedConfigEnv === undefined) delete process.env["FRUGL_CONFIG"];
+    else process.env["FRUGL_CONFIG"] = savedConfigEnv;
+  });
+
+  it("returns null when no .frugl.json exists", () => {
+    expect(findProjectConfigDir(root, root)).toBeNull();
+  });
+
+  it("returns the directory containing the nearest .frugl.json", () => {
+    write(root, JSON.stringify({ version: 1, org: "acme" }));
+    expect(findProjectConfigDir(root, root)).toBe(root);
+  });
+
+  it("resolves from a nested subdirectory up to the config", () => {
+    write(root, JSON.stringify({ version: 1, org: "acme" }));
+    const deep = path.join(root, "src", "components");
+    mkdirSync(deep, { recursive: true });
+    expect(findProjectConfigDir(deep, root)).toBe(root);
+  });
+
+  it("prefers the nearest .frugl.json when nested configs exist", () => {
+    write(root, JSON.stringify({ version: 1, org: "outer" }));
+    const inner = path.join(root, "packages", "core");
+    write(inner, JSON.stringify({ version: 1, org: "inner" }));
+    expect(findProjectConfigDir(inner, root)).toBe(inner);
+  });
+
+  it("uses FRUGL_CONFIG override when set", () => {
+    const other = mkdtempSync(path.join(tmpdir(), "frugl-pcd-alt-"));
+    try {
+      const explicit = path.join(other, "custom.json");
+      writeFileSync(explicit, JSON.stringify({ version: 1, org: "override" }), "utf8");
+      process.env["FRUGL_CONFIG"] = explicit;
+      expect(findProjectConfigDir(root, root)).toBe(other);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
   });
 });
