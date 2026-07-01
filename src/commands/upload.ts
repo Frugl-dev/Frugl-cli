@@ -207,6 +207,17 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     try {
       // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
       const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
+      if (uploadConfig?.upload?.enabled === false) {
+        if (mode !== "json") {
+          process.stderr.write(color.dim("Upload disabled in .frugl.json — nothing sent.\n"));
+        } else {
+          process.stdout.write(
+            `${JSON.stringify({ command: "upload", ok: true, skipped: true, reason: "disabled" })}\n`,
+          );
+        }
+        return;
+      }
+      const autoMode = uploadConfig?.upload?.auto ?? false;
       // Precedence (FR-026): flag > config file > default. The summary builder
       // owns the precedence rule; the command only asks whether linking is active
       // so it can decide whether to run the (expensive) git-context pass.
@@ -281,7 +292,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         const interactive = isInteractive({
           mode,
-          yes: flags.yes,
+          yes: flags.yes || autoMode,
           isTTY: Boolean(process.stdin.isTTY),
         });
 
@@ -625,7 +636,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         }
 
         if (willUpload.length > 0) {
-          if (!flags.yes) {
+          if (!flags.yes && !autoMode) {
             const ok = await confirm({
               message: `Upload ${willUpload.length} session${willUpload.length === 1 ? "" : "s"} to ${endpoint.url}?`,
               default: true,
@@ -698,8 +709,15 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         } // end if (willUpload.length > 0)
       } // end if (uploadSessions)
 
-      // Context snapshots are no longer captured here — `frugl context` is the
-      // sole entry point for them. `upload` only ships AI coding sessions.
+      // When upload.auto is set in .frugl.json, treat upload as the full "sync"
+      // command: run snapshot automatically so context + MCP inventory stay fresh
+      // alongside the session data. Failure is non-fatal — it is printed but does
+      // not affect the upload's exit code.
+      if (autoMode && uploadConfig?.snapshot?.enabled !== false) {
+        const snapshotArgv: string[] = [];
+        if (flags.endpoint) snapshotArgv.push("--endpoint", flags.endpoint);
+        await this.config.runCommand("snapshot", snapshotArgv);
+      }
 
       // The payoff. The one place upload lets itself celebrate — a receipt that
       // makes the redaction story tangible: what was scrubbed on your machine,

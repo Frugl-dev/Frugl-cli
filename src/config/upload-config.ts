@@ -20,9 +20,14 @@ export const uploadConfigSchema = objectStrict({
     exclude: z.array(z.string().min(1)).optional(),
   }).optional(),
   upload: objectStrict({
+    enabled: z.boolean().optional(),
+    auto: z.boolean().optional(),
     concurrency: z.number().int().positive().optional(),
     linkPrs: z.boolean().optional(),
     org: z.string().min(1).optional(),
+  }).optional(),
+  snapshot: objectStrict({
+    enabled: z.boolean().optional(),
   }).optional(),
 });
 
@@ -67,6 +72,8 @@ function uploadConfigFromProject(config: ProjectConfig | null): UploadConfig | n
   const up = config.upload;
 
   const uploadBlock: NonNullable<UploadConfig["upload"]> = {
+    ...(up.enabled === false ? { enabled: false } : {}),
+    ...(up.auto ? { auto: up.auto } : {}),
     ...(up.concurrency !== undefined ? { concurrency: up.concurrency } : {}),
     ...(up.linkPrs !== undefined ? { linkPrs: up.linkPrs } : {}),
     ...(config.org !== undefined ? { org: config.org } : {}),
@@ -77,6 +84,7 @@ function uploadConfigFromProject(config: ProjectConfig | null): UploadConfig | n
     ...(up.providers ? { providers: up.providers } : {}),
     ...(up.projects ? { projects: up.projects } : {}),
     ...(Object.keys(uploadBlock).length > 0 ? { upload: uploadBlock } : {}),
+    ...(config.snapshot ? { snapshot: config.snapshot } : {}),
   };
 }
 

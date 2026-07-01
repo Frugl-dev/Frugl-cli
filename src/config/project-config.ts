@@ -42,6 +42,12 @@ export const projectConfigSchema = objectStrict({
   endpoint: z.url().optional(),
   org: z.string().min(1).optional(),
   upload: objectStrict({
+    // Set to false to disable upload for this repo (frugl upload exits immediately).
+    enabled: z.boolean().optional(),
+    // When true, skips the confirmation prompt and auto-runs snapshot after
+    // upload — equivalent to always passing --yes. Commit this in repos where
+    // non-interactive use (CI, hooks) is the norm.
+    auto: z.boolean().optional(),
     minCost: z.number().positive().optional(),
     snapshot: z.boolean().optional(),
     concurrency: z.number().int().positive().optional(),
@@ -51,6 +57,11 @@ export const projectConfigSchema = objectStrict({
       include: z.array(z.string().min(1)).optional(),
       exclude: z.array(z.string().min(1)).optional(),
     }).optional(),
+  }).optional(),
+  snapshot: objectStrict({
+    // Set to false to disable snapshot for this repo (frugl snapshot exits immediately
+    // and snapshot is skipped when upload.auto is true).
+    enabled: z.boolean().optional(),
   }).optional(),
 });
 
@@ -149,8 +160,10 @@ export function readProjectConfig(
   return result.data;
 }
 
-const MANAGED_TOP = new Set(["$schema", "version", "endpoint", "org", "upload"]);
+const MANAGED_TOP = new Set(["$schema", "version", "endpoint", "org", "upload", "snapshot"]);
 const MANAGED_UPLOAD = new Set([
+  "enabled",
+  "auto",
   "minCost",
   "snapshot",
   "concurrency",
@@ -198,11 +211,26 @@ function cleanProjects(projects: unknown): Record<string, unknown> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+// Build the cleaned `snapshot` block: only `enabled: false` is written (true is
+// the default and omitted). Unknown keys preserved. Returns undefined when empty.
+function cleanSnapshot(snapshot: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(snapshot)) return undefined;
+  const out: Record<string, unknown> = {};
+  if (snapshot["enabled"] === false) out["enabled"] = false;
+  for (const [k, v] of Object.entries(snapshot)) {
+    if (k === "enabled") continue;
+    out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 // Build the cleaned, fixed-order `upload` block: managed keys equal to their
 // default are omitted, unknown keys preserved. Returns undefined when empty.
 function cleanUpload(upload: unknown): Record<string, unknown> | undefined {
   if (!isPlainObject(upload)) return undefined;
   const out: Record<string, unknown> = {};
+  if (upload["enabled"] === false) out["enabled"] = false;
+  if (upload["auto"] === true) out["auto"] = true;
   if (typeof upload["minCost"] === "number" && upload["minCost"] !== DEFAULT_MIN_COST_USD) {
     out["minCost"] = upload["minCost"];
   }
@@ -247,6 +275,8 @@ function serialize(merged: Record<string, unknown>): string {
   if (typeof org === "string" && org !== "") out["org"] = org;
   const upload = cleanUpload(merged["upload"]);
   if (upload !== undefined) out["upload"] = upload;
+  const snapshot = cleanSnapshot(merged["snapshot"]);
+  if (snapshot !== undefined) out["snapshot"] = snapshot;
   // Unmanaged top-level keys preserved verbatim, after the managed ones.
   for (const [k, v] of Object.entries(merged)) {
     if (MANAGED_TOP.has(k)) continue;
@@ -282,6 +312,8 @@ export function writeProjectConfig(
   if (patch.org !== undefined) merged["org"] = patch.org;
   const upload = mergeUpload(base["upload"], patch.upload);
   if (upload !== undefined) merged["upload"] = upload;
+  if (patch.snapshot !== undefined)
+    merged["snapshot"] = { ...(base["snapshot"] as object), ...patch.snapshot };
 
   const next = serialize(merged);
   const current = existsSync(filePath) ? readFileSync(filePath, "utf8") : null;
