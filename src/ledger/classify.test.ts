@@ -90,6 +90,138 @@ describe("classify", () => {
     expect(second[0]?.kind).toBe("unchanged");
   });
 
+  it("stat fast path: unchanged file (same path+mtime+size) is not re-parsed", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://stat.test", userId: "u-stat" },
+      { cwd: tempHome },
+    );
+    const ref = makeRef("/abs/sess-stat.jsonl", 42, 100);
+    let parseCalls = 0;
+    const base = buildSource(new Map([["/abs/sess-stat.jsonl", [{ msg: "hi" }]]]));
+    const source: Source = {
+      ...base,
+      parse: async (r) => {
+        parseCalls += 1;
+        return base.parse(r);
+      },
+    };
+
+    const first = await classifyAll([ref], {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    const firstNew = first[0];
+    if (firstNew?.kind !== "new") throw new Error("expected new");
+    // Record the entry the way session-upload does — including the stat fields.
+    ledger.upsertEntry({
+      sessionId: firstNew.identity.sessionId,
+      contentHash: firstNew.anonymizationResult.contentHashHex,
+      lastUploadedAt: new Date().toISOString(),
+      manifestId: "m-1",
+      sourceFilePath: ref.absolutePath,
+      mtimeMs: ref.mtimeMs,
+      byteSizeOnDisk: ref.byteSizeOnDisk,
+      derivation: "native",
+      policyVersion: firstNew.anonymizationResult.policyVersion,
+    });
+    expect(parseCalls).toBe(1);
+
+    const second = await classifyAll([ref], {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    expect(second[0]?.kind).toBe("unchanged");
+    // The fast path short-circuited before any read/parse of the file.
+    expect(parseCalls).toBe(1);
+  });
+
+  it("stat fast path falls back to parse when mtime or size changed", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://stat2.test", userId: "u-stat2" },
+      { cwd: tempHome },
+    );
+    const source = buildSource(new Map([["/abs/sess-stat2.jsonl", [{ msg: "hi" }]]]));
+    const firstRef = makeRef("/abs/sess-stat2.jsonl", 42, 100);
+    const first = await classifyAll([firstRef], {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    const firstNew = first[0];
+    if (firstNew?.kind !== "new") throw new Error("expected new");
+    ledger.upsertEntry({
+      sessionId: firstNew.identity.sessionId,
+      contentHash: firstNew.anonymizationResult.contentHashHex,
+      lastUploadedAt: new Date().toISOString(),
+      manifestId: "m-1",
+      sourceFilePath: firstRef.absolutePath,
+      mtimeMs: firstRef.mtimeMs,
+      byteSizeOnDisk: firstRef.byteSizeOnDisk,
+      derivation: "native",
+      policyVersion: firstNew.anonymizationResult.policyVersion,
+    });
+
+    // A touched file (newer mtime) misses the stat fast path but, since the
+    // content hash is unchanged, still classifies as unchanged via Tier 1.
+    const touched = makeRef("/abs/sess-stat2.jsonl", 999, 100);
+    const second = await classifyAll([touched], {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    expect(second[0]?.kind).toBe("unchanged");
+  });
+
+  it("stat fast path is disabled when the recorded policy version is stale", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://stat3.test", userId: "u-stat3" },
+      { cwd: tempHome },
+    );
+    const ref = makeRef("/abs/sess-stat3.jsonl", 42, 100);
+    let parseCalls = 0;
+    const base = buildSource(new Map([["/abs/sess-stat3.jsonl", [{ msg: "hi" }]]]));
+    const source: Source = {
+      ...base,
+      parse: async (r) => {
+        parseCalls += 1;
+        return base.parse(r);
+      },
+    };
+
+    const first = await classifyAll([ref], {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    const firstNew = first[0];
+    if (firstNew?.kind !== "new") throw new Error("expected new");
+    // Record a matching stat + current content hash but a STALE policy version.
+    ledger.upsertEntry({
+      sessionId: firstNew.identity.sessionId,
+      contentHash: firstNew.anonymizationResult.contentHashHex,
+      lastUploadedAt: new Date().toISOString(),
+      manifestId: "m-1",
+      sourceFilePath: ref.absolutePath,
+      mtimeMs: ref.mtimeMs,
+      byteSizeOnDisk: ref.byteSizeOnDisk,
+      derivation: "native",
+      policyVersion: "v0.0-ancient",
+    });
+    const before = parseCalls;
+
+    const second = await classifyAll([ref], {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    // Fast path refused (stale policy) so the file was re-parsed; the content
+    // hash (current policy) still matches, so it lands as unchanged via Tier 1.
+    expect(parseCalls).toBe(before + 1);
+    expect(second[0]?.kind).toBe("unchanged");
+  });
+
   it("stays unchanged across runs with different uploadIds (deterministic hash)", async () => {
     const ledger = new Ledger(
       { endpointUrl: "https://salt.test", userId: "u-salt" },

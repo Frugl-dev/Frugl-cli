@@ -63,6 +63,41 @@ describe("Ledger", () => {
     expect(fresh.read().entries).toEqual({});
   });
 
+  it("migrates an older-version store forward without losing entries", () => {
+    const ledger = new Ledger({ endpointUrl: "https://a.test", userId: "u3b" }, { cwd: tempHome });
+    ledger.upsertEntry(makeEntry("s1"));
+    const filePath = ledger.path;
+
+    // Simulate a v1 store: older version stamp, entries lacking the v2 stat fields.
+    const raw = JSON.parse(readFileSync(filePath, "utf8")) as { data: { schemaVersion: number } };
+    raw.data.schemaVersion = 1;
+    writeFileSync(filePath, JSON.stringify(raw));
+
+    const fresh = new Ledger({ endpointUrl: "https://a.test", userId: "u3b" }, { cwd: tempHome });
+    expect(Object.keys(fresh.read().entries)).toEqual(["s1"]);
+    // The migration re-stamps the version so the next read hits the fast path.
+    const restamped = JSON.parse(readFileSync(filePath, "utf8")) as {
+      data: { schemaVersion: number };
+    };
+    expect(restamped.data.schemaVersion).toBe(2);
+  });
+
+  it("builds a stat index only from entries that recorded a source path", () => {
+    const ledger = new Ledger({ endpointUrl: "https://a.test", userId: "u3c" }, { cwd: tempHome });
+    ledger.upsertEntry(makeEntry("s1")); // no stat fields
+    ledger.upsertEntry({
+      ...makeEntry("s2"),
+      sourceFilePath: "/tmp/s2.jsonl",
+      mtimeMs: 123,
+      byteSizeOnDisk: 456,
+      derivation: "native",
+    });
+
+    const index = ledger.buildStatIndex();
+    expect([...index.keys()]).toEqual(["/tmp/s2.jsonl"]);
+    expect(index.get("/tmp/s2.jsonl")?.sessionId).toBe("s2");
+  });
+
   it("upsertMany applies all entries atomically", () => {
     const ledger = new Ledger({ endpointUrl: "https://a.test", userId: "u4" }, { cwd: tempHome });
     ledger.upsertMany([makeEntry("s1"), makeEntry("s2"), makeEntry("s3")]);

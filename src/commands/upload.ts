@@ -1177,6 +1177,8 @@ async function buildJobsForSource(
       identityDerivation: item.identity.derivation,
       formatVersion: source.formatVersion,
       sourceFilePath: item.ref.absolutePath,
+      mtimeMs: item.ref.mtimeMs,
+      byteSizeOnDisk: item.ref.byteSizeOnDisk,
       anonymizationResult: item.anonymizationResult,
       rawContentHashAtFirstRun: raw,
       tier,
