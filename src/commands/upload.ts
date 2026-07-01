@@ -390,15 +390,22 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             // auto:true means the .frugl.json IS the project declaration — scope
             // strictly to the directory that contains it. upload.projects globs are
             // superseded; each repo opts in by having its own .frugl.json.
+            // upload.providers defaults to all supported but can restrict the set.
+            const supportedIds = supportedDetected.map((d) => d.descriptor.id);
+            const providerIds = uploadConfig.providers
+              ? supportedIds.filter((id) => uploadConfig.providers!.includes(id))
+              : supportedIds;
+            const providerSet = new Set(providerIds);
             const configDir = findProjectConfigDir();
-            const scopedGroups = configDir
-              ? groups.filter(
-                  (g) =>
-                    g.displayName === configDir || g.displayName.startsWith(configDir + path.sep),
-                )
-              : groups;
+            const scopedGroups = groups.filter(
+              (g) =>
+                providerSet.has(g.providerId) &&
+                (!configDir ||
+                  g.displayName === configDir ||
+                  g.displayName.startsWith(configDir + path.sep)),
+            );
             selection = {
-              providerIds: supportedDetected.map((d) => d.descriptor.id),
+              providerIds,
               projectIds: scopedGroups.map((g) => g.projectId),
             };
           } else {
