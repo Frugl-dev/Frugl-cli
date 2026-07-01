@@ -102,6 +102,82 @@ runs** (CI, pipes, `--format json`/`minimal`); pass `--handoff` to opt in there,
 to keep it out of any printed output (shared or recorded terminals). If the link
 has expired, the web login returns you to the same dashboard page afterwards.
 
+## Project config (`.frugl.json`)
+
+Commit a `.frugl.json` at the root of a repo to lock in upload and snapshot
+settings for everyone who works there — no flags, no prompts, no per-developer
+setup beyond `frugl login`.
+
+```json
+{
+  "$schema": "https://app.frugl.dev/schema/frugl.v1.json",
+  "version": 1,
+  "org": "acme",
+  "upload": {
+    "auto": true
+  }
+}
+```
+
+Run `frugl init` to create this file interactively (auth → org → first upload →
+snapshot, all in one step).
+
+### `upload.auto`
+
+Set to `true` to make `frugl upload` fully non-interactive — equivalent to
+always passing `--yes`. When active:
+
+- Sessions are scanned **only in the repo containing the `.frugl.json`**, not
+  across the whole machine. The nearest config file wins when configs are nested.
+- Provider and project selection prompts are skipped entirely.
+- A snapshot runs automatically after the upload completes.
+
+```json
+{ "upload": { "auto": true } }
+```
+
+### `upload.providers`
+
+Restrict which AI providers are scanned. Omit the key to include all
+supported providers (the default); set it to limit to a specific subset.
+
+```json
+{ "upload": { "auto": true, "providers": ["claude-code"] } }
+```
+
+Supported provider ids: `claude-code`, `codex`, `cursor`, `gemini`.
+
+### `upload.enabled` / `snapshot.enabled`
+
+Set either to `false` to disable that command for this repo. `frugl upload`
+or `frugl snapshot` will exit immediately with a clear message rather than
+uploading anything. Both default to `true` and are omitted from the file
+when not explicitly set.
+
+```json
+{
+  "upload": { "enabled": false },
+  "snapshot": { "enabled": false }
+}
+```
+
+### Full reference
+
+| Key                  | Type     | Default | Effect                                                                         |
+| -------------------- | -------- | ------- | ------------------------------------------------------------------------------ |
+| `org`                | string   | —       | Org slug to upload to. Set by `frugl init`.                                    |
+| `upload.auto`        | boolean  | `false` | Non-interactive mode: skip all prompts, scope to this repo, auto-run snapshot. |
+| `upload.enabled`     | boolean  | `true`  | Set to `false` to disable `frugl upload` for this repo.                        |
+| `upload.providers`   | string[] | all     | Restrict which providers are scanned. Omit for all supported.                  |
+| `upload.minCost`     | number   | `10`    | Skip sessions whose estimated cost is below this USD amount.                   |
+| `upload.concurrency` | number   | `4`     | Per-session upload concurrency.                                                |
+| `upload.linkPrs`     | boolean  | `false` | Attach credential-stripped git context so sessions link to PRs.                |
+| `snapshot.enabled`   | boolean  | `true`  | Set to `false` to disable `frugl snapshot` for this repo.                      |
+
+Keys equal to their default are omitted when the file is written. The schema
+is validated on every read — a typo (e.g. `uplaod`) is a hard error, not a
+silent no-op.
+
 ## Continuous uploads (Claude Code hook)
 
 Don't want to remember to run `frugl upload`? Install a Claude Code hook that
