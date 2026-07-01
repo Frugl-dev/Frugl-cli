@@ -19,6 +19,10 @@ export interface SessionUploadJob {
   identityDerivation: "native" | "path-hash";
   formatVersion: string;
   sourceFilePath: string;
+  // SessionRef stat captured at classification time, recorded in the ledger so a
+  // later run can skip re-parsing an unchanged file (classify.ts stat fast path).
+  mtimeMs: number;
+  byteSizeOnDisk: number;
   anonymizationResult: AnonymizationResult;
   rawContentHashAtFirstRun: string;
   // Opt-in (005) git coordinate, attached as manifest metadata only — never part
@@ -116,6 +120,12 @@ export class SessionUpload {
         contentHash: job.anonymizationResult.contentHashHex,
         lastUploadedAt: now,
         manifestId,
+        // Stat fast-path inputs for the next run's classification (classify.ts).
+        sourceFilePath: job.sourceFilePath,
+        mtimeMs: job.mtimeMs,
+        byteSizeOnDisk: job.byteSizeOnDisk,
+        derivation: job.identityDerivation,
+        policyVersion: job.anonymizationResult.policyVersion,
       });
       reporter.sessionAcked({ manifestId, sessionId: entry.sessionId });
       return { kind: "acked", sessionId: entry.sessionId };

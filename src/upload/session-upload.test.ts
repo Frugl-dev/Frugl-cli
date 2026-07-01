@@ -72,6 +72,8 @@ describe("SessionUpload", () => {
       identityDerivation: "native",
       formatVersion: "claude-jsonl-2026-04",
       sourceFilePath: filePath,
+      mtimeMs: 0,
+      byteSizeOnDisk: text.length,
       anonymizationResult: fakeAnonResult(text),
       rawContentHashAtFirstRun: createHash("sha256").update(text).digest("hex"),
     };

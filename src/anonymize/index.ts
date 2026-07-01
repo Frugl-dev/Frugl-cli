@@ -84,6 +84,19 @@ function walk(
   return value;
 }
 
+// Deterministic change-detection hash over the RAW input plus policy version.
+// Independent of the per-run uploadId (which salts pseudonyms), so unchanged
+// content hashes identically across uploads; a policy bump forces a re-upload.
+// Crucially this does NOT run the redaction walk, so the ledger can decide
+// unchanged/updated cheaply without anonymizing. See classify.ts.
+export function contentHash(input: unknown, policyVersion: string = POLICY_VERSION): string {
+  return createHash("sha256")
+    .update(policyVersion)
+    .update("\n")
+    .update(JSON.stringify(input))
+    .digest("hex");
+}
+
 export function anonymize(input: unknown, opts: AnonymizeOptions): AnonymizationResult {
   if (!opts.uploadId) {
     throw new AnonymizationError("uploadId is required for anonymization");
@@ -113,11 +126,7 @@ export function anonymize(input: unknown, opts: AnonymizeOptions): Anonymization
   // Hash the raw input (pre-redaction) plus the policy version. This is
   // independent of the per-run uploadId, so identical content yields an
   // identical hash across uploads; a policy bump still forces a re-upload.
-  const contentHashHex = createHash("sha256")
-    .update(policyVersion)
-    .update("\n")
-    .update(JSON.stringify(input))
-    .digest("hex");
+  const contentHashHex = contentHash(input, policyVersion);
   return {
     payload,
     redactionsByCategory: counts,
