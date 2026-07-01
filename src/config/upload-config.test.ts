@@ -142,6 +142,42 @@ describe("loadUploadConfig — .frugl.json#upload precedence (spec 007)", () => 
     const config = loadUploadConfig({ explicitPath: explicit });
     expect(config?.providers).toEqual(["cursor"]);
   });
+
+  it("carries upload.auto from .frugl.json into UploadConfig", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme", upload: { auto: true } }));
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    expect(config?.upload?.auto).toBe(true);
+  });
+
+  it("carries upload.enabled:false from .frugl.json into UploadConfig", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme", upload: { enabled: false } }));
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    expect(config?.upload?.enabled).toBe(false);
+  });
+
+  it("carries snapshot.enabled:false from .frugl.json into UploadConfig", () => {
+    const dir = makeTmp();
+    writeProjectFile(
+      dir,
+      JSON.stringify({
+        version: 1,
+        org: "acme",
+        upload: { auto: true },
+        snapshot: { enabled: false },
+      }),
+    );
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    expect(config?.snapshot?.enabled).toBe(false);
+  });
+
+  it("snapshot block is absent from UploadConfig when not set in .frugl.json", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme", upload: { auto: true } }));
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    expect(config?.snapshot).toBeUndefined();
+  });
 });
 
 function provider(id: "claude" | "cursor", supported: boolean): DetectedProvider {

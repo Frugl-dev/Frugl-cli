@@ -112,6 +112,19 @@ export function readMergeableConfig(filePath: string): Record<string, unknown> |
   return parsed as Record<string, unknown>;
 }
 
+// Return the directory that contains the nearest `.frugl.json`, using the same
+// discovery order as readProjectConfig. Used by upload to scope auto-mode to the
+// repo that owns the config rather than the whole machine.
+export function findProjectConfigDir(
+  startDir: string = process.cwd(),
+  home: string = homedir(),
+): string | null {
+  const override = process.env["FRUGL_CONFIG"]?.trim();
+  if (override) return existsSync(override) ? dirname(override) : null;
+  const file = findNearest(startDir, home);
+  return file ? dirname(file) : null;
+}
+
 // Load and validate the nearest `.frugl.json`, walking cwd → git-root/$HOME.
 // `FRUGL_CONFIG` overrides discovery with an explicit path. FAIL-CLOSED
 // (FR-011): present-but-malformed JSON or a schema violation THROWS UsageError

@@ -74,6 +74,7 @@ import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
 import { getLinkPrs, recordPendingAuthFailure, clearPendingAuthFailure } from "../lib/config.js";
 import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
+import { findProjectConfigDir } from "../config/project-config.js";
 import {
   resolveDebug,
   resolveOutputMode,
@@ -375,8 +376,8 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         if (uploadConfig) {
           // Config-driven scope: derive all supported providers' projects, then
-          // filter by the config's providers + project include/exclude globs. No
-          // picker, so only the config-selected refs are parsed.
+          // either scope to the .frugl.json directory (auto mode) or filter by the
+          // config's providers + project include/exclude globs. No picker either way.
           for (const d of supportedDetected) {
             const descriptor = getProvider(d.descriptor.id);
             if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
@@ -384,7 +385,25 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             const providerRefs = await descriptor.source.discover(discoverOpts);
             groups.push(...descriptor.deriveProjects(providerRefs));
           }
-          selection = resolveConfigSelection(uploadConfig, detected, groups);
+
+          if (autoMode) {
+            // auto:true means the .frugl.json IS the project declaration — scope
+            // strictly to the directory that contains it. upload.projects globs are
+            // superseded; each repo opts in by having its own .frugl.json.
+            const configDir = findProjectConfigDir();
+            const scopedGroups = configDir
+              ? groups.filter(
+                  (g) =>
+                    g.displayName === configDir || g.displayName.startsWith(configDir + path.sep),
+                )
+              : groups;
+            selection = {
+              providerIds: supportedDetected.map((d) => d.descriptor.id),
+              projectIds: scopedGroups.map((g) => g.projectId),
+            };
+          } else {
+            selection = resolveConfigSelection(uploadConfig, detected, groups);
+          }
           allClassifications = await classifyRefs(applySelection(groups, selection));
         } else {
           // 2) Choose providers — interactive picker, or auto-select-all when not.
