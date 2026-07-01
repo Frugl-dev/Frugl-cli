@@ -79,6 +79,71 @@ describe("loadUploadConfig", () => {
   });
 });
 
+function writeProjectFile(dir: string, contents: string): void {
+  writeFileSync(path.join(dir, ".frugl.json"), contents);
+}
+
+describe("loadUploadConfig — .frugl.json#upload precedence (spec 007)", () => {
+  it("reads the .frugl.json upload block in preference to frugl.config.json", () => {
+    const dir = makeTmp();
+    // Both files present: the canonical .frugl.json wins.
+    writeProjectFile(
+      dir,
+      JSON.stringify({
+        version: 1,
+        org: "acme",
+        upload: {
+          concurrency: 8,
+          linkPrs: true,
+          providers: ["claude-code"],
+          projects: { include: ["~/work/**"] },
+        },
+      }),
+    );
+    writeConfig(dir, JSON.stringify({ schemaVersion: 1, providers: ["cursor"] }));
+
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    expect(config?.providers).toEqual(["claude-code"]);
+    expect(config?.projects?.include).toEqual(["~/work/**"]);
+    expect(config?.upload?.concurrency).toBe(8);
+    expect(config?.upload?.linkPrs).toBe(true);
+    // The top-level org is carried into UploadConfig.upload.org.
+    expect(config?.upload?.org).toBe("acme");
+  });
+
+  it("falls back to frugl.config.json when .frugl.json has no upload block", () => {
+    const dir = makeTmp();
+    // .frugl.json carries only an org/endpoint, no upload scope.
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme" }));
+    writeConfig(dir, JSON.stringify({ schemaVersion: 1, providers: ["cursor"] }));
+
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    expect(config?.providers).toEqual(["cursor"]);
+  });
+
+  it("fails closed on a malformed .frugl.json", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, "{ not json ");
+    expect(() => loadUploadConfig({ cwd: dir, home: dir })).toThrow(UsageError);
+  });
+
+  it("tolerates a legacy endpoint-only pin (no version) — falls through, no throw", () => {
+    const dir = makeTmp();
+    // Pre-v1 self-host pin: only `endpoint`, no `version`. Must NOT break upload.
+    writeProjectFile(dir, JSON.stringify({ endpoint: "https://frugl.internal" }));
+    expect(loadUploadConfig({ cwd: dir, home: dir })).toBeNull();
+  });
+
+  it("still honors an explicit --config path pointing at frugl.config.json", () => {
+    const dir = makeTmp();
+    // Even with a .frugl.json present, an explicit --config wins as before.
+    writeProjectFile(dir, JSON.stringify({ version: 1, upload: { providers: ["claude-code"] } }));
+    const explicit = writeConfig(dir, JSON.stringify({ schemaVersion: 1, providers: ["cursor"] }));
+    const config = loadUploadConfig({ explicitPath: explicit });
+    expect(config?.providers).toEqual(["cursor"]);
+  });
+});
+
 function provider(id: "claude" | "cursor", supported: boolean): DetectedProvider {
   return { descriptor: { id, displayName: id, supported } } as unknown as DetectedProvider;
 }

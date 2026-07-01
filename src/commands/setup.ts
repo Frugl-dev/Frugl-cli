@@ -1,32 +1,6 @@
 import { Command, Flags } from "@oclif/core";
-import { input, password, select } from "@inquirer/prompts";
-import { AuthService } from "../auth/auth-service.js";
-import { cloudIdentityClient } from "../auth/identity-client.js";
-import { getCliVersion } from "../lib/cli-version.js";
 import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
-import type { OrgSetupAction } from "../org/setup.js";
-import { runOrgSetupFlow } from "../org/flow.js";
-import {
-  makeOrgSetupPrompts,
-  renderOrgSetupResult,
-  type OrgSetupPresentation,
-} from "../org/presenter.js";
-import { deriveSlug } from "../org/slug.js";
-
-async function promptCode(): Promise<string> {
-  const code = await input({
-    message: "Invite code:",
-    validate: (v) => v.trim().length > 0 || "Enter an invite code",
-  });
-  return code.trim();
-}
-
-function promptName(): Promise<string> {
-  return input({
-    message: "Organization name (try a different one):",
-    validate: (v) => (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-  });
-}
+import { runAuthAndOrgSetup } from "../org/onboard.js";
 
 function label(outcome: "existing" | "created" | "joined"): string {
   return outcome === "existing" ? "org" : outcome === "created" ? "org (created)" : "org (joined)";
@@ -52,121 +26,47 @@ export default class Setup extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Setup);
     // "optional": reuse a saved session when present (client token pre-set);
-    // otherwise session is null and we run the OTP flow + setToken below.
-    const {
-      mode,
-      endpoint,
-      client,
-      session: existing,
-    } = await buildCommandContext(flags, {
+    // otherwise session is null and runAuthAndOrgSetup runs the OTP flow.
+    const { mode, endpoint, client, session } = await buildCommandContext(flags, {
       auth: "optional",
     });
 
-    // AuthService owns the OTP flow when there's no saved session.
-    const auth = new AuthService({
-      endpointUrl: endpoint.url,
-      identity: cloudIdentityClient({
-        endpointUrl: endpoint.url,
-        endpointExplicit: endpoint.resolvedFrom !== "default",
-        cliVersion: getCliVersion(),
-      }),
-    });
-
     try {
-      // Step 1: Auth — reuse saved session or do OTP flow.
-      let session = existing;
-      if (!session) {
-        let email = flags.email;
-        if (!email) {
-          email = await input({
-            message: "Email:",
-            validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || "Enter a valid email address",
-          });
-        }
-        await auth.startLogin(email);
-        const code = await password({
-          message: "6-digit code from email:",
-          mask: "*",
-          validate: (v) => /^\d{6}$/.test(v) || "Code must be 6 digits",
-        });
-        session = await auth.completeLogin(email, code);
-      }
-      client.setToken(session.token);
-
-      // Step 2: Org setup — the flow handles slug conflicts and bad codes.
-      let orgAction: OrgSetupAction;
-
-      if (flags["invite-code"]) {
-        orgAction = { action: "join", code: flags["invite-code"] };
-      } else if (flags["org-name"]) {
-        const name = flags["org-name"];
-        orgAction = { action: "create", name, slug: deriveSlug(name) };
-      } else {
-        const choice = await select({
-          message: "Set up your organization:",
-          choices: [
-            { name: "Create a new organization", value: "create" },
-            { name: "Join an existing organization with an invite code", value: "join" },
-          ],
-        });
-
-        if (choice === "create") {
-          const name = await input({
-            message: "Organization name:",
-            validate: (v) =>
-              (v.trim().length > 0 && v.length <= 80) || "Name must be 1–80 characters",
-          });
-          orgAction = { action: "create", name, slug: deriveSlug(name) };
-        } else {
-          const code = await input({
-            message: "Invite code:",
-            validate: (v) => v.trim().length > 0 || "Enter an invite code",
-          });
-          orgAction = { action: "join", code: code.trim() };
-        }
-      }
-
-      // The flow handles slug conflicts and bad codes; each handler reprompts
-      // for the field that failed, then the flow retries. setup reprompts in
-      // both modes (it has no pre-flow JSON guard), so the prompts are built in
-      // text mode regardless of the output mode used for rendering.
-      const email = session.email;
-      const spec: OrgSetupPresentation = {
-        command: "setup",
-        reprompt: { name: promptName, code: promptCode },
-        messages: {
-          slugTaken: (suggestion) => ({
-            warn: `frugl: That slug is already taken. Suggested alternative: ${suggestion}`,
-            abort: `frugl: That slug is already taken. Suggested alternative: ${suggestion}`,
-          }),
-          invalidCode: {
-            warn: "frugl: Invite code not found. Check the code and try again.",
-            abort: "frugl: Invite code not found. Check the code and try again.",
-          },
-          expiredCode: {
-            warn: "frugl: That invite code has expired or been used up.",
-            abort: "frugl: That invite code has expired or been used up.",
-          },
+      // The auth + create/join flow now lives in one shared helper (FR-003).
+      // `setup` pins reprompts to "default" — it always reprompts on a slug/code
+      // conflict, even under --format json — keeping its pre-extraction behavior.
+      const { session: authed, orgResult } = await runAuthAndOrgSetup({
+        endpoint,
+        client,
+        mode,
+        existingSession: session,
+        flags: {
+          email: flags.email,
+          orgName: flags["org-name"],
+          inviteCode: flags["invite-code"],
         },
-        render: {
-          text: (r) => {
-            const outcome = r.status === "already-setup" ? "existing" : r.status;
-            return `Setup complete · ${email} · ${label(outcome)}: ${r.orgName}\n`;
-          },
-          json: (r) => ({
+        command: "setup",
+        repromptMode: "default",
+      });
+
+      const email = authed.email;
+      const outcome = orgResult.status === "already-setup" ? "existing" : orgResult.status;
+      if (mode === "json") {
+        process.stdout.write(
+          `${JSON.stringify({
             command: "setup",
             ok: true,
             email,
-            orgName: r.orgName,
-            slug: r.slug,
-            outcome: r.status === "already-setup" ? "existing" : r.status,
-          }),
-        },
-      };
-
-      const result = await runOrgSetupFlow(client, orgAction, makeOrgSetupPrompts(spec, "default"));
-      renderOrgSetupResult(result, spec, mode);
-      return;
+            orgName: orgResult.orgName,
+            slug: orgResult.slug,
+            outcome,
+          })}\n`,
+        );
+      } else {
+        process.stdout.write(
+          `Setup complete · ${email} · ${label(outcome)}: ${orgResult.orgName}\n`,
+        );
+      }
     } catch (err) {
       handleCommandError(err, mode);
     }
