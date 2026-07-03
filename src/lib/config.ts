@@ -21,12 +21,35 @@ export const pendingAuthFailureSchema = z.object({
 });
 export type PendingAuthFailure = z.infer<typeof pendingAuthFailureSchema>;
 
+// The server refused the last upload because the org is blocked (seat revoked,
+// trial expired, over quota — spec 060). Hook-triggered runs honor this as a
+// local verdict cache so a de-seated user's machine doesn't re-do discovery +
+// anonymization on every session end just to be refused again. TTL'd (`until`)
+// so a re-seated user resumes within a day even with zero interactive runs;
+// any successful upload clears it immediately.
+export const uploadBlockSchema = z.object({
+  endpoint: z.string().url(),
+  until: z.string().datetime(),
+});
+export type UploadBlock = z.infer<typeof uploadBlockSchema>;
+
+// When `frugl hook run` last spawned a background upload. Codex's notify fires
+// per TURN (not per session), so without a cooldown a chatty session would
+// spawn an upload sweep every few seconds.
+export const hookSpawnStampSchema = z.object({
+  endpoint: z.string().url(),
+  at: z.string().datetime(),
+});
+export type HookSpawnStamp = z.infer<typeof hookSpawnStampSchema>;
+
 export const fruglConfigSchema = z.object({
   schemaVersion: z.literal(CONFIG_SCHEMA_VERSION),
   linkPrs: z.boolean(),
   // Optional so configs written before these fields existed still validate.
   lastLoginMethod: loginMethodSchema.optional(),
   pendingAuthFailure: pendingAuthFailureSchema.optional(),
+  uploadBlocked: uploadBlockSchema.optional(),
+  lastHookSpawn: hookSpawnStampSchema.optional(),
   // The API endpoint persisted at the last successful `frugl login`. Lets the
   // installed binary keep targeting a non-default stack (e.g. a local dev
   // server) without re-passing --endpoint/FRUGL_ENDPOINT every command. An
@@ -105,6 +128,40 @@ export function clearPendingAuthFailure(endpoint: string, options: ConfigStoreOp
   if (current?.endpoint === endpoint) {
     writeConfig({ pendingAuthFailure: undefined }, options);
   }
+}
+
+// How long a server-side "org blocked" verdict is trusted locally before a
+// hook-triggered upload re-checks with the server.
+export const UPLOAD_BLOCK_TTL_MS = 12 * 60 * 60 * 1000;
+
+export function getUploadBlocked(options: ConfigStoreOptions = {}): UploadBlock | undefined {
+  return readConfig(options).uploadBlocked;
+}
+
+export function recordUploadBlocked(endpoint: string, options: ConfigStoreOptions = {}): void {
+  const until = new Date(Date.now() + UPLOAD_BLOCK_TTL_MS).toISOString();
+  writeConfig({ uploadBlocked: { endpoint, until } }, options);
+}
+
+// Endpoint-scoped clear, mirroring clearPendingAuthFailure: unblocking on
+// endpoint A must never silence a verdict recorded against endpoint B.
+export function clearUploadBlocked(endpoint: string, options: ConfigStoreOptions = {}): void {
+  const current = readConfig(options).uploadBlocked;
+  if (current?.endpoint === endpoint) {
+    writeConfig({ uploadBlocked: undefined }, options);
+  }
+}
+
+export function getLastHookSpawn(options: ConfigStoreOptions = {}): HookSpawnStamp | undefined {
+  return readConfig(options).lastHookSpawn;
+}
+
+export function recordLastHookSpawn(
+  endpoint: string,
+  at: Date,
+  options: ConfigStoreOptions = {},
+): void {
+  writeConfig({ lastHookSpawn: { endpoint, at: at.toISOString() } }, options);
 }
 
 // The endpoint remembered from the last successful login (see schema comment).

@@ -178,20 +178,37 @@ Keys equal to their default are omitted when the file is written. The schema
 is validated on every read — a typo (e.g. `uplaod`) is a hard error, not a
 silent no-op.
 
-## Continuous uploads (Claude Code hook)
+## Continuous uploads (session hooks)
 
-Don't want to remember to run `frugl upload`? Install a Claude Code hook that
-fires a headless upload every time a session ends:
+Don't want to remember to run `frugl upload`? Install session hooks that fire a
+headless upload every time an AI coding session ends. `frugl hook install`
+wires up every tool it detects on your machine — Claude Code (`SessionEnd`),
+Codex CLI (`notify`), Gemini CLI (`SessionEnd`), and Cursor (`stop`):
 
 ```bash
-frugl hook install            # writes ./.claude/settings.json (this project)
-frugl hook install --global   # writes ~/.claude/settings.json (everywhere)
-frugl hook status             # show whether the hook is installed
-frugl hook uninstall          # remove it
+frugl hook install                     # this project, every detected tool
+frugl hook install --global           # whole machine (~/.claude, ~/.codex, …)
+frugl hook install --providers claude,cursor   # just these tools
+frugl hook status                      # per-tool install state
+frugl hook uninstall                   # remove Frugl's entries everywhere
 ```
 
-The hook runs the same local anonymizer as a manual upload. It needs a token
-available headlessly — `frugl setup` first.
+Every hook runs `frugl hook run`, a fast preflight that immediately detaches
+the real upload — the editor never waits on the network. It always exits 0 and
+knows when an upload would be pointless:
+
+- **Not logged in** → silent no-op. Hooks can be rolled out fleet-wide (even by
+  MDM/managed settings); nothing is scanned or uploaded on a machine until that
+  user runs `frugl login`.
+- **Org blocked** (seat revoked, trial expired) → the verdict is cached for 12
+  hours so session ends stay free; a successful login or upload clears it.
+- **Cooldown** → triggers within 2 minutes of a spawned upload are collapsed
+  into it (one sweep uploads every provider's pending sessions anyway).
+
+The detached upload runs the same local anonymizer as a manual one, and honors
+a committed `.frugl.json` endpoint pin. Uploads need a token available
+headlessly — `frugl login` (or `FRUGL_TOKEN`) first; installing before logging
+in is fine, the hooks just stay dormant.
 
 ## Organizations
 

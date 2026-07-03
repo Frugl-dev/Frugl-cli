@@ -8,23 +8,24 @@ import {
   uninstallSettingsHook,
 } from "./settings-hooks.js";
 
-// Claude Code: hooks live in `.claude/settings.json` (project) or
-// `~/.claude/settings.json` (global) under the SessionEnd event, which fires
-// once when a session terminates.
+// Gemini CLI: same hooks shape as Claude Code, in `.gemini/settings.json`
+// (project) or `~/.gemini/settings.json` (global), under SessionEnd. Gemini runs
+// hooks SYNCHRONOUSLY with a 60s default timeout — safe only because our entry
+// is `frugl hook run`, which detaches the real upload and exits immediately.
 
-const LABEL = "Claude Code settings";
+const LABEL = "Gemini CLI settings";
 const SESSION_END_EVENT = "SessionEnd";
 
-export function settingsPath(scope: HookScope, opts: HookFsOptions = {}): string {
+function settingsPath(scope: HookScope, opts: HookFsOptions = {}): string {
   const base = scope === "global" ? (opts.home ?? homedir()) : (opts.cwd ?? process.cwd());
-  return path.join(base, ".claude", "settings.json");
+  return path.join(base, ".gemini", "settings.json");
 }
 
-export const claudeHookProvider: HookProvider = {
-  id: "claude",
-  displayName: "Claude Code",
+export const geminiHookProvider: HookProvider = {
+  id: "gemini",
+  displayName: "Gemini CLI",
   supportsProjectScope: true,
-  detect: (opts = {}) => existsSync(path.join(opts.home ?? homedir(), ".claude")),
+  detect: (opts = {}) => existsSync(path.join(opts.home ?? homedir(), ".gemini")),
   configPath: settingsPath,
   isInstalled: (scope, opts = {}) =>
     settingsHookInstalled(settingsPath(scope, opts), SESSION_END_EVENT, LABEL),
