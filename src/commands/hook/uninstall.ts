@@ -1,11 +1,13 @@
 import { Command, Flags } from "@oclif/core";
-import { uninstallHook, type HookScope } from "../../hook/claude-code.js";
-import { resolveOutputMode, FORMAT_FLAG } from "../../lib/output-mode.js";
+import type { HookFsOptions, HookScope } from "../../hook/provider.js";
+import { HOOK_PROVIDERS } from "../../hook/registry.js";
 import { isFruglError, printFruglError } from "../../lib/errors.js";
+import { resolveOutputMode, FORMAT_FLAG } from "../../lib/output-mode.js";
 import { color, symbol } from "../../lib/theme.js";
 
 export default class HookUninstall extends Command {
-  static override description = "Remove the Frugl upload hook from Claude Code settings.";
+  static override description =
+    "Remove the Frugl upload hook from every tool's config (Claude Code, Codex, Gemini, Cursor).";
 
   static override examples = [
     "<%= config.bin %> <%= command.id %>",
@@ -14,7 +16,7 @@ export default class HookUninstall extends Command {
 
   static override flags = {
     global: Flags.boolean({
-      description: "Operate on ~/.claude/settings.json instead of ./.claude/settings.json.",
+      description: "Operate on the tools' user-level config instead of the project's.",
     }),
     format: FORMAT_FLAG,
   };
@@ -23,21 +25,32 @@ export default class HookUninstall extends Command {
     const { flags } = await this.parse(HookUninstall);
     const mode = resolveOutputMode({ format: flags.format });
     const scope: HookScope = flags.global ? "global" : "project";
+    const homeDir = process.env["FRUGL_HOME_DIR"];
+    const fsOpts: HookFsOptions = homeDir === undefined ? {} : { home: homeDir };
 
     try {
-      const { path: file, removed } = uninstallHook(scope);
+      // Sweep every provider regardless of detection — an uninstall should
+      // remove our entries wherever a past install put them.
+      const providers = HOOK_PROVIDERS.map((p) => {
+        const effectiveScope: HookScope = p.supportsProjectScope ? scope : "global";
+        const result = p.uninstall(effectiveScope, fsOpts);
+        return { id: p.id, displayName: p.displayName, ...result };
+      });
+
       if (mode === "json") {
         process.stdout.write(
-          `${JSON.stringify({ command: "hook uninstall", ok: true, path: file, removed, scope })}\n`,
+          `${JSON.stringify({ command: "hook uninstall", ok: true, scope, providers })}\n`,
         );
         return;
       }
-      if (removed) {
+      const removed = providers.filter((p) => p.removed);
+      for (const p of removed) {
         process.stdout.write(
-          `${color.ok(`${symbol.tick} Removed Frugl hook`)}  ${color.dim(`(${scope}: ${file})`)}\n`,
+          `${color.ok(`${symbol.tick} ${p.displayName}`)}  ${color.dim(`hook removed (${p.path})`)}\n`,
         );
-      } else {
-        process.stdout.write(color.dim(`No Frugl hook was installed (${scope}).\n`));
+      }
+      if (removed.length === 0) {
+        process.stdout.write(color.dim(`No Frugl hooks were installed (${scope}).\n`));
       }
     } catch (err) {
       if (isFruglError(err)) process.exit(printFruglError(err, mode));

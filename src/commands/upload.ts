@@ -72,7 +72,13 @@ import {
 } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { getCliVersion } from "../lib/cli-version.js";
-import { getLinkPrs, recordPendingAuthFailure, clearPendingAuthFailure } from "../lib/config.js";
+import {
+  getLinkPrs,
+  recordPendingAuthFailure,
+  clearPendingAuthFailure,
+  recordUploadBlocked,
+  clearUploadBlocked,
+} from "../lib/config.js";
 import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
 import { findProjectConfigDir } from "../config/project-config.js";
 import {
@@ -830,9 +836,12 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       };
       // A real upload round-tripped successfully (dry-run returned earlier), so
       // the token is healthy — drop any stale background-failure breadcrumb left
-      // by an earlier hook run. Best-effort; never fail a good upload over it.
+      // by an earlier hook run, and any cached org-blocked verdict (the server
+      // just accepted an upload, so the block is over). Best-effort; never fail
+      // a good upload over it.
       try {
         clearPendingAuthFailure(endpoint.url);
+        clearUploadBlocked(endpoint.url);
       } catch {
         /* ignore — the breadcrumb is a convenience, not a contract */
       }
@@ -860,6 +869,16 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     // upgrade link and exit 0 so a hook/CI run isn't poisoned. JSON consumers get
     // a structured `blocked` marker on an otherwise-ok envelope.
     if (err instanceof OrgBlockedError) {
+      // Cache the verdict (TTL'd) so hook-triggered runs skip the whole
+      // discovery/anonymize pass instead of re-earning the same refusal every
+      // session end. Cleared by the next successful upload or fresh login.
+      if (endpointUrl) {
+        try {
+          recordUploadBlocked(endpointUrl);
+        } catch {
+          /* ignore — the cache is a convenience, not a contract */
+        }
+      }
       if (mode === "json") {
         process.stdout.write(
           `${JSON.stringify({
