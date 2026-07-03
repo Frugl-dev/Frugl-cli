@@ -76,13 +76,12 @@ export const fruglConfigSchema = z.object({
   uploadBlocked: uploadBlockSchema.optional(),
   lastHookSpawn: hookSpawnStampSchema.optional(),
   profile: profileSchema.optional(),
-  // The API endpoint persisted at the last successful `frugl login`. Lets the
-  // installed binary keep targeting a non-default stack (e.g. a local dev
-  // server) without re-passing --endpoint/FRUGL_ENDPOINT every command. An
-  // invalid stored value is dropped by safeParse (treated as absent), so a
-  // corrupted entry degrades to the prod default rather than failing. Resolution
-  // precedence lives in cloud/endpoints.ts: flag ?? env ?? saved ?? default.
-  endpoint: z.string().url().optional(),
+  // NOTE: a top-level `endpoint` key used to live here (the endpoint persisted
+  // at the last `frugl login`). It was removed on purpose: the project-level
+  // `.frugl.json` pin is the source of truth for where a repo talks to, and a
+  // machine-global remembered endpoint silently redirected every later command
+  // (endpoint resolution is flag ?? pin ?? env ?? default — cloud/endpoints.ts).
+  // Old configs still carrying the key parse fine; zod strips unknown keys.
 });
 
 export type FruglConfig = z.infer<typeof fruglConfigSchema>;
@@ -200,29 +199,6 @@ export function recordLastHookSpawn(
   );
 }
 
-// The endpoint remembered from the last successful login (see schema comment).
-// undefined when the user has never logged in to a non-default stack — callers
-// then fall through to FRUGL_ENDPOINT / the prod default.
-export function getSavedEndpoint(options: ConfigStoreOptions = {}): string | undefined {
-  return readConfig(options).endpoint;
-}
-
-// Persist the endpoint a successful login resolved to, so subsequent commands
-// reuse it. Best-effort at the call site (a failed write must never break an
-// otherwise-successful sign-in).
-export function setSavedEndpoint(endpoint: string, options: ConfigStoreOptions = {}): void {
-  writeConfig({ endpoint }, options);
-}
-
-// Forget the remembered endpoint — but only when it matches `endpoint`, so
-// logging out of stack A never resets a default pointed at stack B. Mirrors
-// clearPendingAuthFailure's endpoint-scoped semantics.
-export function clearSavedEndpoint(endpoint: string, options: ConfigStoreOptions = {}): void {
-  if (readConfig(options).endpoint === endpoint) {
-    writeConfig({ endpoint: undefined }, options);
-  }
-}
-
 // The cached identity for `endpoint`, or undefined when none is stored for it.
 // Read by `frugl config` so it can render "who am I, which org" without touching
 // the keychain or the network.
@@ -287,7 +263,7 @@ export function recordProfileOrg(
   );
 }
 
-// Forget the cached identity — endpoint-scoped, mirroring clearSavedEndpoint, so
+// Forget the cached identity — endpoint-scoped (like clearPendingAuthFailure), so
 // logging out of stack A never wipes stack B's cached profile.
 export function clearProfile(endpoint: string, options: ConfigStoreOptions = {}): void {
   if (readConfig(options).profile?.endpoint === endpoint) {

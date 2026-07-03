@@ -17,12 +17,7 @@ import {
   type OrgSetupPresentation,
 } from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
-import {
-  getLastLoginMethod,
-  recordProfileOrg,
-  setLastLoginMethod,
-  setSavedEndpoint,
-} from "../lib/config.js";
+import { getLastLoginMethod, recordProfileOrg, setLastLoginMethod } from "../lib/config.js";
 import { color, symbol, SIGIL } from "../lib/theme.js";
 import {
   requestHandoffUrl,
@@ -56,11 +51,6 @@ function rememberLoginMethod(method: "github" | "google" | "otp"): void {
   }
 }
 
-// Remember the endpoint this login resolved to, so the installed binary keeps
-// targeting it (e.g. a local dev stack) without re-passing --endpoint on every
-// command. Best-effort, like rememberLoginMethod — a config write failure must
-// never break an otherwise-successful sign-in. Resolution precedence still puts
-// an explicit flag/env above this saved value (see cloud/endpoints.ts).
 // Best-effort mirror of the resolved org into the profile cache (null clears it
 // on a 409 "no org yet"). A cache write must never break login.
 function rememberOrg(endpoint: string, org: OrgMeResponse | null): void {
@@ -74,14 +64,6 @@ function rememberOrg(endpoint: string, org: OrgMeResponse | null): void {
   }
 }
 
-function rememberEndpoint(url: string): void {
-  try {
-    setSavedEndpoint(url);
-  } catch {
-    /* ignore — the remembered-endpoint convenience is optional */
-  }
-}
-
 function promptOrgName(): Promise<string> {
   return input({
     message: "Organization name (try a different one):",
@@ -92,9 +74,9 @@ function promptOrgName(): Promise<string> {
 export default class Login extends Command {
   static override description = `Sign in with an email one-time code; token persisted in OS keychain.
 
-The endpoint you sign in to is remembered, so later commands target the same
-stack without re-passing --endpoint. A one-off --endpoint / FRUGL_ENDPOINT still
-overrides it; \`frugl logout\` resets the saved endpoint back to the default.
+The endpoint is NOT remembered between commands: a project's \`.frugl.json\`
+(written by \`frugl init\`) is the source of truth, with --endpoint /
+FRUGL_ENDPOINT as one-off overrides and the public cloud as the default.
 
 Exit codes:
   0   success
@@ -194,6 +176,7 @@ Exit codes:
       identity: cloudIdentityClient({
         endpointUrl: endpoint.url,
         endpointExplicit: endpoint.resolvedFrom !== "default",
+        endpointSource: endpoint.resolvedFrom,
         cliVersion: getCliVersion(),
       }),
     });
@@ -216,7 +199,6 @@ Exit codes:
       const session = await auth.completeLogin(email, code);
       client.setToken(session.token);
       rememberLoginMethod("otp");
-      rememberEndpoint(endpoint.url);
 
       // Check whether the account already has an org.
       let orgContext: OrgMeResponse | null = null;
@@ -417,17 +399,18 @@ Exit codes:
         identity: cloudIdentityClient({
           endpointUrl: endpoint.url,
           endpointExplicit: endpoint.resolvedFrom !== "default",
+          endpointSource: endpoint.resolvedFrom,
           cliVersion: getCliVersion(),
         }),
       });
       const session = await auth.loginWithToken(token);
       rememberLoginMethod(provider);
-      rememberEndpoint(endpoint.url);
 
       const authedClient = new CloudClient({
         endpointUrl: endpoint.url,
         cliVersion: getCliVersion(),
         endpointExplicit: endpoint.resolvedFrom !== "default",
+        endpointSource: endpoint.resolvedFrom,
         token,
       });
 
@@ -498,11 +481,11 @@ Exit codes:
         identity: cloudIdentityClient({
           endpointUrl: endpoint.url,
           endpointExplicit: endpoint.resolvedFrom !== "default",
+          endpointSource: endpoint.resolvedFrom,
           cliVersion: getCliVersion(),
         }),
       });
       const session = await auth.loginWithToken(token);
-      rememberEndpoint(endpoint.url);
 
       if (mode === "json") {
         process.stdout.write(

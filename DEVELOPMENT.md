@@ -44,19 +44,21 @@ pnpm dev login --endpoint http://localhost:4321
 #    so plain `pnpm dev <cmd>` already targets local inside this repo.
 FRUGL_ENDPOINT=http://localhost:4321 pnpm dev login
 
-# 3. Persisted at login — a successful `login` REMEMBERS its endpoint, so
-#    every later command (including the globally-installed `frugl`) keeps
-#    targeting it with no flag/env. `frugl logout` clears it back to prod.
-frugl login --endpoint http://localhost:4321
+# 3. Project pin — a `.frugl.json` at the repo root (written by `frugl init`,
+#    or by hand: {"endpoint": "http://localhost:4321"}) is the project's
+#    source of truth. Every command run inside that repo targets the pinned
+#    endpoint with no flag/env — including the globally-installed `frugl`.
+frugl init --endpoint http://localhost:4321
 frugl snapshot context        # now goes to local, not app.frugl.dev
 ```
 
 > **Heads-up:** the installed global `frugl` does **not** read this repo's
 > `.env` (only `pnpm dev` does), and it defaults to **production**
-> (`https://app.frugl.dev`). Sign in once with an explicit
-> `--endpoint http://localhost:4321` and the saved endpoint sticks — otherwise
-> an unprefixed `frugl <cmd>` uploads to prod. A one-off `--endpoint` /
-> `FRUGL_ENDPOINT` always overrides the saved value.
+> (`https://app.frugl.dev`). There is deliberately no machine-global
+> "remembered endpoint" — login does NOT persist where you signed in. Pin the
+> endpoint in the project's `.frugl.json` (via `frugl init`) or pass
+> `--endpoint` / `FRUGL_ENDPOINT` explicitly, otherwise an unprefixed
+> `frugl <cmd>` talks to prod.
 
 The local stack itself (Supabase + MinIO) is brought up from the
 `frugl/` repo via `pnpm stack:up`.

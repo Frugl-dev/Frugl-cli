@@ -8,6 +8,7 @@ import {
 } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { extractStatus } from "../lib/retry.js";
+import { describeEndpointSource, type EndpointSource } from "./endpoints.js";
 import { checkVersionGate } from "./version-gate.js";
 
 export interface CloudClientOptions {
@@ -18,6 +19,9 @@ export interface CloudClientOptions {
   bodyPutTimeoutMs?: number;
   /** When true, fetch failures surface as EndpointError(41) instead of NetworkError(40). */
   endpointExplicit?: boolean;
+  /** Which resolution layer chose endpointUrl — named in the unreachable error
+   * so the user knows what to fix (retype the flag, edit the pin, unset the env). */
+  endpointSource?: EndpointSource | undefined;
   /** When true (FRUGL_DEBUG=1), log HTTP request/response lines to stderr. */
   debug?: boolean;
 }
@@ -51,6 +55,7 @@ export class CloudClient {
   private readonly controlPlaneTimeoutMs: number;
   private readonly bodyPutTimeoutMs: number;
   private readonly endpointExplicit: boolean;
+  private readonly endpointSource: EndpointSource | undefined;
   private readonly debug: boolean;
   private firstCallSucceeded = false;
   private token: string | undefined;
@@ -62,6 +67,7 @@ export class CloudClient {
     this.controlPlaneTimeoutMs = opts.controlPlaneTimeoutMs ?? DEFAULT_CONTROL_PLANE_TIMEOUT_MS;
     this.bodyPutTimeoutMs = opts.bodyPutTimeoutMs ?? DEFAULT_BODY_PUT_TIMEOUT_MS;
     this.endpointExplicit = opts.endpointExplicit ?? false;
+    this.endpointSource = opts.endpointSource;
     this.debug = opts.debug ?? false;
   }
 
@@ -98,7 +104,12 @@ export class CloudClient {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (this.endpointExplicit && !this.firstCallSucceeded) {
-        throw new EndpointError(`Endpoint ${this.endpointUrl} is unreachable: ${message}`);
+        // Name the resolution layer that chose this endpoint — "unreachable"
+        // alone is a dead-end when the user never typed the URL themselves.
+        const source = this.endpointSource
+          ? ` (${describeEndpointSource(this.endpointSource)})`
+          : "";
+        throw new EndpointError(`Endpoint ${this.endpointUrl}${source} is unreachable: ${message}`);
       }
       throw new NetworkError(`Network error calling ${opts.method} ${opts.path}: ${message}`);
     } finally {

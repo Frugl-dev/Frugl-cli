@@ -12,9 +12,6 @@ import {
   getPendingAuthFailure,
   recordPendingAuthFailure,
   clearPendingAuthFailure,
-  getSavedEndpoint,
-  setSavedEndpoint,
-  clearSavedEndpoint,
   getProfile,
   recordProfileIdentity,
   recordProfileOrg,
@@ -145,57 +142,21 @@ describe("frugl-config (pendingAuthFailure)", () => {
   });
 });
 
-describe("frugl-config (endpoint)", () => {
-  const LOCAL = "http://localhost:4321";
-  const PROD = "https://app.frugl.dev";
-
-  it("is undefined on a fresh store", () => {
-    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
-  });
-
-  it("round-trips set/get", () => {
-    setSavedEndpoint(LOCAL, { cwd: dir });
-    expect(getSavedEndpoint({ cwd: dir })).toBe(LOCAL);
-    setSavedEndpoint(PROD, { cwd: dir });
-    expect(getSavedEndpoint({ cwd: dir })).toBe(PROD);
-  });
-
-  it("clears the endpoint when it matches", () => {
-    setSavedEndpoint(LOCAL, { cwd: dir });
-    clearSavedEndpoint(LOCAL, { cwd: dir });
-    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
-  });
-
-  it("does NOT clear an endpoint saved for a different stack", () => {
-    setSavedEndpoint(LOCAL, { cwd: dir });
-    clearSavedEndpoint(PROD, { cwd: dir });
-    expect(getSavedEndpoint({ cwd: dir })).toBe(LOCAL);
-  });
-
-  it("co-exists with other preferences without clobbering them", () => {
-    setLinkPrs(true, { cwd: dir });
-    setLastLoginMethod("github", { cwd: dir });
-    setSavedEndpoint(LOCAL, { cwd: dir });
-    expect(getLinkPrs({ cwd: dir })).toBe(true);
-    expect(getLastLoginMethod({ cwd: dir })).toBe("github");
-    clearSavedEndpoint(LOCAL, { cwd: dir });
-    expect(getLinkPrs({ cwd: dir })).toBe(true);
-    expect(getLastLoginMethod({ cwd: dir })).toBe("github");
-    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
-  });
-
-  it("ignores a malformed stored endpoint, falling back to defaults", () => {
+describe("frugl-config (legacy saved endpoint)", () => {
+  // The machine-global "endpoint remembered at login" layer was removed —
+  // `.frugl.json` is the project source of truth. Configs written by older
+  // CLIs still carry the key; they must parse fine with the key ignored.
+  it("ignores a legacy `endpoint` key from an older CLI", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       path.join(dir, "frugl-config.json"),
-      JSON.stringify({ data: { schemaVersion: 1, linkPrs: false, endpoint: "not-a-url" } }),
+      JSON.stringify({
+        data: { schemaVersion: 1, linkPrs: true, endpoint: "http://localhost:4321" },
+      }),
     );
-    expect(() => getSavedEndpoint({ cwd: dir })).not.toThrow();
-    expect(getSavedEndpoint({ cwd: dir })).toBeUndefined();
-  });
-
-  it("stays out of the key set until explicitly saved", () => {
-    expect(Object.keys(readConfig({ cwd: dir })).toSorted()).toEqual(["linkPrs", "schemaVersion"]);
+    const cfg = readConfig({ cwd: dir });
+    expect(cfg.linkPrs).toBe(true);
+    expect("endpoint" in cfg).toBe(false);
   });
 });
 

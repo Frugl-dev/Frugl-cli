@@ -1,11 +1,10 @@
 import { spawn } from "node:child_process";
 import { Temporal } from "temporal-polyfill";
 import { SessionStore } from "../auth/session-store.js";
-import { resolveEndpoint, safeEndpoint } from "../cloud/endpoints.js";
+import { resolveEndpoint } from "../cloud/endpoints.js";
 import { loadProjectPin } from "../cloud/project-pin.js";
 import {
   getLastHookSpawn,
-  getSavedEndpoint,
   getUploadBlocked,
   recordLastHookSpawn,
   type ConfigStoreOptions,
@@ -60,7 +59,6 @@ export async function executeHookRun(deps: HookRunDeps = {}): Promise<HookRunRes
     flag: deps.flagEndpoint,
     pinned: pin?.endpoint,
     env: env["FRUGL_ENDPOINT"],
-    saved: safeEndpoint(readSavedEndpoint(configOptions)),
   });
 
   const store = deps.store ?? new SessionStore({ env });
@@ -122,10 +120,6 @@ async function resolveTokenSafe(store: SessionStore, endpointUrl: string) {
   } catch {
     return null;
   }
-}
-
-function readSavedEndpoint(options: ConfigStoreOptions): string | undefined {
-  return readSafe(() => getSavedEndpoint(options));
 }
 
 function readSafe<T>(read: () => T): T | undefined {

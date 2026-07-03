@@ -2,27 +2,29 @@ import { UsageError } from "../lib/errors.js";
 
 export const DEFAULT_ENDPOINT = "https://app.frugl.dev";
 
-// Endpoint precedence: flag ?? pin ?? env ?? saved ?? default.
+// Endpoint precedence: flag ?? pin ?? env ?? default.
 //
-// "saved" is the endpoint persisted at the last successful `frugl login` (see
-// lib/config.ts). It sits ABOVE the prod default so a developer who logs in to a
-// local stack keeps targeting it without re-passing --endpoint every time, and
-// an account that never chose a non-default endpoint still defaults to prod.
+// "pin" is a checked-in `.frugl.json` (see cloud/project-pin.ts) and is the
+// project's source of truth for where it talks to — written by `frugl init`,
+// visible in the repo, shared by every clone. There is deliberately NO global
+// "endpoint remembered from your last login" layer: that ambient per-user
+// state made a login against a local stack silently redirect every later
+// command on the machine (including a fresh npm install, which shares the OS
+// config store) with nothing in the repo or the invocation explaining why.
 //
-// "pin" is a checked-in `.frugl.json` (see cloud/project-pin.ts) for the
-// self-host case. It slots just BELOW the hand-typed --endpoint flag and ABOVE
-// every ambient layer (env, saved, default). This is what makes it a safety
-// precaution rather than a footgun: the danger self-hosting fears is *silent*
-// misrouting to the public cloud (a stale saved login, a forgotten
-// FRUGL_ENDPOINT in a shell profile, the hardcoded default) — the pin overrides
-// all of those and, when set, never falls back to the public default. It does
-// NOT need to override the flag, because an explicit --endpoint typed on this
-// invocation is a deliberate, visible act — so the flag simply wins and IS the
-// escape hatch (no separate --force flag). A malformed pin fails closed at load
-// time (project-pin.ts validates the URL) rather than degrading to the default.
-// Hijack stays defanged regardless: auth is endpoint-scoped, so a malicious repo
-// pin you've never logged into yields AuthError on upload, not a silent leak.
-export type EndpointSource = "flag" | "pin" | "env" | "saved" | "default";
+// The pin slots just BELOW the hand-typed --endpoint flag and ABOVE the
+// ambient layers (env, default). This is what makes it a safety precaution
+// rather than a footgun: the danger self-hosting fears is *silent* misrouting
+// to the public cloud (a forgotten FRUGL_ENDPOINT in a shell profile, the
+// hardcoded default) — the pin overrides those and, when set, never falls back
+// to the public default. It does NOT need to override the flag, because an
+// explicit --endpoint typed on this invocation is a deliberate, visible act —
+// so the flag simply wins and IS the escape hatch (no separate --force flag).
+// A malformed pin fails closed at load time (project-pin.ts validates the URL)
+// rather than degrading to the default. Hijack stays defanged regardless: auth
+// is endpoint-scoped, so a malicious repo pin you've never logged into yields
+// AuthError on upload, not a silent leak.
+export type EndpointSource = "flag" | "pin" | "env" | "default";
 
 export interface Endpoint {
   url: string;
@@ -34,11 +36,10 @@ export interface ResolveEndpointInput {
   /** Endpoint declared by a checked-in `.frugl.json` (self-host pin). */
   pinned?: string | undefined;
   env?: string | undefined;
-  saved?: string | undefined;
 }
 
 export function resolveEndpoint(input: ResolveEndpointInput): Endpoint {
-  const raw = input.flag ?? input.pinned ?? input.env ?? input.saved ?? DEFAULT_ENDPOINT;
+  const raw = input.flag ?? input.pinned ?? input.env ?? DEFAULT_ENDPOINT;
   const resolvedFrom: EndpointSource =
     input.flag !== undefined
       ? "flag"
@@ -46,19 +47,35 @@ export function resolveEndpoint(input: ResolveEndpointInput): Endpoint {
         ? "pin"
         : input.env !== undefined
           ? "env"
-          : input.saved !== undefined
-            ? "saved"
-            : "default";
+          : "default";
   const url = validateEndpoint(raw);
   return { url, resolvedFrom };
 }
 
+// Human phrase for WHERE a non-default endpoint came from, for error messages
+// that would otherwise dead-end ("Endpoint http://localhost:4321 is
+// unreachable" — okay, but who told you localhost?). Keyed to the resolution
+// layers above so the fix is always evident: retype the flag, edit the pin,
+// unset the env var.
+export function describeEndpointSource(source: EndpointSource): string {
+  switch (source) {
+    case "flag":
+      return "set by --endpoint";
+    case "pin":
+      return "pinned by .frugl.json";
+    case "env":
+      return "set by FRUGL_ENDPOINT";
+    case "default":
+      return "the default endpoint";
+  }
+}
+
 // Best-effort normalize for a persisted/untrusted endpoint string: returns the
-// validated URL, or undefined if it fails validation. Used for the `saved`
-// layer so a manually-corrupted config endpoint is IGNORED (fall back to the
-// default) rather than throwing a UsageError on every command — which would
-// brick even `frugl login`/`logout`, the commands you'd use to fix it. Explicit
-// flag/env input keeps the strict, throwing path (loud failure on bad input).
+// validated URL, or undefined if it fails validation — so a corrupted stored
+// value is IGNORED (fall through to the next resolution layer) rather than
+// throwing a UsageError on every command — which would brick even
+// `frugl login`/`logout`, the commands you'd use to fix it. Explicit flag/env
+// input keeps the strict, throwing path (loud failure on bad input).
 export function safeEndpoint(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
   try {

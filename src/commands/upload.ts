@@ -244,6 +244,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         identity: cloudIdentityClient({
           endpointUrl: endpoint.url,
           endpointExplicit: endpoint.resolvedFrom !== "default",
+          endpointSource: endpoint.resolvedFrom,
           cliVersion: getCliVersion(),
         }),
       });
@@ -255,6 +256,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
         cliVersion: getCliVersion(),
         token: session.token,
         endpointExplicit: endpoint.resolvedFrom !== "default",
+        endpointSource: endpoint.resolvedFrom,
         debug: resolveDebug(),
       });
       const cloud = new HttpCloudAdapter(client);
