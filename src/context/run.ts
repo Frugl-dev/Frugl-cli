@@ -10,15 +10,16 @@ import type { OutputMode } from "../lib/output-mode.js";
 import { color, symbol } from "../lib/theme.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import type { SnapshotRunContext } from "../snapshot/shared.js";
-import { captureContext } from "./capture.js";
+import { captureContext, type ContextTool } from "./capture.js";
 import { parseSkillScopesFromContext } from "./skill-scopes.js";
 import { uploadContextSnapshot } from "./upload.js";
 
 // v1 has no built-in scheduler. To capture snapshots on a cadence, drive
 // `frugl snapshot context` from an external cron/CI job (see README). The tool
-// is the configured AI tool whose /context breakdown is captured; today only
-// Claude Code is wired.
-const TOOL = "claude-code";
+// is selected with `--tool` (default claude-code). Claude captures the
+// provider-reported /context breakdown; codex/gemini/cursor synthesize an
+// artifact-loadout payload (see ./tools/artifacts.ts).
+const DEFAULT_TOOL: ContextTool = "claude-code";
 
 // A finished context snapshot, ready to print. Mirrors the upload result but
 // also carries the handoff + capture details the reporter needs.
@@ -39,10 +40,13 @@ export type ContextReport =
 // capture/anonymize/upload failure — the caller decides how to surface it. A
 // successful run returns a report; the gate outcomes (no_change / cap_reached)
 // are normal, non-error results.
-export async function runContextSnapshot(ctx: SnapshotRunContext): Promise<ContextReport> {
+export async function runContextSnapshot(
+  ctx: SnapshotRunContext,
+  tool: ContextTool = DEFAULT_TOOL,
+): Promise<ContextReport> {
   // 1) Capture (fail-closed): missing binary / non-zero exit / empty stdout each
   // throw before any upload. capturedAt is stamped at capture time.
-  const capture = captureContext(TOOL);
+  const capture = captureContext(tool);
 
   // 2) Anonymize the captured TEXT client-side (fail-closed). The home prefix is
   // normalized and embedded secrets/emails are redacted; skill/MCP/agent names
@@ -61,16 +65,21 @@ export async function runContextSnapshot(ctx: SnapshotRunContext): Promise<Conte
   // declared MCP inventory (names-only, fail-open) rides the manifest: a failed
   // `claude mcp list` simply omits it, never blocking the snapshot.
   const cloud = new HttpCloudAdapter(ctx.client);
-  const mcpServers = captureDeclaredMcpServers();
+  // Per-source declared MCP inventory (fail-open; artifact payloads already
+  // carry declared names, but the manifest inventory keeps session_mcp fed).
+  const mcpServers = captureDeclaredMcpServers(undefined, tool);
   // Skill scopes ride the manifest too (fail-open): parse from the anonymized
   // payload — the exact bytes the server parses for skill items — so the names
-  // line up 1:1. A capture with no scope-bearing skills yields null and the
-  // field is omitted.
-  const skillScopes = parseSkillScopesFromContext(String(result.payload), capture.capturedAt);
+  // line up 1:1. Claude-only (the other tools have no skills concept); a
+  // capture with no scope-bearing skills yields null and the field is omitted.
+  const skillScopes =
+    tool === "claude-code"
+      ? parseSkillScopesFromContext(String(result.payload), capture.capturedAt)
+      : null;
   const upload = await uploadContextSnapshot({
     cloud,
     cliVersion: ctx.client.cliVersion,
-    sourceKind: TOOL,
+    sourceKind: tool,
     policyVersion: result.policyVersion,
     capturedAt: capture.capturedAt,
     anonymization: result,
@@ -107,11 +116,15 @@ export async function runContextSnapshot(ctx: SnapshotRunContext): Promise<Conte
 
 // Print a context report. Snapshot gate outcomes (spec 052) report clearly and
 // exit 0 (no dashboard handoff, since nothing was uploaded).
-export function reportContext(report: ContextReport, mode: OutputMode): void {
+export function reportContext(
+  report: ContextReport,
+  mode: OutputMode,
+  tool: ContextTool = DEFAULT_TOOL,
+): void {
   if (report.status === "no_change") {
     if (mode === "json") {
       process.stdout.write(
-        `${JSON.stringify({ command: "context", ok: true, status: "no_change", tool: TOOL })}\n`,
+        `${JSON.stringify({ command: "context", ok: true, status: "no_change", tool })}\n`,
       );
       return;
     }
@@ -128,7 +141,7 @@ export function reportContext(report: ContextReport, mode: OutputMode): void {
           command: "context",
           ok: true,
           status: "cap_reached",
-          tool: TOOL,
+          tool,
           cap: report.cap,
           used: report.used,
           windowResetsAt: report.windowResetsAt,
@@ -149,7 +162,7 @@ export function reportContext(report: ContextReport, mode: OutputMode): void {
         command: "context",
         ok: true,
         status: "uploaded",
-        tool: TOOL,
+        tool,
         capturedAt: report.capturedAt,
         manifestId: report.manifestId,
         sessionId: report.sessionId,
