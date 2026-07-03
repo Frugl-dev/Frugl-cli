@@ -1,0 +1,6 @@
+{
+  "$schema": "https://app.frugl.dev/schema/frugl.v1.json",
+  "version": 1,
+  "endpoint": "http://localhost:4321",
+  "org": "test"
+}
