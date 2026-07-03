@@ -131,11 +131,16 @@ export function createProgressReporter(mode: OutputMode): ProgressReporter {
       total = input.expectedSessionCount;
       done = 0;
       skipped = 0;
-      emitText(
-        color.dim(
-          `Uploading ${input.expectedSessionCount} sessions to ${input.endpoint} (policy ${input.redactionPolicyVersion})`,
-        ),
-      );
+      // Only minimal mode needs this header line: default mode already stated the
+      // count, endpoint, and policy in the preview + confirm prompt just above,
+      // and the live bar below restates the count — so it's pure repetition there.
+      if (mode === "minimal") {
+        emitText(
+          color.dim(
+            `Uploading ${input.expectedSessionCount} sessions to ${input.endpoint} (policy ${input.redactionPolicyVersion})`,
+          ),
+        );
+      }
     },
     sessionStart(input) {
       const event: ProgressEvent = {
