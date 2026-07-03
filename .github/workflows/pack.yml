@@ -12,6 +12,14 @@ name: Standalone binaries
 on:
   release:
     types: [published]
+  # Manual recovery path: re-pack and re-upload binaries for a release whose
+  # automatic run failed (e.g. v0.2.0, first hit by the allowBuilds bug above)
+  # without needing to cut a new release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to pack and upload binaries for (e.g. v0.2.0)"
+        required: true
 
 # `contents: write` is required to upload assets onto the release.
 permissions:
@@ -63,7 +71,16 @@ jobs:
       # `npm pack` -> prepack (build + manifest) first, then bundles Node 26
       # (from oclif.update.node.version) and the production-only node_modules.
       # devDependencies (vitest, oxlint, tsx, typescript, oclif) are excluded.
+      #
+      # pnpm 11 defaults to blocking install scripts for packages not in
+      # allowBuilds (pnpm-workspace.yaml), which we just deleted above — so the
+      # nested `pnpm install` this step runs (for esbuild/pre-commit, both
+      # devDependencies that never end up in the tarball) would otherwise hard
+      # fail with ERR_PNPM_IGNORED_BUILDS. There's no interactive prompt on CI,
+      # so downgrade it to a non-fatal warning instead.
       - name: Pack standalone tarball
+        env:
+          PNPM_CONFIG_STRICT_DEP_BUILDS: "false"
         run: pnpm exec oclif pack tarballs --targets=${{ matrix.target }} --xz
 
       - name: Show artifacts
@@ -74,4 +91,5 @@ jobs:
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/frugl-v*.tar.gz dist/frugl-v*.tar.xz --clobber
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG" dist/frugl-v*.tar.gz dist/frugl-v*.tar.xz --clobber
