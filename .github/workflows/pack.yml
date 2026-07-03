@@ -1,0 +1,77 @@
+name: Standalone binaries
+
+# Build self-contained `frugl` tarballs (Node 26 bundled — no Node required on
+# the user's machine) and attach them to the GitHub Release. Runs alongside
+# release.yml (npm publish) on the same `release: published` event.
+#
+# Each target is packed on its OWN native runner. This is mandatory, not an
+# optimization: `@napi-rs/keyring` ships a per-platform prebuilt `.node` addon
+# as an optional dependency, and only the host's variant installs. Cross-packing
+# from one machine would ship a keyring binary that can't load on other
+# platforms, breaking token storage.
+on:
+  release:
+    types: [published]
+
+# `contents: write` is required to upload assets onto the release.
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    name: pack ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-14 }
+          - { target: darwin-x64, os: macos-13 }
+          - { target: linux-x64, os: ubuntu-24.04 }
+          - { target: linux-arm64, os: ubuntu-24.04-arm }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      # Root install (build + pack tooling). Needs pnpm-workspace.yaml present.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # oclif stages its build workspace at ./tmp/frugl INSIDE the repo, then
+      # runs `pnpm install --production` there. Because this repo is a pnpm
+      # workspace, pnpm walks up, finds the root pnpm-workspace.yaml, and
+      # refuses to populate the nested dir — the tarball ships with an EMPTY
+      # node_modules (no @oclif/core, no keyring). Removing the workspace marker
+      # makes the nested install behave as a standalone project. The runner is
+      # ephemeral, so there's nothing to restore.
+      - name: Detach pnpm workspace root (see comment)
+        run: rm -f pnpm-workspace.yaml
+
+      # `--xz` also emits a .tar.xz (~35% smaller than the .tar.gz). oclif runs
+      # `npm pack` -> prepack (build + manifest) first, then bundles Node 26
+      # (from oclif.update.node.version) and the production-only node_modules.
+      # devDependencies (vitest, oxlint, tsx, typescript, oclif) are excluded.
+      - name: Pack standalone tarball
+        run: pnpm exec oclif pack tarballs --targets=${{ matrix.target }} --xz
+
+      - name: Show artifacts
+        run: ls -lh dist/*.tar.*
+
+      # Filenames embed the version + short SHA, e.g.
+      # frugl-v0.1.6-a1b2c3d-darwin-arm64.tar.xz — the glob picks them up.
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/frugl-v*.tar.gz dist/frugl-v*.tar.xz --clobber
