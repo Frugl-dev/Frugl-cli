@@ -210,6 +210,35 @@ describe("frugl config", { timeout: 30_000 }, () => {
     }
   });
 
+  it("merges subdirectories governed by the same .frugl.json into one repo row", async () => {
+    // A monorepo root with .frugl.json, plus session history for two of its
+    // subdirectories (as if Claude had been run from apps/web and packages/foo).
+    // These share one governing config and must collapse into a single row with
+    // a summed session count, not appear as separate repos.
+    const repoDir = `/tmp/frugl_cfg_merge_${process.pid}/myrepo`;
+    const subA = `${repoDir}/apps/web`;
+    const subB = `${repoDir}/packages/foo`;
+    mkdirSync(repoDir, { recursive: true });
+    writeFileSync(path.join(repoDir, ".frugl.json"), `${JSON.stringify({ version: 1 })}\n`, "utf8");
+    try {
+      await writeTestSessions(home.dir, 2, subA.replace(/\//g, "-"));
+      await writeTestSessions(home.dir, 3, subB.replace(/\//g, "-"));
+
+      const { exitCode, stdout } = await runCli(
+        ["config", "--format", "json", "--endpoint", ENDPOINT],
+        { env: env(), cwd: project.dir },
+      );
+
+      expect(exitCode).toBe(EXIT.OK);
+      const cfg = parse(stdout);
+      expect(cfg.repos).not.toBeNull();
+      expect(cfg.repos!.map((r) => r.path)).toEqual([repoDir]);
+      expect(cfg.repos![0]!.sessions).toBe(5);
+    } finally {
+      rmSync(`/tmp/frugl_cfg_merge_${process.pid}`, { recursive: true, force: true });
+    }
+  });
+
   it("returns an empty repo list when no repo has a .frugl.json", async () => {
     await writeTestSessions(home.dir, 1, "-tmp-frugl_cfg-unconfigured");
 
