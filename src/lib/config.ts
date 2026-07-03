@@ -96,10 +96,15 @@ export interface ConfigStoreOptions {
 
 function store(options: ConfigStoreOptions): Conf<{ data: FruglConfig }> {
   const name = NAMESPACES.config;
+  // Directory override precedence: explicit `cwd` (unit tests) → `FRUGL_STATE_DIR`
+  // env (spawned-process isolation in e2e; also a power-user knob to relocate CLI
+  // state) → the OS default via env-paths. When a directory is used, the file is
+  // named after the namespace so the same store is reachable both ways.
+  const dir = options.cwd ?? process.env["FRUGL_STATE_DIR"]?.trim();
   return new Conf<{ data: FruglConfig }>({
     projectName: name,
     defaults: { data: { ...DEFAULT_CONFIG } },
-    ...(options.cwd !== undefined ? { cwd: options.cwd, configName: name } : {}),
+    ...(dir ? { cwd: dir, configName: name } : {}),
   });
 }
 

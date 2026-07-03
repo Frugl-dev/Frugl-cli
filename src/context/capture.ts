@@ -2,14 +2,22 @@ import { FruglError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { nowIso } from "../lib/time.js";
 import { captureClaudeCodeContext, type Spawner } from "./tools/claude-code.js";
+import {
+  captureCodexArtifacts,
+  captureCursorArtifacts,
+  captureGeminiArtifacts,
+} from "./tools/artifacts.js";
 
-// The tools we know how to capture a /context breakdown from. Today only Claude
-// Code is wired; codex/gemini/cursor are reserved so the dispatch table is the
-// single place a new runner is added. The dashed vocabulary matches the upload
+// The tools we know how to capture a context snapshot from. Claude Code emits a
+// provider-reported window breakdown (`claude -p "/context"`); codex/gemini/
+// cursor have NO headless context command, so their runners synthesize an
+// artifact-loadout payload (memory/rules files + declared MCP, sizes only —
+// see ./tools/artifacts.ts). The dashed vocabulary matches the upload
 // source_kind ("claude-code").
-export type ContextTool = "claude-code";
+export type ContextTool = "claude-code" | "codex" | "gemini" | "cursor";
 
-// One captured snapshot: the tool's raw /context stdout TEXT plus the moment of
+// One captured snapshot: the tool's raw capture TEXT (stdout for Claude, a
+// frugl.context-artifacts JSON document for the others) plus the moment of
 // capture. `capturedAt` is stamped here, at capture time, so two runs always
 // carry distinct timestamps (US4) — there is no overwrite/dedupe.
 export interface ContextCapture {
@@ -19,18 +27,23 @@ export interface ContextCapture {
 }
 
 export interface CaptureOptions {
-  // Injectable clock + spawner for tests; production uses the real wall clock
-  // and `node:child_process`.
+  // Injectable clock + spawner (Claude) / filesystem roots (artifact runners)
+  // for tests; production uses the real wall clock, subprocess, cwd, and home.
   now?: () => string;
   spawner?: Spawner;
+  cwd?: string;
+  homeDir?: string;
 }
 
-// A per-tool runner: returns the tool's /context stdout verbatim, or throws a
+// A per-tool runner: returns the tool's capture text verbatim, or throws a
 // FruglError (fail-closed) on any uncertainty.
-type Runner = (spawner?: Spawner) => string;
+type Runner = (opts: CaptureOptions) => string;
 
 const RUNNERS: Record<ContextTool, Runner> = {
-  "claude-code": (spawner) => captureClaudeCodeContext(spawner),
+  "claude-code": (opts) => captureClaudeCodeContext(opts.spawner),
+  codex: (opts) => captureCodexArtifacts(opts),
+  gemini: (opts) => captureGeminiArtifacts(opts),
+  cursor: (opts) => captureCursorArtifacts(opts),
 };
 
 const SUPPORTED_TOOLS = Object.keys(RUNNERS) as ContextTool[];
@@ -52,7 +65,7 @@ export function captureContext(tool: string, opts: CaptureOptions = {}): Context
     );
   }
 
-  const text = RUNNERS[tool](opts.spawner);
+  const text = RUNNERS[tool](opts);
 
   // Defense in depth: the runner already rejects empty stdout, but re-assert
   // here so the dispatch contract holds for any future runner too.

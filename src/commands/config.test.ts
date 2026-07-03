@@ -1,20 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { EXIT } from "../lib/exit-codes.js";
-import { MockServer } from "../e2e/helpers/mock-server.js";
 import { runCli } from "../e2e/helpers/spawn.js";
 import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "../e2e/helpers/fixtures.js";
+import { recordProfileIdentity, recordProfileOrg } from "../lib/config.js";
 
 // `frugl config` is a read-only settings readout: endpoint, account (from the
 // non-secret profile cache — NO keychain read, NO cloud call), resolved project
 // config, providers, and the repos that have opted into Frugl via a `.frugl.json`.
-// These spawn the real CLI and assert the --format json shape. HOME is pointed
-// at a temp dir so the `conf`-backed profile cache is isolated per test; provider
-// discovery is scoped with FRUGL_HOME_DIR so the scan never touches the dev's
-// real machine.
+// These spawn the real CLI and assert the --format json shape. FRUGL_STATE_DIR
+// isolates the conf-backed profile cache per test (so it never touches real CLI
+// state); FRUGL_HOME_DIR scopes session discovery.
 
 const ENDPOINT = "http://localhost:59999";
 
@@ -57,10 +55,10 @@ describe("frugl config", { timeout: 30_000 }, () => {
     await project.cleanup();
   });
 
-  // HOME isolates the conf-backed profile cache; FRUGL_HOME_DIR scopes session
-  // discovery. Both point at the per-test temp home.
+  // FRUGL_STATE_DIR isolates the conf profile cache; FRUGL_HOME_DIR scopes the
+  // session/provider scan. Both point at the per-test temp home.
   function env(): Record<string, string> {
-    return { HOME: home.dir, FRUGL_HOME_DIR: home.dir };
+    return { FRUGL_STATE_DIR: home.dir, FRUGL_HOME_DIR: home.dir };
   }
 
   function writeConfig(body: Record<string, unknown>): void {
@@ -104,35 +102,26 @@ describe("frugl config", { timeout: 30_000 }, () => {
     expect(parse(stdout).account.loggedIn).toBe(false);
   });
 
-  it("shows the cached identity a prior login persisted (no keychain/cloud at read)", async () => {
-    // A login writes the profile cache; a later `config` reads it back.
-    const server = await new MockServer().start();
-    server.on("GET", "/api/auth/whoami", (_req: IncomingMessage, res: ServerResponse) => {
-      server.json(res, 200, { user_id: "u-123", primary_email: "cached@frugl.example" });
-    });
-    try {
-      const login = await runCli(
-        ["login", "--token", "tok-xyz", "--format", "json", "--endpoint", server.url],
-        { env: env(), cwd: project.dir },
-      );
-      expect(login.exitCode).toBe(EXIT.OK);
+  it("shows the cached identity + org from the profile cache (no keychain/cloud)", async () => {
+    // Seed the profile cache the way login/whoami would, then read it back.
+    recordProfileIdentity(
+      { endpoint: ENDPOINT, email: "cached@frugl.example", userId: "u-123" },
+      { cwd: home.dir },
+    );
+    recordProfileOrg(ENDPOINT, { slug: "acme", name: "Acme", role: "owner" }, { cwd: home.dir });
 
-      const { exitCode, stdout } = await runCli(
-        ["config", "--no-repos", "--format", "json", "--endpoint", server.url],
-        { env: env(), cwd: project.dir },
-      );
-      expect(exitCode).toBe(EXIT.OK);
-      const cfg = parse(stdout);
-      expect(cfg.account.loggedIn).toBe(true);
-      expect(cfg.account.cached).toBe(true);
-      expect(cfg.account.email).toBe("cached@frugl.example");
-      expect(cfg.account.userId).toBe("u-123");
-      // The token flow doesn't resolve an org, so it's absent (not an error).
-      expect(cfg.account.org).toBeNull();
-    } finally {
-      clearAuth(server.url);
-      await server.close();
-    }
+    const { exitCode, stdout } = await runCli(
+      ["config", "--no-repos", "--format", "json", "--endpoint", ENDPOINT],
+      { env: env(), cwd: project.dir },
+    );
+
+    expect(exitCode).toBe(EXIT.OK);
+    const cfg = parse(stdout);
+    expect(cfg.account.loggedIn).toBe(true);
+    expect(cfg.account.cached).toBe(true);
+    expect(cfg.account.email).toBe("cached@frugl.example");
+    expect(cfg.account.userId).toBe("u-123");
+    expect(cfg.account.org).toEqual({ slug: "acme", name: "Acme", role: "owner" });
   });
 
   it("resolves .frugl.json values and labels them as config, not default", async () => {
@@ -243,7 +232,7 @@ describe("frugl config", { timeout: 30_000 }, () => {
 
     expect(exitCode).toBe(EXIT.OK);
     // Plain, decoration-free text: no ANSI color escapes, still showing settings.
-    expect(stdout).not.toContain("[");
+    expect(stdout).not.toContain("[");
     expect(stdout).toContain("Endpoint");
     expect(stdout).toContain("upload.minCost");
   });

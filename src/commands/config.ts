@@ -86,7 +86,7 @@ interface ConfigView {
 
 export default class Config extends Command {
   static override description =
-    "Show the resolved Frugl settings for this directory: endpoint, account, project config, providers, and the repos that would be uploaded.";
+    "Show the resolved Frugl settings for this directory: the endpoint it targets, the signed-in account (from the local cache — no keychain prompt or cloud call), the project config, the providers, and the repos configured with a .frugl.json.";
 
   static override examples = [
     "<%= config.bin %> <%= command.id %>",
@@ -99,7 +99,7 @@ export default class Config extends Command {
       allowNo: true,
       default: true,
       description:
-        "Scan the machine for AI-session providers and the repos that would upload (--no-repos to skip).",
+        "Scan the machine for AI-session providers and the repos configured with a .frugl.json (--no-repos to skip).",
     }),
     ...COMMON_FLAGS,
   };
