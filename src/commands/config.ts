@@ -133,6 +133,10 @@ export default class Config extends Command {
         this.emitJson(view);
         return;
       }
+      if (mode === "minimal") {
+        this.emitMinimal(view);
+        return;
+      }
       this.emitHuman(view);
     } catch (err) {
       handleCommandError(err, mode);
@@ -241,6 +245,49 @@ export default class Config extends Command {
           })) ?? null,
       })}\n`,
     );
+  }
+
+  // Plain `key=value` lines for agents/CI (`--format minimal`): every fact
+  // from `emitJson` flattened to one grep-able line, no headings, no blank
+  // lines, no decoration — a fraction of `emitHuman`'s token footprint.
+  private emitMinimal(data: ConfigView): void {
+    const out = process.stdout;
+    const line = (s: string): void => {
+      out.write(`${s}\n`);
+    };
+
+    line(`endpoint.url=${data.endpoint.url}`);
+    line(`endpoint.resolvedFrom=${data.endpoint.resolvedFrom}`);
+    if (data.pin) line(`endpoint.pin=${data.pin.endpoint} path=${data.pin.path}`);
+
+    if (data.profile) {
+      line(`account.loggedIn=true email=${data.profile.email} userId=${data.profile.userId}`);
+      line(
+        `account.org=${data.profile.org ? `${data.profile.org.slug} role=${data.profile.org.role}` : "none"}`,
+      );
+    } else {
+      line("account.loggedIn=false");
+    }
+
+    line(`project.config=${data.configPath ?? "none"}`);
+    line(`project.org=${data.projectConfig?.org ?? "none"}`);
+    for (const [key, setting] of Object.entries(data.settings)) {
+      line(`${key}=${formatValue(key, setting.value)} source=${setting.source}`);
+    }
+
+    line(`providers.all=${PROVIDERS.map((p) => p.id).join(",")}`);
+    if (data.scan) {
+      line(`providers.detected=${data.scan.detectedProviderIds.join(",") || "none"}`);
+      line(`providers.targeted=${data.scan.targetedProviderIds.join(",") || "none"}`);
+      line(`repos.count=${data.scan.repos.length}`);
+      for (const r of data.scan.repos) {
+        line(`repo path=${r.displayName} provider=${r.providerId} sessions=${r.sessionCount}`);
+      }
+    } else {
+      line("providers.detected=skipped");
+      line("providers.targeted=skipped");
+      line("repos.count=skipped");
+    }
   }
 
   // Render the cached account org for the human table: name + slug + role when

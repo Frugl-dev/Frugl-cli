@@ -224,16 +224,20 @@ describe("frugl config", { timeout: 30_000 }, () => {
     expect(cfg.repos).toEqual([]);
   });
 
-  it("supports the minimal (agent/CI) format", async () => {
+  it("supports the minimal (agent/CI) format: compact key=value lines, no decoration", async () => {
     const { exitCode, stdout } = await runCli(
       ["config", "--no-repos", "--format", "minimal", "--endpoint", ENDPOINT],
       { env: env(), cwd: project.dir },
     );
 
     expect(exitCode).toBe(EXIT.OK);
-    // Plain, decoration-free text: no ANSI color escapes, still showing settings.
+    // Plain, decoration-free text: no ANSI color escapes, no headings/blank
+    // lines -- one grep-able `key=value` fact per line for agents/CI.
     expect(stdout).not.toContain("[");
-    expect(stdout).toContain("Endpoint");
-    expect(stdout).toContain("upload.minCost");
+    expect(stdout).not.toContain("\n\n");
+    expect(stdout).toContain("endpoint.url=");
+    expect(stdout).toContain("account.loggedIn=false");
+    expect(stdout).toContain("upload.minCost=$10.00 source=default");
+    expect(stdout).toContain("repos.count=skipped");
   });
 });
