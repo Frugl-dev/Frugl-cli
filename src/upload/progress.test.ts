@@ -69,8 +69,9 @@ describe("createProgressReporter", () => {
     });
 
     const err = streams.stderr();
-    // Header reflects the expected count + endpoint + policy.
-    expect(err).toContain("Uploading 3 sessions to https://test (policy v0.1)");
+    // Default mode omits the "Uploading N to X" header: the command's preview +
+    // confirm prompt already stated it, so the reporter would only repeat it.
+    expect(err).not.toContain("Uploading 3 sessions");
     // Live bar reached 3 / 3 (2 acked + 1 skipped) and noted the skip.
     expect(err).toContain("3 / 3");
     expect(err).toContain("1 skipped");
@@ -82,6 +83,18 @@ describe("createProgressReporter", () => {
     expect(err).not.toContain("https://test/dashboard");
     // Text mode never writes machine NDJSON to stdout.
     expect(streams.stdout()).toBe("");
+  });
+
+  it("minimal mode: keeps the 'Uploading N to X' header (no preview/prompt precedes it)", () => {
+    const reporter = createProgressReporter("minimal");
+    reporter.uploadStart({
+      manifestId: "mfst_min",
+      expectedSessionCount: 3,
+      redactionPolicyVersion: "v0.1",
+      endpoint: "https://test",
+    });
+
+    expect(streams.stderr()).toContain("Uploading 3 sessions to https://test (policy v0.1)");
   });
 
   it("text mode: a failure increments done and prints the reason", () => {

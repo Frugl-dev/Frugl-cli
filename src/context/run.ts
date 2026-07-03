@@ -8,6 +8,7 @@ import {
 } from "../cloud/handoff.js";
 import type { OutputMode } from "../lib/output-mode.js";
 import { color, symbol } from "../lib/theme.js";
+import { formatLocalDateTime } from "../lib/time.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import type { SnapshotRunContext } from "../snapshot/shared.js";
 import { captureContext, type ContextTool } from "./capture.js";
@@ -175,11 +176,9 @@ export function reportContext(
   }
 
   process.stdout.write(
-    `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${report.capturedAt}`)}\n`,
+    `${color.ok(`${symbol.tick} Context snapshot captured`)} ${color.dim(`at ${formatLocalDateTime(report.capturedAt)}`)}\n`,
   );
-  process.stdout.write(
-    `${color.dim("  View it on your dashboard: ")}${color.frog(report.handoff.dashboardUrl)}\n`,
-  );
+  process.stdout.write(`${color.dim("  Dashboard: ")}${color.frog(report.handoff.dashboardUrl)}\n`);
   if (report.handoff.active) {
     process.stdout.write(color.dim("             auto sign-in link — valid for ~60s\n"));
   } else if (

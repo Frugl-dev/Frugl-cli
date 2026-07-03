@@ -315,9 +315,10 @@ export function formatSummaryForHuman(s: UploadSummary): string {
     `  ${label("Will upload")}${color.frogBold(String(s.willUpload))} ${color.dim("sessions")}`,
   );
   if (s.metadataOnly !== undefined && s.metadataOnly > 0) {
-    const floor = s.minCost !== undefined ? ` (under $${s.minCost.toFixed(2)})` : "";
+    // No dollar amount here — the `Min cost` line right below owns the threshold,
+    // so repeating "(under $X)" on both lines is redundant.
     lines.push(
-      `    ${color.dim("Metadata only".padEnd(LABEL - 2))}${color.dim(`${s.metadataOnly}   metrics, no transcript${floor}`)}`,
+      `    ${color.dim("Metadata only".padEnd(LABEL - 2))}${color.dim(`${s.metadataOnly}   metrics, no transcript`)}`,
     );
   }
   if (s.minCost !== undefined) {
@@ -353,9 +354,17 @@ export function formatSummaryForHuman(s: UploadSummary): string {
   const prBit = s.prLinking?.active
     ? `   ${color.dim("PR linking")} ${color.ok("on")}`
     : `   ${color.dim("PR linking off")}`;
-  const dateBit = s.dateRange
-    ? `   ${color.dim(`Date range  ${formatDay(s.dateRange.from)} → ${formatDay(s.dateRange.to)}`)}`
-    : "";
+  let dateBit = "";
+  if (s.dateRange) {
+    const from = formatDay(s.dateRange.from);
+    const to = formatDay(s.dateRange.to);
+    // Collapse to a single day when the whole batch lands on one date — an arrow
+    // range with identical ends ("Jul 03 → Jul 03") reads as a bug.
+    dateBit =
+      from === to
+        ? `   ${color.dim(`Date  ${from}`)}`
+        : `   ${color.dim(`Date range  ${from} → ${to}`)}`;
+  }
   lines.push(`  ${policyBit}${prBit}${dateBit}`);
 
   if (s.prLinking?.active) {

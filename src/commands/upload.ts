@@ -1189,7 +1189,17 @@ function buildProjectRows(
     if (item.kind === "unchanged") continue;
     const g = groupByRefPath.get(item.ref.absolutePath);
     const projectId = g?.projectId ?? path.basename(path.dirname(item.ref.absolutePath));
-    if (g) infoById.set(projectId, { providerId: g.providerId, displayName: g.displayName });
+    if (g && !infoById.has(projectId)) {
+      // g.displayName is either a git "owner/name" label (from groupByGitProject)
+      // or a filesystem path. A path came from decodeProjectPath, which is lossy
+      // — Claude encodes both "/" and "." as "-", so decoding turns every "-"
+      // back into "/" and mangles real hyphens ("Frugl-Cli" → "Frugl/Cli"). When
+      // the label is a path, prefer the session's recorded cwd: it's the
+      // ground-truth absolute path, never round-tripped through the lossy encode.
+      const isPathLabel = g.displayName.startsWith("/");
+      const displayName = isPathLabel && item.parsed.cwd ? item.parsed.cwd : g.displayName;
+      infoById.set(projectId, { providerId: g.providerId, displayName });
+    }
     counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
   }
   const rows: ProjectSummaryRow[] = [];

@@ -363,7 +363,10 @@ describe("formatSummaryForHuman", () => {
     expect(out).toContain("Min cost");
     expect(out).toContain("$10.00 — cheaper sessions upload metadata only");
     expect(out).toContain("Metadata only");
-    expect(out).toContain("4   metrics, no transcript (under $10.00)");
+    // The dollar amount lives only on the `Min cost` line now — the metadata
+    // line no longer repeats "(under $10.00)".
+    expect(out).toContain("4   metrics, no transcript");
+    expect(out).not.toContain("no transcript (under $10.00)");
     expect(out).toContain("Excluded (empty)");
     expect(out).toContain("2   skipping (under $0.01)");
   });
@@ -373,5 +376,30 @@ describe("formatSummaryForHuman", () => {
     expect(out).toContain("$25.00 — cheaper sessions upload metadata only");
     expect(out).not.toContain("Metadata only");
     expect(out).not.toContain("Excluded (empty)");
+  });
+
+  it("collapses to a single date (no arrow) when the batch lands on one day", () => {
+    // Same instant twice → from === to in every time zone, so the day string is
+    // irrelevant; only the collapsed shape ("Date  <day>", no arrow) is asserted.
+    const at = utcMs("2026-07-03T12:00:00Z");
+    const willUpload = [
+      classification("new", { mtimeMs: at, byteSize: 1 }),
+      classification("new", { mtimeMs: at, byteSize: 1 }),
+    ];
+    const out = stripAnsi(formatSummaryForHuman(buildUploadSummary(summaryInput({ willUpload }))));
+    expect(out).not.toContain("→");
+    expect(out).toContain("Date  ");
+    expect(out).not.toContain("Date range");
+  });
+
+  it("shows an arrow range when the batch spans multiple days", () => {
+    // Five days apart → different local days in any real time zone.
+    const willUpload = [
+      classification("new", { mtimeMs: utcMs("2026-07-01T12:00:00Z"), byteSize: 1 }),
+      classification("new", { mtimeMs: utcMs("2026-07-06T12:00:00Z"), byteSize: 1 }),
+    ];
+    const out = stripAnsi(formatSummaryForHuman(buildUploadSummary(summaryInput({ willUpload }))));
+    expect(out).toContain("Date range");
+    expect(out).toContain("→");
   });
 });

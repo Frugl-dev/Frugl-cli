@@ -21,6 +21,23 @@ export function nowInstant(): Temporal.Instant {
   return Temporal.Now.instant();
 }
 
+// A short, human-friendly local rendering of an ISO instant (e.g. "Jul 03,
+// 3:06 PM") for at-a-glance CLI output — not the wire format. Rendered in the
+// machine's local time zone, since it labels something the user just did.
+// Falls back to the raw string if `iso` isn't parseable.
+export function formatLocalDateTime(iso: string): string {
+  try {
+    return Temporal.Instant.from(iso).toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 // An ISO timestamp's epoch-millisecond value, or null when `iso` isn't parseable.
 // Replaces the `Date.parse(iso)` / `new Date(iso).getTime()` NaN dance:
 // `Temporal.Instant.from` throws on invalid input, so the try/catch lives here
