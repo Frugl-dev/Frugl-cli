@@ -22,6 +22,7 @@ describe("artifact-loadout capture (codex/gemini/cursor)", () => {
     rmSync(repo, { recursive: true, force: true });
   });
 
+  // oxlint-disable-next-line unicorn/consistent-function-scoping -- scoped to this describe block for readability at each call site
   function parse(text: string): ArtifactsPayload {
     return JSON.parse(text) as ArtifactsPayload;
   }

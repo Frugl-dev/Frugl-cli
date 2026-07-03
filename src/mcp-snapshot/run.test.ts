@@ -30,7 +30,9 @@ vi.mock("../cloud/handoff.js", async (importOriginal) => {
 });
 
 vi.mock("../upload/cloud-http-adapter.js", () => ({
+  // oxlint-disable-next-line typescript/no-extraneous-class -- stand-in class mock matching HttpCloudAdapter's constructor shape
   HttpCloudAdapter: class {
+    // oxlint-disable-next-line no-useless-constructor -- signature must match the real HttpCloudAdapter constructor
     constructor(_client: unknown) {}
   },
 }));
