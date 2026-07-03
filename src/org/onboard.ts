@@ -201,15 +201,20 @@ export async function runAuthAndOrgSetup(params: OnboardParams): Promise<Onboard
 
   const yes = params.flags.yes ?? false;
 
-  // `--yes` with no org flag: the only non-prompting outcome is "already a
-  // member" (the common re-run path — FR-005 must not hang, US3 re-run stays
-  // safe). Probe membership; fail fast with a usage error otherwise.
-  if (yes && !params.flags.inviteCode && !params.flags.orgName) {
+  // No org flag given: probe membership before prompting/guessing — a re-run
+  // against an already-onboarded account (e.g. `init` after `login`) must
+  // return the existing org instead of re-offering create/join (FR-004). Under
+  // `--yes` this is also the only non-prompting outcome (FR-005 must not hang,
+  // US3 re-run stays safe), so fail fast with a usage error when there's no org
+  // yet and we can't prompt.
+  if (!params.flags.inviteCode && !params.flags.orgName) {
     const existing = await probeMembership(params.client);
     if (existing) return { session, orgResult: existing };
-    throw new UsageError(
-      "Non-interactive setup needs an org: pass --org-name to create one or --invite-code to join.",
-    );
+    if (yes) {
+      throw new UsageError(
+        "Non-interactive setup needs an org: pass --org-name to create one or --invite-code to join.",
+      );
+    }
   }
 
   const intent = await resolveIntent(params.flags, yes);
