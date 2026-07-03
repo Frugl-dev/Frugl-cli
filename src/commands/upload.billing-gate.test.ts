@@ -5,6 +5,7 @@ import { MockServer } from "../e2e/helpers/mock-server.js";
 import { runCli } from "../e2e/helpers/spawn.js";
 import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "../e2e/helpers/fixtures.js";
+import { Temporal } from "temporal-polyfill";
 
 // The billing gate (spec 060, T027/T028): when the server refuses an upload with
 // a 429 { error: "org_blocked", ... }, the CLI surfaces the quota + upgrade link
@@ -34,7 +35,9 @@ describe("frugl upload — billing gate (org_blocked)", { timeout: 30_000 }, () 
         presigned_url: `${server.url}/never`,
         method: "PUT",
         headers: {},
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        expires_at: Temporal.Now.instant()
+          .add({ minutes: 1 })
+          .toString({ smallestUnit: "millisecond" }),
       });
     });
     MockServer.wireHappyPath(server);

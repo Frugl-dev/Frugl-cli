@@ -5,6 +5,7 @@ import path from "node:path";
 import { Ledger } from "./ledger.js";
 import { classifyAll, bucketize, sortByMtimeDesc, type SessionClassification } from "./classify.js";
 import type { ParsedSession, SessionRef, Source } from "../sources/types.js";
+import { nowIso } from "../lib/time.js";
 
 const SOURCE_KIND = "test-source";
 
@@ -78,7 +79,7 @@ describe("classify", () => {
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
       contentHash: firstNew.anonymizationResult.contentHashHex,
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m-1",
     });
 
@@ -117,7 +118,7 @@ describe("classify", () => {
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
       contentHash: firstNew.anonymizationResult.contentHashHex,
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m-1",
       sourceFilePath: ref.absolutePath,
       mtimeMs: ref.mtimeMs,
@@ -154,7 +155,7 @@ describe("classify", () => {
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
       contentHash: firstNew.anonymizationResult.contentHashHex,
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m-1",
       sourceFilePath: firstRef.absolutePath,
       mtimeMs: firstRef.mtimeMs,
@@ -201,7 +202,7 @@ describe("classify", () => {
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
       contentHash: firstNew.anonymizationResult.contentHashHex,
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m-1",
       sourceFilePath: ref.absolutePath,
       mtimeMs: ref.mtimeMs,
@@ -242,7 +243,7 @@ describe("classify", () => {
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
       contentHash: firstNew.anonymizationResult.contentHashHex,
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m-A",
     });
 
@@ -273,7 +274,7 @@ describe("classify", () => {
     ledger.upsertEntry({
       sessionId: firstNew.identity.sessionId,
       contentHash: firstNew.anonymizationResult.contentHashHex,
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m-1",
     });
 
@@ -310,7 +311,7 @@ describe("classify", () => {
         ledger.upsertEntry({
           sessionId: c.identity.sessionId,
           contentHash: c.anonymizationResult.contentHashHex,
-          lastUploadedAt: new Date().toISOString(),
+          lastUploadedAt: nowIso(),
           manifestId: "m-init",
         });
       }

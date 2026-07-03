@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import type { ClassifiedSet, SessionClassification } from "../ledger/classify.js";
 import type { Endpoint } from "../cloud/endpoints.js";
 import { bar, color, formatBytes, symbol } from "../lib/theme.js";
@@ -192,9 +193,16 @@ function computeDateRange(
     if (item.ref.mtimeMs < min) min = item.ref.mtimeMs;
     if (item.ref.mtimeMs > max) max = item.ref.mtimeMs;
   }
+  // `mtimeMs` carries sub-millisecond fractional digits from the filesystem;
+  // `fromEpochMilliseconds` demands an integer (unlike `new Date`, which
+  // truncated silently), so floor to whole milliseconds first.
   return {
-    from: new Date(min).toISOString(),
-    to: new Date(max).toISOString(),
+    from: Temporal.Instant.fromEpochMilliseconds(Math.trunc(min)).toString({
+      smallestUnit: "millisecond",
+    }),
+    to: Temporal.Instant.fromEpochMilliseconds(Math.trunc(max)).toString({
+      smallestUnit: "millisecond",
+    }),
   };
 }
 
@@ -271,9 +279,13 @@ const LABEL = 18;
 const label = (text: string): string => color.mute(text.padEnd(LABEL));
 
 function formatDay(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+  try {
+    // Local time zone (no `timeZone` option), matching the prior
+    // `new Date(iso).toLocaleDateString(...)` behavior.
+    return Temporal.Instant.from(iso).toLocaleString("en-US", { month: "short", day: "2-digit" });
+  } catch {
+    return iso;
+  }
 }
 
 export function formatSummaryForHuman(s: UploadSummary): string {
@@ -362,13 +374,16 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 // "May 26, 14:08" from an ISO timestamp, rendered in UTC for deterministic output.
 export function formatReportDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const mon = MONTHS[d.getUTCMonth()];
-  const day = d.getUTCDate();
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${mon} ${day}, ${hh}:${mm}`;
+  let z: Temporal.ZonedDateTime;
+  try {
+    z = Temporal.Instant.from(iso).toZonedDateTimeISO("UTC");
+  } catch {
+    return iso;
+  }
+  const mon = MONTHS[z.month - 1]; // Temporal months are 1-indexed.
+  const hh = String(z.hour).padStart(2, "0");
+  const mm = String(z.minute).padStart(2, "0");
+  return `${mon} ${z.day}, ${hh}:${mm}`;
 }
 
 export function formatReportHuman(report: UploadReport): string {

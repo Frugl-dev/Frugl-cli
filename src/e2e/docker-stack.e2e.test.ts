@@ -35,6 +35,7 @@ import { runCli } from "./helpers/spawn.js";
 import { injectAuth, clearAuth } from "./helpers/auth.js";
 import type { AuthSession } from "../auth/session.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "./helpers/fixtures.js";
+import { nowInstant, nowIso } from "../lib/time.js";
 
 const ENABLED = process.env["FRUGL_DOCKER_STACK"] === "1";
 
@@ -64,7 +65,7 @@ async function adminFetch(apiPath: string, init: RequestInit): Promise<Response>
 }
 
 async function createStackUser(): Promise<StackUser> {
-  const email = `e2e-cli-${Date.now()}-${randomUUID().slice(0, 8)}@frugl.test`;
+  const email = `e2e-cli-${nowInstant().epochMilliseconds}-${randomUUID().slice(0, 8)}@frugl.test`;
 
   // 1. Create Supabase user (email pre-confirmed)
   const createRes = await adminFetch("/auth/v1/admin/users", {
@@ -126,7 +127,7 @@ async function createStackUser(): Promise<StackUser> {
     userId: user_id,
     token: sbSession.access_token,
     endpointUrl: ASTRO_URL,
-    loggedInAt: new Date().toISOString(),
+    loggedInAt: nowIso(),
   };
 
   return { userId, email, orgId, session: authSession };

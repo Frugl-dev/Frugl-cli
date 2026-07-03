@@ -2,6 +2,7 @@ import pLimit from "p-limit";
 import { AnonymizationError, NetworkError, FruglError, StaleResumeError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { withRetry } from "../lib/retry.js";
+import { nowIso } from "../lib/time.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { ProgressReporter } from "./progress.js";
 import type { GitContext } from "./git-context.js";
@@ -81,7 +82,7 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
     schemaVersion: 1,
     manifest: manifestState,
     redactionTotals,
-    beganAt: resumed && existing ? existing.beganAt : new Date().toISOString(),
+    beganAt: resumed && existing ? existing.beganAt : nowIso(),
   });
 
   opts.reporter.uploadStart({

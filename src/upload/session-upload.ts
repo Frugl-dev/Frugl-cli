@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { withRetry } from "../lib/retry.js";
+import { nowIso } from "../lib/time.js";
 import { AuthError, StaleResumeError, VersionGateError } from "../lib/errors.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
@@ -105,7 +106,7 @@ export class SessionUpload {
     resume.updateEntry(entry.sessionId, (e) => ({ ...e, status: "in-flight" }));
     try {
       await this.uploadOne(job);
-      const now = new Date().toISOString();
+      const now = nowIso();
       resume.updateEntry(entry.sessionId, (e) => {
         // A prior attempt may have recorded a failure on this entry; clear it now
         // that the session landed so --report won't show a stale reason.
@@ -153,7 +154,7 @@ export class SessionUpload {
         ...e,
         status: "pending",
         lastFailureReason: failure.reason,
-        failedAt: new Date().toISOString(),
+        failedAt: nowIso(),
         ...(failure.message !== undefined ? { lastFailureMessage: failure.message } : {}),
       }));
       reporter.sessionFailed({

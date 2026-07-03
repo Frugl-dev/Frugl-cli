@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Ledger, type LedgerEntry } from "./ledger.js";
+import { nowIso } from "../lib/time.js";
 
 const HEX64 = "a".repeat(64);
 
@@ -10,7 +11,7 @@ function makeEntry(sessionId: string, contentHash = HEX64): LedgerEntry {
   return {
     sessionId,
     contentHash,
-    lastUploadedAt: new Date().toISOString(),
+    lastUploadedAt: nowIso(),
     manifestId: "m-test",
   };
 }

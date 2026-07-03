@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Temporal } from "temporal-polyfill";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -103,7 +104,7 @@ describe("frugl-config (pendingAuthFailure)", () => {
     recordPendingAuthFailure(ENDPOINT, { cwd: dir });
     const pending = getPendingAuthFailure({ cwd: dir });
     expect(pending?.endpoint).toBe(ENDPOINT);
-    expect(() => new Date(pending?.at ?? "").toISOString()).not.toThrow();
+    expect(() => Temporal.Instant.from(pending?.at ?? "")).not.toThrow();
   });
 
   it("clears the breadcrumb when the endpoint matches", () => {

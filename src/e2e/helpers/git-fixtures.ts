@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { nowIso } from "../../lib/time.js";
 
 export const FIXTURE_SHA = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b";
 
@@ -40,7 +41,7 @@ export async function writeGitSession(
     sessionId,
     type: "user",
     message: "hello",
-    timestamp: new Date().toISOString(),
+    timestamp: nowIso(),
   };
   if (opts.cwd !== undefined) first["cwd"] = opts.cwd;
   if (opts.gitBranch !== undefined) first["gitBranch"] = opts.gitBranch;
@@ -63,7 +64,7 @@ export async function writeGitSession(
           cache_read_input_tokens: 0,
         },
       },
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso(),
     },
   ];
   await writeFile(

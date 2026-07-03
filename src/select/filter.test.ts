@@ -8,6 +8,7 @@ import {
 } from "./filter.js";
 import type { SessionClassification } from "../ledger/classify.js";
 import type { SessionRef } from "../sources/types.js";
+import { nowIso } from "../lib/time.js";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function updatedItem(records: unknown[], p = "/a/2.jsonl"): SessionClassificatio
     previousEntry: {
       sessionId: p,
       contentHash: "x".repeat(64),
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m1",
     },
     anonymizationResult: {
@@ -87,7 +88,7 @@ function unchangedItem(p = "/a/3.jsonl"): SessionClassification {
     ledgerEntry: {
       sessionId: p,
       contentHash: "y".repeat(64),
-      lastUploadedAt: new Date().toISOString(),
+      lastUploadedAt: nowIso(),
       manifestId: "m1",
     },
   };

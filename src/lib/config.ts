@@ -1,6 +1,8 @@
 import Conf from "conf";
+import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
 import { NAMESPACES } from "./paths.js";
+import { nowInstant, nowIso } from "./time.js";
 
 const CONFIG_SCHEMA_VERSION = 1 as const;
 
@@ -146,7 +148,7 @@ export function getPendingAuthFailure(
 // Record that a non-interactive run failed auth for `endpoint`. Stamped with the
 // current time so the eventual warning can say how long ago it happened.
 export function recordPendingAuthFailure(endpoint: string, options: ConfigStoreOptions = {}): void {
-  writeConfig({ pendingAuthFailure: { endpoint, at: new Date().toISOString() } }, options);
+  writeConfig({ pendingAuthFailure: { endpoint, at: nowIso() } }, options);
 }
 
 // Clear the breadcrumb after a successful login. No-op unless the stored failure
@@ -168,7 +170,9 @@ export function getUploadBlocked(options: ConfigStoreOptions = {}): UploadBlock 
 }
 
 export function recordUploadBlocked(endpoint: string, options: ConfigStoreOptions = {}): void {
-  const until = new Date(Date.now() + UPLOAD_BLOCK_TTL_MS).toISOString();
+  const until = nowInstant()
+    .add({ milliseconds: UPLOAD_BLOCK_TTL_MS })
+    .toString({ smallestUnit: "millisecond" });
   writeConfig({ uploadBlocked: { endpoint, until } }, options);
 }
 
@@ -187,10 +191,13 @@ export function getLastHookSpawn(options: ConfigStoreOptions = {}): HookSpawnSta
 
 export function recordLastHookSpawn(
   endpoint: string,
-  at: Date,
+  at: Temporal.Instant,
   options: ConfigStoreOptions = {},
 ): void {
-  writeConfig({ lastHookSpawn: { endpoint, at: at.toISOString() } }, options);
+  writeConfig(
+    { lastHookSpawn: { endpoint, at: at.toString({ smallestUnit: "millisecond" }) } },
+    options,
+  );
 }
 
 // The endpoint remembered from the last successful login (see schema comment).
@@ -248,7 +255,7 @@ export function recordProfileIdentity(
         userId: identity.userId,
         ...(identity.loggedInAt !== undefined ? { loggedInAt: identity.loggedInAt } : {}),
         ...(keepOrg !== undefined ? { org: keepOrg } : {}),
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso(),
       },
     },
     options,
@@ -273,7 +280,7 @@ export function recordProfileOrg(
         userId: prev.userId,
         ...(prev.loggedInAt !== undefined ? { loggedInAt: prev.loggedInAt } : {}),
         ...(org ? { org } : {}),
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso(),
       },
     },
     options,

@@ -1,5 +1,6 @@
 import type { CapturedMcpServer, CapturedPlugin, ConfigCapture } from "../types.js";
 import { unparsedSource } from "../types.js";
+import { nowIso } from "../../lib/time.js";
 import { mergeHookSources, type HookConfigSource } from "./hooks.js";
 import { defaultIO, type CaptureIO } from "./io.js";
 import { parseMcpList } from "./mcp.js";
@@ -98,7 +99,7 @@ function fileExists(io: CaptureIO, path: string): boolean {
 // others (Constitution Principle VI). Pure given an injected IO + clock.
 export function assembleClaudeConfig(opts: AssembleOptions = {}): ConfigCapture {
   const io = opts.io ?? defaultIO;
-  const now = opts.now ?? (() => new Date().toISOString());
+  const now = opts.now ?? nowIso;
 
   const mcpRun = io.run("claude", ["mcp", "list"]);
   const mcpServers =

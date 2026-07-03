@@ -4,6 +4,7 @@ import {
   clearUploadBlocked,
   recordProfileIdentity,
 } from "../lib/config.js";
+import { nowIso } from "../lib/time.js";
 import type { IdentityClient } from "./identity-client.js";
 import { SessionStore, type AuthSession } from "./session-store.js";
 
@@ -81,7 +82,7 @@ export class AuthService {
       userId,
       token,
       endpointUrl: this.endpointUrl,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
     await this.sessions.save(session);
     clearAuthFailureBreadcrumb(this.endpointUrl);
@@ -99,7 +100,7 @@ export class AuthService {
       userId: identity.userId,
       token,
       endpointUrl: this.endpointUrl,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
     await this.sessions.save(session);
     clearAuthFailureBreadcrumb(this.endpointUrl);
@@ -133,7 +134,7 @@ export class AuthService {
       userId: identity.userId,
       token: resolved.token,
       endpointUrl: this.endpointUrl,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
   }
 }

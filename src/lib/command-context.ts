@@ -8,6 +8,7 @@ import { getPendingAuthFailure, getSavedEndpoint } from "./config.js";
 import { isFruglError, printFruglError } from "./errors.js";
 import { resolveDebug, resolveOutputMode, FORMAT_FLAG, type OutputMode } from "./output-mode.js";
 import { color, symbol } from "./theme.js";
+import { epochMsFromIso, nowInstant } from "./time.js";
 
 export interface CommandFlags {
   format?: string | undefined;
@@ -108,7 +109,8 @@ function readSavedEndpoint(): string | undefined {
 // Human-friendly "how long ago" for the pending-failure warning. Coarse on
 // purpose — the user only needs to know it's stale, not the exact second.
 function describeAgo(iso: string): string {
-  const ms = Date.now() - Date.parse(iso);
+  const then = epochMsFromIso(iso);
+  const ms = then === null ? Number.NaN : nowInstant().epochMilliseconds - then;
   if (!Number.isFinite(ms) || ms < 0) return "recently";
   const min = Math.round(ms / 60000);
   if (min < 1) return "just now";

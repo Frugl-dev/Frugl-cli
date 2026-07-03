@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Temporal } from "temporal-polyfill";
+import { nowIso } from "./time.js";
 
 // This suite drives the interactive (TTY, default-mode) pending-auth-failure
 // warning, the describeAgo formatting, and the defensive readSavedEndpoint /
@@ -35,6 +37,11 @@ const { buildCommandContext } = await import("./command-context.js");
 
 const ENDPOINT = "https://env.example.com";
 
+// A millisecond-ISO timestamp `ms` in the past — the Temporal replacement for
+// `new Date(Date.now() - ms).toISOString()`.
+const isoAgo = (ms: number): string =>
+  Temporal.Now.instant().subtract({ milliseconds: ms }).toString({ smallestUnit: "millisecond" });
+
 let stderr: string;
 let originalTTY: boolean | undefined;
 
@@ -59,20 +66,20 @@ afterEach(() => {
 
 describe("warnPendingAuthFailure — interactive, default mode", () => {
   it("warns on stderr when a pending failure matches the resolved endpoint", async () => {
-    pendingImpl = () => ({ endpoint: ENDPOINT, at: new Date(Date.now() - 90_000).toISOString() });
+    pendingImpl = () => ({ endpoint: ENDPOINT, at: isoAgo(90_000) });
     await buildCommandContext({}, { auth: "optional" });
     expect(stderr).toContain("Your last automatic upload failed");
     expect(stderr).toContain("frugl login");
   });
 
   it("stays silent when the pending failure is for a different endpoint", async () => {
-    pendingImpl = () => ({ endpoint: "https://other.example.com", at: new Date().toISOString() });
+    pendingImpl = () => ({ endpoint: "https://other.example.com", at: nowIso() });
     await buildCommandContext({}, { auth: "optional" });
     expect(stderr).toBe("");
   });
 
   it("stays silent for a 'none' auth command even with a pending failure", async () => {
-    pendingImpl = () => ({ endpoint: ENDPOINT, at: new Date().toISOString() });
+    pendingImpl = () => ({ endpoint: ENDPOINT, at: nowIso() });
     await buildCommandContext({}, { auth: "none" });
     expect(stderr).toBe("");
   });
@@ -86,7 +93,7 @@ describe("warnPendingAuthFailure — interactive, default mode", () => {
   });
 
   it("stays silent in json mode despite a TTY and a matching pending failure", async () => {
-    pendingImpl = () => ({ endpoint: ENDPOINT, at: new Date().toISOString() });
+    pendingImpl = () => ({ endpoint: ENDPOINT, at: nowIso() });
     await buildCommandContext({ format: "json" }, { auth: "optional" });
     expect(stderr).toBe("");
   });
@@ -100,27 +107,23 @@ describe("describeAgo — coarse relative phrasing via the warning line", () => 
   }
 
   it('"just now" for a sub-minute failure', async () => {
-    expect(await warnWith(new Date(Date.now() - 5_000).toISOString())).toContain("just now");
+    expect(await warnWith(isoAgo(5_000))).toContain("just now");
   });
 
   it('"N min ago" for minutes', async () => {
-    expect(await warnWith(new Date(Date.now() - 30 * 60_000).toISOString())).toContain("min ago");
+    expect(await warnWith(isoAgo(30 * 60_000))).toContain("min ago");
   });
 
   it('"N hr ago" for hours', async () => {
-    expect(await warnWith(new Date(Date.now() - 5 * 3_600_000).toISOString())).toContain("hr ago");
+    expect(await warnWith(isoAgo(5 * 3_600_000))).toContain("hr ago");
   });
 
   it('singular "1 day ago" for ~one day', async () => {
-    expect(await warnWith(new Date(Date.now() - 25 * 3_600_000).toISOString())).toContain(
-      "1 day ago",
-    );
+    expect(await warnWith(isoAgo(25 * 3_600_000))).toContain("1 day ago");
   });
 
   it('plural "N days ago" for multiple days', async () => {
-    expect(await warnWith(new Date(Date.now() - 3 * 86_400_000).toISOString())).toContain(
-      "days ago",
-    );
+    expect(await warnWith(isoAgo(3 * 86_400_000))).toContain("days ago");
   });
 
   it('"recently" for an unparseable timestamp', async () => {

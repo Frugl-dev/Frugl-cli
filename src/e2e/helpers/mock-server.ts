@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { Temporal } from "temporal-polyfill";
 
 type Handler = (
   req: IncomingMessage,
@@ -117,7 +118,9 @@ export class MockServer {
           presigned_url: `${server.url}/fake-put/${encodeURIComponent(params["id"] ?? "")}/${randomUUID()}`,
           method: "PUT",
           headers: {},
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          expires_at: Temporal.Now.instant()
+            .add({ minutes: 1 })
+            .toString({ smallestUnit: "millisecond" }),
         });
       })
       .on("PUT", "/fake-put/:id/:key", (_req, res) => {

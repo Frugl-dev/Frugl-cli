@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { Temporal } from "temporal-polyfill";
 import {
   buildReport,
   formatReportHuman,
@@ -15,6 +16,10 @@ import type { ManifestEntryState, ResumeState } from "./resume.js";
 
 const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const stripAnsi = (s: string): string => s.replace(ANSI_RE, "");
+
+// Epoch millis for a UTC instant literal — the Temporal replacement for the
+// `Date.UTC(y, m, d)` (0-indexed month!) fixtures this suite used for mtimeMs.
+const utcMs = (iso: string): number => Temporal.Instant.from(iso).epochMilliseconds;
 
 // ---- Report fixtures (ported from report.test.ts) ----
 
@@ -211,14 +216,14 @@ describe("buildUploadSummary", () => {
 
   it("computes dateRange min/max from mtimeMs", () => {
     const willUpload = [
-      classification("new", { mtimeMs: Date.UTC(2026, 4, 26), byteSize: 1 }),
-      classification("new", { mtimeMs: Date.UTC(2026, 4, 20), byteSize: 1 }),
-      classification("updated", { mtimeMs: Date.UTC(2026, 4, 30), byteSize: 1 }),
+      classification("new", { mtimeMs: utcMs("2026-05-26T00:00:00Z"), byteSize: 1 }),
+      classification("new", { mtimeMs: utcMs("2026-05-20T00:00:00Z"), byteSize: 1 }),
+      classification("updated", { mtimeMs: utcMs("2026-05-30T00:00:00Z"), byteSize: 1 }),
     ];
     const summary = buildUploadSummary(summaryInput({ willUpload }));
     expect(summary.dateRange).toEqual({
-      from: new Date(Date.UTC(2026, 4, 20)).toISOString(),
-      to: new Date(Date.UTC(2026, 4, 30)).toISOString(),
+      from: "2026-05-20T00:00:00.000Z",
+      to: "2026-05-30T00:00:00.000Z",
     });
   });
 
@@ -316,8 +321,8 @@ describe("link-prs precedence", () => {
 describe("formatSummaryForHuman", () => {
   it("renders endpoint, will-upload count, project bars, PR-linking block, and --limit", () => {
     const willUpload = [
-      classification("new", { mtimeMs: Date.UTC(2026, 4, 26), byteSize: 1024 }),
-      classification("updated", { mtimeMs: Date.UTC(2026, 4, 27), byteSize: 1024 }),
+      classification("new", { mtimeMs: utcMs("2026-05-26T00:00:00Z"), byteSize: 1024 }),
+      classification("updated", { mtimeMs: utcMs("2026-05-27T00:00:00Z"), byteSize: 1024 }),
     ];
     const summary = buildUploadSummary(
       summaryInput({

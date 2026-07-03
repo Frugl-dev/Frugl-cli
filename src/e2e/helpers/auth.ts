@@ -1,5 +1,6 @@
 import { Entry } from "@napi-rs/keyring";
 import type { AuthSession } from "../../auth/session.js";
+import { nowIso } from "../../lib/time.js";
 
 const SERVICE = "frugl";
 
@@ -21,6 +22,6 @@ export function makeTestSession(endpointUrl: string): AuthSession {
     userId: "user-e2e-test",
     token: "tok-e2e-test",
     endpointUrl,
-    loggedInAt: new Date().toISOString(),
+    loggedInAt: nowIso(),
   };
 }

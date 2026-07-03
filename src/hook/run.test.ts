@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { Temporal } from "temporal-polyfill";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,6 +7,7 @@ import { SessionStore } from "../auth/session-store.js";
 import { createInMemoryCredentialStore } from "../auth/credential-store.js";
 import { DEFAULT_ENDPOINT } from "../cloud/endpoints.js";
 import { getLastHookSpawn, recordUploadBlocked } from "../lib/config.js";
+import { nowIso } from "../lib/time.js";
 import { executeHookRun, HOOK_SPAWN_COOLDOWN_MS } from "./run.js";
 
 const tmpDirs: string[] = [];
@@ -42,8 +44,9 @@ function makeDeps(overrides: { token?: string; env?: NodeJS.ProcessEnv } = {}) {
   };
 }
 
-const afterCooldown = () => new Date(Date.now() + HOOK_SPAWN_COOLDOWN_MS + 1000);
-const afterBlockTtl = () => new Date(Date.now() + 13 * 60 * 60 * 1000);
+const afterCooldown = () =>
+  Temporal.Now.instant().add({ milliseconds: HOOK_SPAWN_COOLDOWN_MS + 1000 });
+const afterBlockTtl = () => Temporal.Now.instant().add({ hours: 13 });
 
 describe("executeHookRun", () => {
   it("silently no-ops when not logged in — no spawn, no state written", async () => {
@@ -118,7 +121,7 @@ describe("executeHookRun", () => {
       userId: "user-1",
       token: "tok_session",
       endpointUrl: DEFAULT_ENDPOINT,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
     const store = new SessionStore({
       store: createInMemoryCredentialStore({ [DEFAULT_ENDPOINT]: JSON.stringify(session) }),

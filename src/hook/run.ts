@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { Temporal } from "temporal-polyfill";
 import { SessionStore } from "../auth/session-store.js";
 import { resolveEndpoint, safeEndpoint } from "../cloud/endpoints.js";
 import { loadProjectPin } from "../cloud/project-pin.js";
@@ -9,6 +10,7 @@ import {
   recordLastHookSpawn,
   type ConfigStoreOptions,
 } from "../lib/config.js";
+import { epochMsFromIso } from "../lib/time.js";
 
 // The core of `frugl hook run` — the command every editor/CLI session hook
 // invokes. It must be FAST and must never poison the calling hook, so it always
@@ -43,13 +45,13 @@ export interface HookRunDeps {
   store?: SessionStore;
   configOptions?: ConfigStoreOptions;
   spawnUpload?: (endpointUrl: string) => void;
-  now?: () => Date;
+  now?: () => Temporal.Instant;
 }
 
 export async function executeHookRun(deps: HookRunDeps = {}): Promise<HookRunResult> {
   const env = deps.env ?? process.env;
   const configOptions = deps.configOptions ?? {};
-  const now = deps.now ?? (() => new Date());
+  const now = deps.now ?? (() => Temporal.Now.instant());
 
   // Fail-closed like every other command: a present-but-malformed pin throws
   // rather than letting a self-host repo fall through to the public cloud.
@@ -68,14 +70,20 @@ export async function executeHookRun(deps: HookRunDeps = {}): Promise<HookRunRes
   }
 
   const blocked = readSafe(() => getUploadBlocked(configOptions));
-  if (blocked?.endpoint === endpoint.url && Date.parse(blocked.until) > now().getTime()) {
-    return { action: "skipped", reason: "blocked", endpoint: endpoint.url };
+  if (blocked?.endpoint === endpoint.url) {
+    const untilMs = epochMsFromIso(blocked.until);
+    // A malformed `until` fails open (proceed), matching the old `Date.parse`
+    // NaN comparison that was never greater than now.
+    if (untilMs !== null && untilMs > now().epochMilliseconds) {
+      return { action: "skipped", reason: "blocked", endpoint: endpoint.url };
+    }
   }
 
   const lastSpawn = readSafe(() => getLastHookSpawn(configOptions));
   if (lastSpawn?.endpoint === endpoint.url) {
-    const elapsed = now().getTime() - Date.parse(lastSpawn.at);
-    if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < HOOK_SPAWN_COOLDOWN_MS) {
+    const lastSpawnMs = epochMsFromIso(lastSpawn.at);
+    const elapsed = lastSpawnMs === null ? null : now().epochMilliseconds - lastSpawnMs;
+    if (elapsed !== null && elapsed >= 0 && elapsed < HOOK_SPAWN_COOLDOWN_MS) {
       return { action: "skipped", reason: "cooldown", endpoint: endpoint.url };
     }
   }
