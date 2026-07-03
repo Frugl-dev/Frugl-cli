@@ -80,8 +80,11 @@ import {
   recordUploadBlocked,
   clearUploadBlocked,
 } from "../lib/config.js";
-import { loadUploadConfig, resolveConfigSelection } from "../config/upload-config.js";
-import { findProjectConfigDir } from "../config/project-config.js";
+import {
+  loadUploadConfig,
+  loadUploadConfigScope,
+  resolveConfigSelection,
+} from "../config/upload-config.js";
 import {
   resolveDebug,
   resolveOutputMode,
@@ -215,6 +218,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
     try {
       // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
       const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
+      // Non-null only when a real v1 `.frugl.json` was found (not the deprecated
+      // frugl.config.json fallback): its directory is the project's scope.
+      const scopeDir = loadUploadConfigScope({ explicitPath: flags.config });
       if (uploadConfig?.upload?.enabled === false) {
         if (mode !== "json") {
           process.stderr.write(color.dim("Upload disabled in .frugl.json — nothing sent.\n"));
@@ -383,8 +389,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         if (uploadConfig) {
           // Config-driven scope: derive all supported providers' projects, then
-          // either scope to the .frugl.json directory (auto mode) or filter by the
-          // config's providers + project include/exclude globs. No picker either way.
+          // either scope to the .frugl.json directory or filter by the deprecated
+          // frugl.config.json's providers + project include/exclude globs. No
+          // picker either way.
           for (const d of supportedDetected) {
             const descriptor = getProvider(d.descriptor.id);
             if (!descriptor?.supported || !descriptor.source || !descriptor.deriveProjects)
@@ -393,23 +400,20 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
             groups.push(...descriptor.deriveProjects(providerRefs));
           }
 
-          if (autoMode) {
-            // auto:true means the .frugl.json IS the project declaration — scope
-            // strictly to the directory that contains it. upload.projects globs are
-            // superseded; each repo opts in by having its own .frugl.json.
-            // upload.providers defaults to all supported but can restrict the set.
+          if (scopeDir !== null) {
+            // A .frugl.json's mere presence IS the project declaration — scope
+            // strictly to the directory that contains it, no include/exclude
+            // globs needed. upload.providers defaults to all supported but can
+            // restrict the set.
             const supportedIds = supportedDetected.map((d) => d.descriptor.id);
             const providerIds = uploadConfig.providers
               ? supportedIds.filter((id) => uploadConfig.providers!.includes(id))
               : supportedIds;
             const providerSet = new Set(providerIds);
-            const configDir = findProjectConfigDir();
             const scopedGroups = groups.filter(
               (g) =>
                 providerSet.has(g.providerId) &&
-                (!configDir ||
-                  g.displayName === configDir ||
-                  g.displayName.startsWith(configDir + path.sep)),
+                (g.displayName === scopeDir || g.displayName.startsWith(scopeDir + path.sep)),
             );
             selection = {
               providerIds,

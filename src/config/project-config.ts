@@ -69,10 +69,6 @@ export const projectConfigSchema = objectStrict({
     concurrency: z.number().int().positive().optional(),
     linkPrs: z.boolean().optional(),
     providers: z.array(z.string().min(1)).optional(),
-    projects: objectStrict({
-      include: z.array(z.string().min(1)).optional(),
-      exclude: z.array(z.string().min(1)).optional(),
-    }).optional(),
   }).optional(),
   snapshot: objectStrict({
     // Set to false to disable snapshot for this repo (frugl snapshot exits immediately
@@ -129,8 +125,9 @@ export function readMergeableConfig(filePath: string): Record<string, unknown> |
 }
 
 // Return the directory that contains the nearest `.frugl.json`, using the same
-// discovery order as readProjectConfig. Used by upload to scope auto-mode to the
-// repo that owns the config rather than the whole machine.
+// discovery order as readProjectConfig. A `.frugl.json`'s mere presence in a
+// directory declares "this directory is a Frugl project" — upload uses this to
+// scope discovery to the repo that owns the config rather than the whole machine.
 export function findProjectConfigDir(
   startDir: string = process.cwd(),
   home: string = homedir(),
@@ -198,46 +195,19 @@ const MANAGED_UPLOAD = new Set([
   "concurrency",
   "linkPrs",
   "providers",
-  "projects",
 ]);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-// Deep-merge the `upload` block (patch over base), one level into `projects` so
-// a patch that sets only `upload.minCost` keeps an existing `upload.projects`.
+// Shallow-merge the `upload` block (patch over base) — every managed key is a
+// scalar or a wholesale-replaced array, so no key needs a deeper merge.
 function mergeUpload(base: unknown, patch: unknown): Record<string, unknown> | undefined {
   const b = isPlainObject(base) ? base : undefined;
   const p = isPlainObject(patch) ? patch : undefined;
   if (!b && !p) return undefined;
-  const merged: Record<string, unknown> = { ...b, ...p };
-  const bp = b?.["projects"];
-  const pp = p?.["projects"];
-  if (isPlainObject(bp) || isPlainObject(pp)) {
-    merged["projects"] = {
-      ...(isPlainObject(bp) ? bp : {}),
-      ...(isPlainObject(pp) ? pp : {}),
-    };
-  }
-  return merged;
-}
-
-// Strip non-empty `projects` to include/exclude in fixed order, dropping empty
-// arrays. Returns undefined when nothing meaningful remains (so it is omitted).
-function cleanProjects(projects: unknown): Record<string, unknown> | undefined {
-  if (!isPlainObject(projects)) return undefined;
-  const out: Record<string, unknown> = {};
-  const include = projects["include"];
-  const exclude = projects["exclude"];
-  if (Array.isArray(include) && include.length > 0) out["include"] = include;
-  if (Array.isArray(exclude) && exclude.length > 0) out["exclude"] = exclude;
-  // Preserve any unknown projects.* keys verbatim (forward-compat).
-  for (const [k, v] of Object.entries(projects)) {
-    if (k === "include" || k === "exclude") continue;
-    out[k] = v;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return { ...b, ...p };
 }
 
 // Build the cleaned `snapshot` block: only `enabled: false` is written (true is
@@ -275,8 +245,6 @@ function cleanUpload(upload: unknown): Record<string, unknown> | undefined {
   if (Array.isArray(upload["providers"]) && upload["providers"].length > 0) {
     out["providers"] = upload["providers"];
   }
-  const projects = cleanProjects(upload["projects"]);
-  if (projects !== undefined) out["projects"] = projects;
   // Preserve unknown upload.* keys verbatim (a newer CLI's future field).
   for (const [k, v] of Object.entries(upload)) {
     if (MANAGED_UPLOAD.has(k)) continue;

@@ -145,15 +145,25 @@ unknown key survive and the file is byte-stable on a second run.
   "org": "acme",
   // Upload scope + options. All keys optional; absent = sensible default.
   "upload": {
+    "enabled": true, // false disables upload for this repo entirely
+    "auto": false, // true skips the confirm prompt and auto-runs snapshot after
     "minCost": 10.0, // USD floor, mirrors --min-cost (floored at 10)
     "snapshot": true, // run snapshot as part of init
     "concurrency": 4, // per-session upload concurrency
     "linkPrs": false, // attach stripped git context for PR linking
     "providers": ["claude-code"], // dashed source_kind ids; absent = all supported
-    "projects": { "include": [], "exclude": [] }, // globs; exclude wins
   },
 }
 ```
+
+There is no `projects`/include-exclude field: a `.frugl.json`'s mere presence in
+a directory **is** the project declaration. `frugl upload` / `frugl snapshot`
+scope themselves to the directory containing the nearest `.frugl.json` (and
+everything nested under it, e.g. worktrees) — a glob would have to encode an
+absolute, machine-local path, which breaks the moment a teammate clones the
+repo somewhere else. (The deprecated `frugl.config.json` fallback still
+supports `projects.include`/`exclude` globs for back-compat; it predates this
+file and is not part of this contract.)
 
 Conventions:
 
@@ -218,9 +228,11 @@ flag  ??  env (FRUGL_*)  ??  .frugl.json  ??  global config (saved)  ??  built-i
   Exception: the legacy endpoint-only pin (`{ endpoint }`, no `version`) is
   tolerated as "no v1 config" (null) for back-compat — see § conventions —
   while any other keys without a valid `version: 1` still throw.
-- **FR-012** `.frugl.json#upload` is honored by `frugl upload` (scope, minCost,
-  concurrency, linkPrs, providers, projects); `frugl.config.json` remains a
-  deprecated fallback read only when `.frugl.json` has no upload config.
+- **FR-012** `.frugl.json#upload` is honored by `frugl upload` (enabled, auto,
+  minCost, concurrency, linkPrs, providers); the file's mere presence scopes
+  discovery to its directory (and anything nested under it), so no
+  include/exclude field exists. `frugl.config.json` remains a deprecated
+  fallback, consulted only when no `.frugl.json` is found at all.
 - **FR-013** `--no-upload` / `--no-snapshot` skip those steps but still write
   `.frugl.json`.
 - **FR-014** Exit codes reuse the frozen dispatch (10 not-authed, 20 no sessions,

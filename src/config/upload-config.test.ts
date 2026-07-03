@@ -2,7 +2,11 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadUploadConfig, resolveConfigSelection } from "./upload-config.js";
+import {
+  loadUploadConfig,
+  loadUploadConfigScope,
+  resolveConfigSelection,
+} from "./upload-config.js";
 import { UsageError } from "../lib/errors.js";
 import type { DetectedProvider, ProjectGroup } from "../sources/providers.js";
 
@@ -96,7 +100,6 @@ describe("loadUploadConfig — .frugl.json#upload precedence (spec 007)", () => 
           concurrency: 8,
           linkPrs: true,
           providers: ["claude-code"],
-          projects: { include: ["~/work/**"] },
         },
       }),
     );
@@ -104,17 +107,26 @@ describe("loadUploadConfig — .frugl.json#upload precedence (spec 007)", () => 
 
     const config = loadUploadConfig({ cwd: dir, home: dir });
     expect(config?.providers).toEqual(["claude-code"]);
-    expect(config?.projects?.include).toEqual(["~/work/**"]);
     expect(config?.upload?.concurrency).toBe(8);
     expect(config?.upload?.linkPrs).toBe(true);
     // The top-level org is carried into UploadConfig.upload.org.
     expect(config?.upload?.org).toBe("acme");
   });
 
-  it("falls back to frugl.config.json when .frugl.json has no upload block", () => {
+  it("wins over frugl.config.json even with no upload block — presence alone scopes the directory", () => {
     const dir = makeTmp();
-    // .frugl.json carries only an org/endpoint, no upload scope.
+    // .frugl.json carries only an org, no upload block at all.
     writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme" }));
+    writeConfig(dir, JSON.stringify({ schemaVersion: 1, providers: ["cursor"] }));
+
+    const config = loadUploadConfig({ cwd: dir, home: dir });
+    // .frugl.json still wins: frugl.config.json's `providers: ["cursor"]` is
+    // never consulted, so the restriction is absent (defaults to all supported).
+    expect(config?.providers).toBeUndefined();
+  });
+
+  it("falls back to frugl.config.json when there's no .frugl.json at all", () => {
+    const dir = makeTmp();
     writeConfig(dir, JSON.stringify({ schemaVersion: 1, providers: ["cursor"] }));
 
     const config = loadUploadConfig({ cwd: dir, home: dir });
@@ -177,6 +189,40 @@ describe("loadUploadConfig — .frugl.json#upload precedence (spec 007)", () => 
     writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme", upload: { auto: true } }));
     const config = loadUploadConfig({ cwd: dir, home: dir });
     expect(config?.snapshot).toBeUndefined();
+  });
+});
+
+describe("loadUploadConfigScope", () => {
+  it("returns null when no .frugl.json exists", () => {
+    const dir = makeTmp();
+    expect(loadUploadConfigScope({ cwd: dir, home: dir })).toBeNull();
+  });
+
+  it("returns the .frugl.json directory even with no upload block", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme" }));
+    expect(loadUploadConfigScope({ cwd: dir, home: dir })).toBe(dir);
+  });
+
+  it("resolves from a nested cwd up to the directory containing .frugl.json", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme" }));
+    const nested = path.join(dir, "packages", "app");
+    mkdirSync(nested, { recursive: true });
+    expect(loadUploadConfigScope({ cwd: nested, home: dir })).toBe(dir);
+  });
+
+  it("returns null for the legacy endpoint-only pin (not a real v1 config)", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ endpoint: "https://frugl.internal" }));
+    expect(loadUploadConfigScope({ cwd: dir, home: dir })).toBeNull();
+  });
+
+  it("returns null when an explicit --config path is given", () => {
+    const dir = makeTmp();
+    writeProjectFile(dir, JSON.stringify({ version: 1, org: "acme" }));
+    const explicit = writeConfig(dir, JSON.stringify({ schemaVersion: 1 }));
+    expect(loadUploadConfigScope({ explicitPath: explicit })).toBeNull();
   });
 });
 
