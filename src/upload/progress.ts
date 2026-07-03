@@ -1,5 +1,6 @@
 import type { OutputMode } from "../lib/output-mode.js";
 import { bar, color, symbol } from "../lib/theme.js";
+import { nowIso } from "../lib/time.js";
 import { shortSession } from "./upload-output.js";
 
 export type ProgressEvent =
@@ -89,7 +90,7 @@ export interface ProgressReporter {
 }
 
 function ts(): string {
-  return new Date().toISOString();
+  return nowIso();
 }
 
 function emitJson(event: ProgressEvent): void {

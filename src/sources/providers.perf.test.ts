@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { detectProviders, getProvider } from "./providers.js";
 import { writeTestSessions } from "../e2e/helpers/fixtures.js";
+import { nowInstant } from "../lib/time.js";
 
 // SC-005: detection + project discovery should reach the first prompt quickly
 // even on a busy machine.
@@ -23,12 +24,12 @@ describe("detection + discovery performance (SC-005)", { timeout: 30_000 }, () =
       Array.from({ length: 200 }, (_, i) => writeTestSessions(home, 1, `-Users-me-proj${i}`)),
     );
 
-    const started = Date.now();
+    const started = nowInstant().epochMilliseconds;
     const detected = await detectProviders({ homeDir: home });
     const claude = getProvider("claude")!;
     const refs = await claude.source!.discover({ homeDir: home });
     const groups = claude.deriveProjects!(refs);
-    const elapsed = Date.now() - started;
+    const elapsed = nowInstant().epochMilliseconds - started;
 
     expect(detected.map((d) => d.descriptor.id)).toContain("claude");
     expect(groups).toHaveLength(200);

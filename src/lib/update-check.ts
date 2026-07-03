@@ -1,5 +1,6 @@
 import Conf from "conf";
 import semver from "semver";
+import { nowInstant } from "./time.js";
 
 const REGISTRY_URL = "https://registry.npmjs.org/frugl/latest";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -23,7 +24,7 @@ export async function checkForUpdate(currentVersion: string): Promise<string | n
   const store = cache();
   const cached = store.get("data");
 
-  if (cached && Date.now() - cached.checkedAt < CACHE_TTL_MS) {
+  if (cached && nowInstant().epochMilliseconds - cached.checkedAt < CACHE_TTL_MS) {
     const latest = cached.latestVersion;
     return semver.gt(latest, currentVersion) ? latest : null;
   }
@@ -37,7 +38,7 @@ export async function checkForUpdate(currentVersion: string): Promise<string | n
     const latest = json.version;
     if (!latest || !semver.valid(latest)) return null;
 
-    store.set("data", { checkedAt: Date.now(), latestVersion: latest });
+    store.set("data", { checkedAt: nowInstant().epochMilliseconds, latestVersion: latest });
     return semver.gt(latest, currentVersion) ? latest : null;
   } catch {
     return null;

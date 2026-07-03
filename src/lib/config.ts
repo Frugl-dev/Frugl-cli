@@ -1,6 +1,8 @@
 import Conf from "conf";
+import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
 import { NAMESPACES } from "./paths.js";
+import { nowInstant, nowIso } from "./time.js";
 
 const CONFIG_SCHEMA_VERSION = 1 as const;
 
@@ -42,6 +44,29 @@ export const hookSpawnStampSchema = z.object({
 });
 export type HookSpawnStamp = z.infer<typeof hookSpawnStampSchema>;
 
+// A non-secret mirror of the signed-in identity (and last-known org), persisted
+// at login / org resolution so read-only commands like `frugl config` can show
+// "who am I, which org" WITHOUT unlocking the OS keychain or calling the cloud.
+// The secret token still lives only in the keychain — this holds display data.
+// Endpoint-scoped (like pendingAuthFailure) so one stack's identity never shows
+// under another.
+export const profileOrgSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  role: z.string(),
+});
+export type ProfileOrg = z.infer<typeof profileOrgSchema>;
+
+export const profileSchema = z.object({
+  endpoint: z.string().url(),
+  email: z.string(),
+  userId: z.string(),
+  loggedInAt: z.string().datetime().optional(),
+  org: profileOrgSchema.optional(),
+  updatedAt: z.string().datetime(),
+});
+export type Profile = z.infer<typeof profileSchema>;
+
 export const fruglConfigSchema = z.object({
   schemaVersion: z.literal(CONFIG_SCHEMA_VERSION),
   linkPrs: z.boolean(),
@@ -50,6 +75,7 @@ export const fruglConfigSchema = z.object({
   pendingAuthFailure: pendingAuthFailureSchema.optional(),
   uploadBlocked: uploadBlockSchema.optional(),
   lastHookSpawn: hookSpawnStampSchema.optional(),
+  profile: profileSchema.optional(),
   // The API endpoint persisted at the last successful `frugl login`. Lets the
   // installed binary keep targeting a non-default stack (e.g. a local dev
   // server) without re-passing --endpoint/FRUGL_ENDPOINT every command. An
@@ -117,7 +143,7 @@ export function getPendingAuthFailure(
 // Record that a non-interactive run failed auth for `endpoint`. Stamped with the
 // current time so the eventual warning can say how long ago it happened.
 export function recordPendingAuthFailure(endpoint: string, options: ConfigStoreOptions = {}): void {
-  writeConfig({ pendingAuthFailure: { endpoint, at: new Date().toISOString() } }, options);
+  writeConfig({ pendingAuthFailure: { endpoint, at: nowIso() } }, options);
 }
 
 // Clear the breadcrumb after a successful login. No-op unless the stored failure
@@ -139,7 +165,9 @@ export function getUploadBlocked(options: ConfigStoreOptions = {}): UploadBlock 
 }
 
 export function recordUploadBlocked(endpoint: string, options: ConfigStoreOptions = {}): void {
-  const until = new Date(Date.now() + UPLOAD_BLOCK_TTL_MS).toISOString();
+  const until = nowInstant()
+    .add({ milliseconds: UPLOAD_BLOCK_TTL_MS })
+    .toString({ smallestUnit: "millisecond" });
   writeConfig({ uploadBlocked: { endpoint, until } }, options);
 }
 
@@ -158,10 +186,13 @@ export function getLastHookSpawn(options: ConfigStoreOptions = {}): HookSpawnSta
 
 export function recordLastHookSpawn(
   endpoint: string,
-  at: Date,
+  at: Temporal.Instant,
   options: ConfigStoreOptions = {},
 ): void {
-  writeConfig({ lastHookSpawn: { endpoint, at: at.toISOString() } }, options);
+  writeConfig(
+    { lastHookSpawn: { endpoint, at: at.toString({ smallestUnit: "millisecond" }) } },
+    options,
+  );
 }
 
 // The endpoint remembered from the last successful login (see schema comment).
@@ -184,5 +215,77 @@ export function setSavedEndpoint(endpoint: string, options: ConfigStoreOptions =
 export function clearSavedEndpoint(endpoint: string, options: ConfigStoreOptions = {}): void {
   if (readConfig(options).endpoint === endpoint) {
     writeConfig({ endpoint: undefined }, options);
+  }
+}
+
+// The cached identity for `endpoint`, or undefined when none is stored for it.
+// Read by `frugl config` so it can render "who am I, which org" without touching
+// the keychain or the network.
+export function getProfile(
+  endpoint: string,
+  options: ConfigStoreOptions = {},
+): Profile | undefined {
+  const profile = readConfig(options).profile;
+  return profile && profile.endpoint === endpoint ? profile : undefined;
+}
+
+// Persist the signed-in identity for `endpoint`. Preserves a previously-cached
+// org for the SAME endpoint + user (so an offline re-login keeps showing the
+// last-known org until it's re-resolved); drops it when the user changes.
+// Best-effort at the call site — a failed write must never fail a sign-in.
+export function recordProfileIdentity(
+  identity: { endpoint: string; email: string; userId: string; loggedInAt?: string },
+  options: ConfigStoreOptions = {},
+): void {
+  const prev = readConfig(options).profile;
+  const keepOrg =
+    prev && prev.endpoint === identity.endpoint && prev.userId === identity.userId
+      ? prev.org
+      : undefined;
+  writeConfig(
+    {
+      profile: {
+        endpoint: identity.endpoint,
+        email: identity.email,
+        userId: identity.userId,
+        ...(identity.loggedInAt !== undefined ? { loggedInAt: identity.loggedInAt } : {}),
+        ...(keepOrg !== undefined ? { org: keepOrg } : {}),
+        updatedAt: nowIso(),
+      },
+    },
+    options,
+  );
+}
+
+// Update (org) or clear (null) the cached org for `endpoint`. No-op unless a
+// profile for that endpoint already exists — the org is a facet of an identity,
+// so identity must be recorded first (at login).
+export function recordProfileOrg(
+  endpoint: string,
+  org: ProfileOrg | null,
+  options: ConfigStoreOptions = {},
+): void {
+  const prev = readConfig(options).profile;
+  if (!prev || prev.endpoint !== endpoint) return;
+  writeConfig(
+    {
+      profile: {
+        endpoint: prev.endpoint,
+        email: prev.email,
+        userId: prev.userId,
+        ...(prev.loggedInAt !== undefined ? { loggedInAt: prev.loggedInAt } : {}),
+        ...(org ? { org } : {}),
+        updatedAt: nowIso(),
+      },
+    },
+    options,
+  );
+}
+
+// Forget the cached identity — endpoint-scoped, mirroring clearSavedEndpoint, so
+// logging out of stack A never wipes stack B's cached profile.
+export function clearProfile(endpoint: string, options: ConfigStoreOptions = {}): void {
+  if (readConfig(options).profile?.endpoint === endpoint) {
+    writeConfig({ profile: undefined }, options);
   }
 }

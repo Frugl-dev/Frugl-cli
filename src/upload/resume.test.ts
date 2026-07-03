@@ -11,6 +11,7 @@ import {
   type ManifestState,
   type ResumeState,
 } from "./resume.js";
+import { nowIso } from "../lib/time.js";
 
 const HASH = "a".repeat(64); // a valid lowercase-hex 64-char content hash.
 
@@ -44,7 +45,7 @@ function state(entries: ManifestEntryState[]): ResumeState {
   return {
     schemaVersion: 1,
     manifest: manifest(entries),
-    beganAt: new Date().toISOString(),
+    beganAt: nowIso(),
   };
 }
 
@@ -72,9 +73,7 @@ describe("resume schema validation", () => {
 
   it("validates optional datetime fields (ackedAt/failedAt)", () => {
     expect(manifestEntrySchema.safeParse(entry({ ackedAt: "not-a-date" })).success).toBe(false);
-    expect(
-      manifestEntrySchema.safeParse(entry({ ackedAt: new Date().toISOString() })).success,
-    ).toBe(true);
+    expect(manifestEntrySchema.safeParse(entry({ ackedAt: nowIso() })).success).toBe(true);
   });
 
   it("manifest requires expectedSessionCount >= 1 and a non-empty manifestId", () => {
@@ -157,7 +156,7 @@ describe("ResumeStore", () => {
     const store = newStore();
     store.save(state([entry({ sessionId: "a" }), entry({ sessionId: "b" })]));
 
-    store.updateEntry("b", (e) => ({ ...e, status: "acked", ackedAt: new Date().toISOString() }));
+    store.updateEntry("b", (e) => ({ ...e, status: "acked", ackedAt: nowIso() }));
 
     const loaded = newStore().load()!;
     const a = loaded.manifest.entries.find((e) => e.sessionId === "a")!;

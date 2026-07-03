@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
+import { nowIso } from "../../lib/time.js";
 
 export interface TempDir {
   dir: string;
@@ -43,7 +44,7 @@ export async function writeTestSessions(
             role: "user",
             content: [{ type: "text", text: `Hello from session ${i}` }],
           },
-          timestamp: new Date().toISOString(),
+          timestamp: nowIso(),
         },
         {
           sessionId,
@@ -63,7 +64,7 @@ export async function writeTestSessions(
               cache_read_input_tokens: 0,
             },
           },
-          timestamp: new Date().toISOString(),
+          timestamp: nowIso(),
         },
       ];
       await writeFile(filePath, records.map((r) => JSON.stringify(r)).join("\n") + "\n");

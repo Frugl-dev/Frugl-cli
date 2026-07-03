@@ -1,5 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { confirm } from "@inquirer/prompts";
+import { Temporal } from "temporal-polyfill";
 import path from "node:path";
 import { bar, color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
@@ -1160,9 +1161,15 @@ function renderOrgBlockedHuman(err: OrgBlockedError): string {
 // Human-friendly absolute date for a billing instant (trial end / limit reset).
 // Falls back to the raw string if it isn't a parseable date.
 function formatBlockDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  try {
+    return Temporal.Instant.from(iso).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
 }
 
 function buildProjectRows(

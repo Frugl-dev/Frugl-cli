@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nowInstant } from "./time.js";
 
 // In-memory stand-in for the on-disk Conf cache. A module-level store keeps
 // state across the fresh `new Conf()` that checkForUpdate creates per call,
@@ -55,7 +56,7 @@ describe("checkForUpdate", () => {
   });
 
   it("uses a fresh cache without fetching", async () => {
-    store.data = { checkedAt: Date.now(), latestVersion: "3.0.0" };
+    store.data = { checkedAt: nowInstant().epochMilliseconds, latestVersion: "3.0.0" };
     const fetchSpy = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -65,7 +66,7 @@ describe("checkForUpdate", () => {
   });
 
   it("refetches when the cache is stale", async () => {
-    store.data = { checkedAt: Date.now() - DAY_MS - 1, latestVersion: "1.0.0" };
+    store.data = { checkedAt: nowInstant().epochMilliseconds - DAY_MS - 1, latestVersion: "1.0.0" };
     mockFetch(() => jsonResponse({ version: "4.0.0" }));
     expect(await checkForUpdate("1.0.0")).toBe("4.0.0");
   });

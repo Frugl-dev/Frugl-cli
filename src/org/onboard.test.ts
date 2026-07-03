@@ -4,6 +4,7 @@ import type { Endpoint } from "../cloud/endpoints.js";
 import type { AuthSession } from "../auth/session.js";
 import { UsageError } from "../lib/errors.js";
 import { runAuthAndOrgSetup } from "./onboard.js";
+import { nowIso } from "../lib/time.js";
 
 // A network-free CloudClient stand-in: records setToken + serves canned
 // responses keyed by "METHOD path" (mirrors org/setup.test.ts). The org flow is
@@ -37,7 +38,7 @@ function session(): AuthSession {
     userId: "u1",
     token: "tok-123",
     endpointUrl: ENDPOINT.url,
-    loggedInAt: new Date().toISOString(),
+    loggedInAt: nowIso(),
   };
 }
 

@@ -16,6 +16,7 @@ import { CloudPortError } from "./cloud-port.js";
 import { StaleResumeError, AnonymizationError, AuthError } from "../lib/errors.js";
 import type { ProgressReporter } from "./progress.js";
 import type { AnonymizationResult } from "../anonymize/index.js";
+import { nowIso } from "../lib/time.js";
 
 const MANIFEST_ID = "mfst_session_test";
 
@@ -97,7 +98,7 @@ describe("SessionUpload", () => {
       userId,
       entries,
     };
-    resumeStore.save({ schemaVersion: 1, manifest, beganAt: new Date().toISOString() });
+    resumeStore.save({ schemaVersion: 1, manifest, beganAt: nowIso() });
   }
 
   function makeSession(cloud: InMemoryCloud, reporter: ProgressReporter): SessionUpload {
@@ -138,7 +139,7 @@ describe("SessionUpload", () => {
       status: "pending",
       lastFailureReason: "network",
       lastFailureMessage: "HTTP 500",
-      failedAt: new Date().toISOString(),
+      failedAt: nowIso(),
     };
     seedResume([entry]);
 

@@ -1,5 +1,10 @@
 import { AuthError } from "../lib/errors.js";
-import { clearPendingAuthFailure, clearUploadBlocked } from "../lib/config.js";
+import {
+  clearPendingAuthFailure,
+  clearUploadBlocked,
+  recordProfileIdentity,
+} from "../lib/config.js";
+import { nowIso } from "../lib/time.js";
 import type { IdentityClient } from "./identity-client.js";
 import { SessionStore, type AuthSession } from "./session-store.js";
 
@@ -15,6 +20,23 @@ function clearAuthFailureBreadcrumb(endpointUrl: string): void {
     clearUploadBlocked(endpointUrl);
   } catch {
     /* ignore — the breadcrumb is a convenience, not a contract */
+  }
+}
+
+// Mirror the just-saved identity into the non-secret profile cache so read-only
+// commands (`frugl config`) can show it without a keychain read. Best-effort:
+// the token is already safely in the keychain; a failed display-cache write must
+// never fail the login.
+function mirrorIdentity(session: AuthSession): void {
+  try {
+    recordProfileIdentity({
+      endpoint: session.endpointUrl,
+      email: session.email,
+      userId: session.userId,
+      loggedInAt: session.loggedInAt,
+    });
+  } catch {
+    /* ignore — the profile cache is a convenience, not a contract */
   }
 }
 
@@ -60,10 +82,11 @@ export class AuthService {
       userId,
       token,
       endpointUrl: this.endpointUrl,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
     await this.sessions.save(session);
     clearAuthFailureBreadcrumb(this.endpointUrl);
+    mirrorIdentity(session);
     return session;
   }
 
@@ -77,10 +100,11 @@ export class AuthService {
       userId: identity.userId,
       token,
       endpointUrl: this.endpointUrl,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
     await this.sessions.save(session);
     clearAuthFailureBreadcrumb(this.endpointUrl);
+    mirrorIdentity(session);
     return session;
   }
 
@@ -110,7 +134,7 @@ export class AuthService {
       userId: identity.userId,
       token: resolved.token,
       endpointUrl: this.endpointUrl,
-      loggedInAt: new Date().toISOString(),
+      loggedInAt: nowIso(),
     };
   }
 }

@@ -7,6 +7,7 @@ import { MockServer } from "../e2e/helpers/mock-server.js";
 import { runCli } from "../e2e/helpers/spawn.js";
 import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "../e2e/helpers/fixtures.js";
+import { Temporal } from "temporal-polyfill";
 
 // `frugl init` is the one-command front door: auth → org → write .frugl.json →
 // upload → snapshot. These spawn the real CLI (so upload/snapshot run for real
@@ -55,7 +56,9 @@ describe("frugl init", { timeout: 30_000 }, () => {
           presigned_url: `${server.url}/fake-put/${encodeURIComponent(params["id"] ?? "")}`,
           method: "PUT",
           headers: {},
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          expires_at: Temporal.Now.instant()
+            .add({ minutes: 1 })
+            .toString({ smallestUnit: "millisecond" }),
         });
       })
       .on("PUT", "/fake-put/:id", (_req, res) => {

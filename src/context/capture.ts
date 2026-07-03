@@ -1,5 +1,6 @@
 import { FruglError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
+import { nowIso } from "../lib/time.js";
 import { captureClaudeCodeContext, type Spawner } from "./tools/claude-code.js";
 
 // The tools we know how to capture a /context breakdown from. Today only Claude
@@ -59,6 +60,6 @@ export function captureContext(tool: string, opts: CaptureOptions = {}): Context
     throw new FruglError(`Context capture for '${tool}' produced no output.`, EXIT.GENERIC_FAILURE);
   }
 
-  const now = opts.now ?? (() => new Date().toISOString());
+  const now = opts.now ?? nowIso;
   return { tool, text, capturedAt: now() };
 }

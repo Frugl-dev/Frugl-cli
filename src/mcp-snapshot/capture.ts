@@ -1,5 +1,6 @@
 import { FruglError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
+import { nowIso } from "../lib/time.js";
 import { defaultIO, type CaptureIO } from "../capture/claude/io.js";
 import { parseMcpList } from "../capture/claude/mcp.js";
 import type { CapturedMcpServer, SourceParseStatus } from "../capture/types.js";
@@ -50,7 +51,7 @@ export function captureMcpInventory(opts: McpCaptureOptions = {}): McpInventory 
   }
 
   const parsed = parseMcpList(run.stdout);
-  const now = opts.now ?? (() => new Date().toISOString());
+  const now = opts.now ?? nowIso;
   return {
     schemaVersion: MCP_SCHEMA_VERSION,
     sourceTool: MCP_SOURCE_TOOL,

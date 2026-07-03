@@ -30,6 +30,22 @@ const DEFAULT_SNAPSHOT = true;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_LINK_PRS = false;
 
+// The effective values for every managed key when a `.frugl.json` leaves it
+// unset. Exported so a reader (e.g. `frugl config`) can resolve + label a
+// partial file against the same defaults the writer omits, instead of keeping a
+// second, drift-prone copy of these constants.
+export const PROJECT_CONFIG_DEFAULTS = {
+  upload: {
+    enabled: true,
+    auto: false,
+    minCost: DEFAULT_MIN_COST_USD,
+    snapshot: DEFAULT_SNAPSHOT,
+    concurrency: DEFAULT_CONCURRENCY,
+    linkPrs: DEFAULT_LINK_PRS,
+  },
+  snapshot: { enabled: true },
+} as const;
+
 const objectStrict = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
 
 // `.strict()` so a typo (e.g. `uplaod`) fails closed rather than being silently
