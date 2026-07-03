@@ -106,6 +106,93 @@ To publish manually instead (requires `npm login` locally):
 npm publish --access public
 ```
 
+## Standalone binaries (no Node required)
+
+Alongside the npm publish, [`.github/workflows/pack.yml`](./.github/workflows/pack.yml)
+builds **self-contained tarballs** on the same `release: published` event and
+attaches them to the GitHub Release. Each tarball bundles Node
+(`oclif.update.node.version` in `package.json`, currently 26.4.0) plus the
+production-only `node_modules`, so a user can download, extract, and run
+`frugl/bin/frugl` without Node installed. These artifacts are what a Homebrew
+formula (or any direct-download install) consumes.
+
+Build one locally for your own platform:
+
+```bash
+pnpm pack:tarballs                 # -> dist/frugl-v<version>-<sha>-<target>.tar.gz
+```
+
+### Two non-obvious gotchas (already handled in CI)
+
+1. **pnpm workspace root breaks the bundled `node_modules`.** oclif stages its
+   build workspace at `./tmp/frugl` _inside_ this repo, then runs
+   `pnpm install --production` there. Because the repo has a root
+   `pnpm-workspace.yaml`, pnpm walks up, adopts the parent workspace, and leaves
+   the nested dir empty — the tarball then ships with **no `@oclif/core` and no
+   keyring `.node`**, and the binary fails at startup. Worse, that nested
+   install can _prune your own repo's `node_modules` to production_. The
+   workflow removes `pnpm-workspace.yaml` before packing (the runner is
+   throwaway). To pack locally, do the same and restore it after:
+
+   ```bash
+   mv pnpm-workspace.yaml pnpm-workspace.yaml.bak
+   pnpm pack:tarballs
+   mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
+   pnpm install --frozen-lockfile   # restore dev deps if the nested install pruned them
+   ```
+
+2. **Native keyring is per-platform, so each target packs on its own runner.**
+   `@napi-rs/keyring` ships a prebuilt `.node` per platform/arch as an optional
+   dependency; only the host's variant installs. The matrix therefore packs
+   `darwin-arm64` on macOS arm, `darwin-x64` on macOS intel, and the two Linux
+   arches on native Linux runners — cross-packing would ship a keyring binary
+   that can't load.
+
+### Size
+
+A bundled tarball is ~45 MB (`.tar.gz`) / ~29 MB (`.tar.xz` — the workflow emits
+both via `--xz`). The compressed Node runtime is essentially all of it (the
+binary is ~138 MB uncompressed); the app is <1 MB and prod deps ~21 MB. That
+floor is inherent to shipping a runtime — comparable single-file tools
+(bun/deno/pkg) land in the same 40–100 MB range. The only way materially smaller
+is a **system-node** tarball (a few MB) that requires Node on the machine, which
+defeats the purpose. `devDependencies` are already excluded by
+`--production`, so no test/lint tooling is bundled.
+
+### Homebrew (next step)
+
+The Release assets are ready to back a tap. A minimal formula pins the two macOS
+tarballs by SHA-256 and symlinks the launcher — sketch:
+
+```ruby
+class Frugl < Formula
+  desc "Upload anonymized AI-coding session logs to hosted Frugl"
+  homepage "https://github.com/Frugl-dev/Frugl-cli"
+  version "0.1.6"
+  on_macos do
+    on_arm do
+      url "https://github.com/Frugl-dev/Frugl-cli/releases/download/v0.1.6/frugl-v0.1.6-<sha>-darwin-arm64.tar.gz"
+      sha256 "..."
+    end
+    on_intel do
+      url "https://github.com/Frugl-dev/Frugl-cli/releases/download/v0.1.6/frugl-v0.1.6-<sha>-darwin-x64.tar.gz"
+      sha256 "..."
+    end
+  end
+  def install
+    libexec.install Dir["*"]
+    bin.install_symlink libexec/"bin/frugl"
+  end
+  test do
+    assert_match "frugl/#{version}", shell_output("#{bin}/frugl --version")
+  end
+end
+```
+
+Publish it in a `Frugl-dev/homebrew-frugl` tap so users get
+`brew install frugl-dev/frugl/frugl`. Automating the tap bump (URL + `sha256`)
+from the release is a small follow-up.
+
 ## Governance
 
 This repo inherits the constitution at

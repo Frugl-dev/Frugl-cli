@@ -53,7 +53,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "pack:tarballs": "oclif pack tarballs --no-xz"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
@@ -106,7 +107,12 @@
     "plugins": [
       "@oclif/plugin-help"
     ],
-    "topicSeparator": " "
+    "topicSeparator": " ",
+    "update": {
+      "node": {
+        "version": "26.4.0"
+      }
+    }
   },
   "engines": {
     "node": ">=22.5"
