@@ -11,6 +11,15 @@ export function decodeProjectPath(dirName: string): string {
   return dirName.replace(/-/g, "/");
 }
 
+// The forward direction of Claude's encoding: "/" and "." become "-". Unlike
+// decodeProjectPath this is the one Claude itself applies when it creates a
+// project directory, so — unlike a decoded displayName — comparing an encoded
+// path against a raw on-disk directory name (projectId) is exact, even when a
+// real path segment contains a literal "-" (e.g. "frugl-cli").
+export function encodeProjectPath(absolutePath: string): string {
+  return absolutePath.replace(/[/.]/g, "-");
+}
+
 // Claude encodes both "/" and "." as "-", so ".claude/worktrees/" becomes
 // "--claude-worktrees-" in the raw directory name. We detect worktrees at the
 // encoded level to avoid ambiguity from the lossy decode.

@@ -36,7 +36,7 @@ import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
 import { requestHandoffUrl, resolveHandoffPreference } from "../cloud/handoff.js";
 import { resolveGitContext, type GitContext } from "../upload/git-context.js";
-import { extractWorktreePath } from "../sources/claude-code/project.js";
+import { encodeProjectPath, extractWorktreePath } from "../sources/claude-code/project.js";
 import {
   detectProviders,
   getProvider,
@@ -411,9 +411,7 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
               : supportedIds;
             const providerSet = new Set(providerIds);
             const scopedGroups = groups.filter(
-              (g) =>
-                providerSet.has(g.providerId) &&
-                (g.displayName === scopeDir || g.displayName.startsWith(scopeDir + path.sep)),
+              (g) => providerSet.has(g.providerId) && groupMatchesScopeDir(g, scopeDir),
             );
             selection = {
               providerIds,
@@ -1205,6 +1203,26 @@ function buildProjectRows(
   }
   rows.sort((a, b) => b.willUpload - a.willUpload || a.displayName.localeCompare(b.displayName));
   return rows;
+}
+
+// Does this group belong to (or under) the directory that declared it via
+// `.frugl.json`? Claude's `projectId` is the raw on-disk encoded directory name
+// (see deriveClaudeProjects), and its encoding ("/" and "." both become "-") is
+// lossy to decode — a real path segment containing "-" (e.g. "frugl-cli") is
+// indistinguishable from a path separator once decoded. Comparing scopeDir
+// against the *decoded* displayName is therefore unreliable and silently drops
+// matches for any project whose directory name contains a hyphen. Instead,
+// encode scopeDir the same way Claude encodes on disk and compare against the
+// raw projectId — exact, since that's the ground truth Claude itself wrote.
+// Other providers never derive a path-shaped displayName (cursor/codex/gemini
+// group by id or a fixed label), so they fall back to the previous string
+// comparison, which in practice never matches a filesystem scopeDir.
+export function groupMatchesScopeDir(group: ProjectGroup, scopeDir: string): boolean {
+  if (group.providerId === "claude") {
+    const encoded = encodeProjectPath(scopeDir);
+    return group.projectId === encoded || group.projectId.startsWith(`${encoded}-`);
+  }
+  return group.displayName === scopeDir || group.displayName.startsWith(scopeDir + path.sep);
 }
 
 function buildSelectionReport(
