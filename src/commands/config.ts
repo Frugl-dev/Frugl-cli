@@ -17,6 +17,7 @@ import { loadUploadConfig } from "../config/upload-config.js";
 import {
   detectProviders,
   getProvider,
+  getSourceByKind,
   PROVIDERS,
   type ProjectGroup,
 } from "../sources/providers.js";
@@ -170,27 +171,50 @@ export default class Config extends Command {
         : detectedProviderIds;
 
       // Keep only repos with a governing `.frugl.json` (the repo dir or an
-      // ancestor up to $HOME) — the opt-in signal `upload.auto` keys off. A
-      // synthetic group whose displayName isn't a real path is dropped here.
-      const repos: RepoRow[] = groups
-        .flatMap((g) => {
-          const configPath = findGoverningConfig(g.displayName);
-          return configPath
-            ? [
-                {
-                  displayName: g.displayName,
-                  providerId: g.providerId,
-                  sessionCount: g.sessionCount,
-                  configPath,
-                },
-              ]
-            : [];
-        })
-        .toSorted((a, b) => a.displayName.localeCompare(b.displayName));
+      // ancestor up to $HOME) — the opt-in signal `upload.auto` keys off. The
+      // repo dir is the session's true `cwd` (see resolveRepoDir), not the lossy
+      // decoded group name. A group whose dir isn't a real absolute path is dropped.
+      const rows: RepoRow[] = [];
+      for (const g of groups) {
+        const dir = await this.resolveRepoDir(g);
+        const configPath = findGoverningConfig(dir);
+        if (configPath) {
+          rows.push({
+            displayName: dir,
+            providerId: g.providerId,
+            sessionCount: g.sessionCount,
+            configPath,
+          });
+        }
+      }
+      const repos = rows.toSorted((a, b) => a.displayName.localeCompare(b.displayName));
 
       return { detectedProviderIds, targetedProviderIds, repos };
     } catch {
       return null;
+    }
+  }
+
+  // The true working directory of a repo group. Claude encodes a project's cwd
+  // into its directory name by replacing every "/" AND "." with "-", so the
+  // display decode ("-"→"/") is lossy — a real path segment containing "-" or
+  // "." can't round-trip (e.g. "my-repo" decodes to "my/repo"). The reliable
+  // source is the `cwd` recorded inside the session, so for Claude we read it
+  // from one representative session (one file parse per repo). Other providers
+  // group flat or by label rather than by a single cwd, so their displayName is
+  // used as-is (and, not being an absolute path, is excluded from the repo
+  // list). Falls back to the decoded displayName if the session can't be parsed.
+  private async resolveRepoDir(group: ProjectGroup): Promise<string> {
+    if (group.providerId !== "claude") return group.displayName;
+    const ref = group.sessions[0];
+    if (!ref) return group.displayName;
+    const source = getSourceByKind(ref.sourceKind);
+    if (!source) return group.displayName;
+    try {
+      const parsed = await source.parse(ref);
+      return parsed.cwd && path.isAbsolute(parsed.cwd) ? parsed.cwd : group.displayName;
+    } catch {
+      return group.displayName;
     }
   }
 

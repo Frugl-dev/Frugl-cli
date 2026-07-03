@@ -5,6 +5,7 @@ import { EXIT } from "../lib/exit-codes.js";
 import { runCli } from "../e2e/helpers/spawn.js";
 import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "../e2e/helpers/fixtures.js";
+import { writeGitSession } from "../e2e/helpers/git-fixtures.js";
 import { recordProfileIdentity, recordProfileOrg } from "../lib/config.js";
 
 // `frugl config` is a read-only settings readout: endpoint, account (from the
@@ -205,6 +206,32 @@ describe("frugl config", { timeout: 30_000 }, () => {
       expect(realpathSync(cfg.repos![0]!.configPath)).toBe(
         realpathSync(path.join(repoDir, ".frugl.json")),
       );
+    } finally {
+      rmSync(`/tmp/frugl_cfg_${process.pid}`, { recursive: true, force: true });
+    }
+  });
+
+  it("matches .frugl.json against the session's true cwd, not the lossy decoded name", async () => {
+    // A repo whose path contains a dash: Claude's decode would mangle it
+    // ("my-repo" → "my/repo", a nonexistent dir), but the session records the
+    // real cwd. The match must use the cwd, so the repo is still found.
+    const repoDir = `/tmp/frugl_cfg_${process.pid}/my-repo`;
+    mkdirSync(repoDir, { recursive: true });
+    writeFileSync(path.join(repoDir, ".frugl.json"), `${JSON.stringify({ version: 1 })}\n`, "utf8");
+    try {
+      // Encode as Claude does ("/" and "." → "-"); this decodes back LOSSILY.
+      const encoded = repoDir.replace(/[/.]/g, "-");
+      await writeGitSession(home.dir, { projName: encoded, cwd: repoDir });
+
+      const { exitCode, stdout } = await runCli(
+        ["config", "--format", "json", "--endpoint", ENDPOINT],
+        { env: env(), cwd: project.dir },
+      );
+
+      expect(exitCode).toBe(EXIT.OK);
+      const cfg = parse(stdout);
+      // Found via the true cwd — the decoded ".../my/repo" would have missed it.
+      expect(cfg.repos!.map((r) => r.path)).toContain(repoDir);
     } finally {
       rmSync(`/tmp/frugl_cfg_${process.pid}`, { recursive: true, force: true });
     }
