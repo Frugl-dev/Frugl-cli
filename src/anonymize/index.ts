@@ -15,6 +15,10 @@ export interface AnonymizeOptions {
   policyVersion?: string;
   homeDir?: string;
   pseudonyms?: PseudonymTable;
+  // Precomputed contentHash(input, policyVersion), when the caller already paid
+  // for it (classify.ts computes it for change detection). Skips a second full
+  // JSON.stringify of the raw records. Must match this call's policyVersion.
+  contentHashHex?: string;
 }
 
 export interface AnonymizationResult {
@@ -126,7 +130,7 @@ export function anonymize(input: unknown, opts: AnonymizeOptions): Anonymization
   // Hash the raw input (pre-redaction) plus the policy version. This is
   // independent of the per-run uploadId, so identical content yields an
   // identical hash across uploads; a policy bump still forces a re-upload.
-  const contentHashHex = contentHash(input, policyVersion);
+  const contentHashHex = opts.contentHashHex ?? contentHash(input, policyVersion);
   return {
     payload,
     redactionsByCategory: counts,

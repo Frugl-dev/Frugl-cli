@@ -171,8 +171,9 @@ export class CloudClient {
       } catch {
         body = raw;
       }
-      const bodyDesc =
-        typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200);
+      const bodyDesc = sanitizeServerText(
+        typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200),
+      );
       throw new CloudHttpError(
         response.status,
         body,
@@ -215,14 +216,24 @@ export class CloudClient {
 export function describeHttpError(err: unknown): string {
   if (err instanceof CloudHttpError) {
     const status = err.status;
-    const summary =
+    const summary = sanitizeServerText(
       typeof err.body === "string"
         ? err.body.slice(0, 200)
-        : JSON.stringify(err.body).slice(0, 200);
+        : JSON.stringify(err.body).slice(0, 200),
+    );
     return `HTTP ${status}: ${summary}`;
   }
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+// Server-controlled text ends up echoed to the terminal and persisted in the
+// resume store (surfaced again by `upload --report`). Strip control characters
+// so a compromised endpoint or intercepting proxy can't smuggle terminal
+// escape sequences through an error body.
+function sanitizeServerText(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
 }
 
 export function isAuthHttpError(err: unknown): boolean {

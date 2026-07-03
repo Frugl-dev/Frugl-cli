@@ -290,6 +290,108 @@ describe("upload pipeline", () => {
     expect(result.manifestId).toBe("mfst_cursor");
   });
 
+  it("starts fresh when the selection narrowed and a pending entry has no job", async () => {
+    const { ledger, resumeStore } = stores();
+    const { jobs } = makeJobs(3);
+
+    // Run 1: sess-0 acks, sess-1 and sess-2 fail — resume state holds them pending.
+    // 400 is non-retryable, so the failures land instantly (no retry backoff)
+    // while still leaving both entries pending in the resume state.
+    const failingCloud = new InMemoryCloud({
+      manifestId: "mfst_wide",
+      failPresign: new Set(["sess-1", "sess-2"]),
+      failPresignWith: 400,
+    });
+    await runUploadPipeline({
+      cloud: failingCloud,
+      jobs,
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    }).catch(() => {});
+    expect(resumeStore.load()).not.toBeNull();
+
+    // Run 2 narrows the batch (--limit, a deselected project, a raised
+    // --min-cost): only sess-1 is a job. The pending sess-2 entry has no job —
+    // resuming would count it as a "missing-job" failure and report the whole
+    // batch failed even though sess-1 uploads fine. A fresh manifest covering
+    // exactly this batch must be used instead.
+    const freshCloud = new InMemoryCloud({ manifestId: "mfst_narrow" });
+    const result = await runUploadPipeline({
+      cloud: freshCloud,
+      jobs: [jobs[1]!],
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    });
+    expect(result.manifestId).toBe("mfst_narrow");
+    expect(result.acked).toEqual(["sess-1"]);
+    expect(result.failures).toEqual([]);
+    expect(resumeStore.load()).toBeNull();
+  });
+
+  it("completes a resumed batch with the originally-declared redaction totals", async () => {
+    const { ledger, resumeStore } = stores();
+    const { jobs } = makeJobs(2);
+    jobs[0]!.anonymizationResult.redactionsByCategory = { email: 3 } as never;
+    jobs[1]!.anonymizationResult.redactionsByCategory = { email: 2 } as never;
+
+    // Run 1: sess-0 acks (its 3 redactions are part of the declared batch),
+    // sess-1 fails and stays pending.
+    const failingCloud = new InMemoryCloud({
+      manifestId: "mfst_totals",
+      failPresign: new Set(["sess-1"]),
+      failPresignWith: 400,
+    });
+    await runUploadPipeline({
+      cloud: failingCloud,
+      jobs,
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    }).catch(() => {});
+
+    // Run 2 resumes with only the still-pending session — sess-0 classifies as
+    // unchanged now and is absent from the batch. The /complete summary must
+    // still carry the totals declared for the whole manifest (3 + 2), not a
+    // re-aggregate of this run's subset (2).
+    const resumeCloud = new InMemoryCloud({ manifestId: "mfst_totals" });
+    await runUploadPipeline({
+      cloud: resumeCloud,
+      jobs: [jobs[1]!],
+      ledger,
+      resumeStore,
+      reporter: noopReporter(),
+      concurrency: 1,
+      policyVersion: "v0.1",
+      cliVersion: "0.1.0",
+      sourceKind: "claude-code",
+      endpointUrl: endpoint,
+      userId,
+    });
+    expect(resumeCloud.completedSummaries).toEqual([
+      { manifestId: "mfst_totals", summary: { email: 5 } },
+    ]);
+  });
+
   it("finalizePendingManifest completes an all-acked lingering manifest and clears state", async () => {
     const { ledger, resumeStore } = stores();
     const { jobs } = makeJobs(2);

@@ -32,6 +32,9 @@ Exit codes:
     }
     const ctx = await buildCommandContext(flags, { auth: "require" });
     const exitCode = await runAllSnapshots(ctx);
-    if (exitCode !== 0) process.exit(exitCode);
+    // this.exit (not process.exit): standalone runs still exit with this code,
+    // but a programmatic caller (upload's auto mode, init) gets a catchable
+    // ExitError instead of the whole process being torn down under it.
+    if (exitCode !== 0) this.exit(exitCode);
   }
 }

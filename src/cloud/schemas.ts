@@ -191,8 +191,30 @@ export const createManifestResponseSchema = z.union([
 ]);
 export type CreateManifestResponse = z.infer<typeof createManifestResponseSchema>;
 
+// The presigned URL receives the anonymized payload, so it must never point at
+// a plaintext host — same rule as validateEndpoint (endpoints.ts): https only,
+// with http allowed on loopback for local dev stacks.
+function isHttpsOrLoopback(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") return true;
+  return (
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "[::1]")
+  );
+}
+
 export const presignResponseSchema = z.object({
-  presigned_url: z.string().url(),
+  presigned_url: z
+    .string()
+    .url()
+    .refine(isHttpsOrLoopback, "presigned_url must use https (or http on localhost)"),
   method: z.literal("PUT"),
   headers: z.record(z.string(), z.string()),
   expires_at: z.string().min(1),

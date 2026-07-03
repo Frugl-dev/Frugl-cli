@@ -44,6 +44,7 @@ export class InMemoryCloud implements UploadCloudPort {
   readonly manifests = new Map<string, CreateManifestRequest>();
   readonly presignedSessions: string[] = [];
   readonly puttedBodies = new Map<string, Uint8Array>();
+  readonly completedSummaries: { manifestId: string; summary: Record<string, number> }[] = [];
   private readonly manifestId: string;
 
   constructor(private readonly opts: InMemoryCloudOptions = {}) {
@@ -92,7 +93,7 @@ export class InMemoryCloud implements UploadCloudPort {
 
   async completeManifest(
     manifestId: string,
-    _redactionSummary: Record<string, number>,
+    redactionSummary: Record<string, number>,
   ): Promise<{ manifestId: string; dashboardUrl: string }> {
     if (this.opts.failCompleteWith !== undefined) {
       throw controlPlaneError(
@@ -100,6 +101,7 @@ export class InMemoryCloud implements UploadCloudPort {
         `complete failed: HTTP ${this.opts.failCompleteWith}`,
       );
     }
+    this.completedSummaries.push({ manifestId, summary: redactionSummary });
     return { manifestId, dashboardUrl: `/dashboard?upload=${manifestId}` };
   }
 }

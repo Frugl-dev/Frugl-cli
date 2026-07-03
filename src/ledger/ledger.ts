@@ -64,20 +64,36 @@ function sanitize(value: string): string {
 
 export class Ledger {
   private readonly store: Conf<{ data: LedgerShape }>;
+  // In-memory write-through cache. Conf re-reads and re-parses the whole file
+  // on every `get`, and read() zod-validates every entry — per-session calls
+  // (getEntry during classify, upsertEntry per ack) would otherwise re-pay that
+  // full O(entries) cost each time. Nothing else writes the file mid-command.
+  private cached: LedgerShape | undefined;
 
   constructor(key: LedgerKey, options: LedgerStoreOptions = {}) {
     const name = projectName(key);
     this.store = new Conf<{ data: LedgerShape }>({
       projectName: name,
       defaults: { data: { schemaVersion: LEDGER_SCHEMA_VERSION, entries: {} } },
+      // Owner-only: entries carry absolute paths and session ids.
+      configFileMode: 0o600,
       ...(options.cwd !== undefined ? { cwd: options.cwd, configName: name } : {}),
     });
   }
 
+  private persist(shape: LedgerShape): void {
+    this.store.set("data", shape);
+    this.cached = shape;
+  }
+
   read(): LedgerShape {
+    if (this.cached !== undefined) return this.cached;
     const raw = this.store.get("data");
     const parsed = ledgerShapeSchema.safeParse(raw);
-    if (parsed.success) return parsed.data;
+    if (parsed.success) {
+      this.cached = parsed.data;
+      return parsed.data;
+    }
     // Migrate an older-but-compatible store forward (e.g. v1 → v2, which only
     // added optional stat fields). Preserve every entry and just re-stamp the
     // version so upgrading does NOT wipe the ledger and re-anonymize everything.
@@ -90,14 +106,14 @@ export class Ledger {
         schemaVersion: LEDGER_SCHEMA_VERSION,
         entries: migratable.data.entries,
       };
-      this.store.set("data", upgraded);
+      this.persist(upgraded);
       return upgraded;
     }
     const fresh: LedgerShape = {
       schemaVersion: LEDGER_SCHEMA_VERSION,
       entries: {},
     };
-    this.store.set("data", fresh);
+    this.persist(fresh);
     return fresh;
   }
 
@@ -118,11 +134,10 @@ export class Ledger {
 
   upsertEntry(entry: LedgerEntry): void {
     const current = this.read();
-    const next: LedgerShape = {
+    this.persist({
       schemaVersion: LEDGER_SCHEMA_VERSION,
       entries: { ...current.entries, [entry.sessionId]: entry },
-    };
-    this.store.set("data", next);
+    });
   }
 
   upsertMany(entries: LedgerEntry[]): void {
@@ -132,14 +147,14 @@ export class Ledger {
     for (const entry of entries) {
       merged[entry.sessionId] = entry;
     }
-    this.store.set("data", {
+    this.persist({
       schemaVersion: LEDGER_SCHEMA_VERSION,
       entries: merged,
     });
   }
 
   clear(): void {
-    this.store.set("data", { schemaVersion: LEDGER_SCHEMA_VERSION, entries: {} });
+    this.persist({ schemaVersion: LEDGER_SCHEMA_VERSION, entries: {} });
   }
 
   get path(): string {

@@ -28,7 +28,7 @@ import { createProgressReporter } from "../upload/progress.js";
 import {
   runUploadPipeline,
   finalizePendingManifest,
-  rawFileHash,
+  createRawFileHasher,
   type SessionUploadJob,
 } from "../upload/pipeline.js";
 import { captureDeclaredMcpServers } from "../capture/claude/mcp-inventory.js";
@@ -743,11 +743,20 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       // When upload.auto is set in .frugl.json, treat upload as the full "sync"
       // command: run snapshot automatically so context + MCP inventory stay fresh
       // alongside the session data. Failure is non-fatal — it is printed but does
-      // not affect the upload's exit code.
+      // not affect the upload's exit code (snapshot exits via this.exit, so its
+      // failure surfaces here as a catchable ExitError, never a process.exit).
       if (autoMode && uploadConfig?.snapshot?.enabled !== false) {
         const snapshotArgv: string[] = [];
         if (flags.endpoint) snapshotArgv.push("--endpoint", flags.endpoint);
-        await this.config.runCommand("snapshot", snapshotArgv);
+        try {
+          await this.config.runCommand("snapshot", snapshotArgv);
+        } catch {
+          if (mode !== "json") {
+            process.stderr.write(
+              color.dim("Snapshot failed — sessions uploaded fine; it will retry next run.\n"),
+            );
+          }
+        }
       }
 
       // The payoff. The one place upload lets itself celebrate — a receipt that
@@ -1222,9 +1231,12 @@ async function buildJobsForSource(
   minCostUsd: number,
 ): Promise<SessionUploadJob[]> {
   const jobs: SessionUploadJob[] = [];
+  // Memoized per batch: Cursor composer refs share one physical state.vscdb,
+  // which would otherwise be re-read and re-hashed once per session.
+  const rawHash = createRawFileHasher();
   for (const item of items) {
     if (item.kind === "unchanged") continue;
-    const raw = await rawFileHash(item.ref.absolutePath);
+    const raw = await rawHash(item.ref.absolutePath);
     const gitContext = gitBySession.get(item.identity.sessionId);
     const worktreePath = extractWorktreePath(item.ref.absolutePath);
     const tier = classifyTier(

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { withRetry } from "../lib/retry.js";
 import { AuthError, StaleResumeError, VersionGateError } from "../lib/errors.js";
 import type { Ledger } from "../ledger/ledger.js";
@@ -58,6 +59,9 @@ export interface SessionUploadDeps {
   manifestId: string;
   index: number;
   total: number;
+  // Shared per-run hasher (createRawFileHasher) so resume checks over entries
+  // that share one physical store hash it once. Defaults to the uncached hash.
+  rawHash?: RawFileHasher;
 }
 
 // Owns the per-entry transition: start → (upload | skip-check) → succeed / fail /
@@ -73,7 +77,7 @@ export class SessionUpload {
   // manifest was created, record the skip (persist + emit) and return the reason
   // so the orchestrator never attempts the upload. Returns null when uploadable.
   async skipIfUnresumable(entry: ManifestEntryState): Promise<SkipReason | null> {
-    const verdict = await verifyResumableEntry(entry);
+    const verdict = await verifyResumableEntry(entry, this.deps.rawHash ?? rawFileHash);
     if (verdict === null) return null;
     this.deps.resume.updateEntry(entry.sessionId, (e) => ({
       ...e,
@@ -219,21 +223,49 @@ function isStaleStatus(err: unknown): boolean {
   return err instanceof CloudPortError && (err.status === 404 || err.status === 410);
 }
 
-// Hash the raw source bytes. For a Cursor composer ref the source path carries a
+// Hash the raw source bytes, streamed so a large store never sits fully in
+// memory. For a Cursor composer ref the source path carries a
 // `::composer::<id>` suffix that is NOT a real file — `vscdbFilePath` strips it
 // back to the physical state.vscdb so the hash reflects the actual store (and
 // changes whenever any thread in it changes; conservative but correct re-upload
 // detection). Plain file refs pass through unchanged.
 export async function rawFileHash(filePath: string): Promise<string> {
-  const buf = await readFile(vscdbFilePath(filePath));
-  return createHash("sha256").update(buf).digest("hex");
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(vscdbFilePath(filePath))) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
 }
 
-async function verifyResumableEntry(entry: ManifestEntryState): Promise<SkipReason | null> {
+export type RawFileHasher = (filePath: string) => Promise<string>;
+
+// Memoizing hasher for one run. Many Cursor composer refs strip to the SAME
+// physical state.vscdb — without the memo that file (often hundreds of MB) is
+// re-read and re-hashed once per composer session. Keyed by the physical path
+// so all refs into one store share a single pass. Failures are cached too:
+// every ref of a vanished store should see the same rejection, not retry the
+// read N times.
+export function createRawFileHasher(): RawFileHasher {
+  const cache = new Map<string, Promise<string>>();
+  return (filePath) => {
+    const physical = vscdbFilePath(filePath);
+    let pending = cache.get(physical);
+    if (!pending) {
+      pending = rawFileHash(physical);
+      cache.set(physical, pending);
+    }
+    return pending;
+  };
+}
+
+async function verifyResumableEntry(
+  entry: ManifestEntryState,
+  rawHash: RawFileHasher,
+): Promise<SkipReason | null> {
   try {
     const exists = await stat(vscdbFilePath(entry.sourceFilePath)).catch(() => null);
     if (!exists) return "missing";
-    const currentHash = await rawFileHash(entry.sourceFilePath);
+    const currentHash = await rawHash(entry.sourceFilePath);
     if (currentHash !== entry.rawContentHashAtFirstRun) return "modified";
     return null;
   } catch {

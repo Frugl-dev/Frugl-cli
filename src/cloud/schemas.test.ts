@@ -310,6 +310,19 @@ describe("presignResponseSchema", () => {
   it("pins the method to the PUT literal", () => {
     expect(presignResponseSchema.safeParse({ ...valid, method: "POST" }).success).toBe(false);
   });
+
+  it("rejects an http presigned_url on a non-loopback host — the payload must never travel plaintext", () => {
+    expect(
+      presignResponseSchema.safeParse({ ...valid, presigned_url: "http://s3.example.com/obj" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("accepts an http presigned_url on loopback (local dev stack)", () => {
+    for (const url of ["http://127.0.0.1:4001/put", "http://localhost:4001/put"]) {
+      expect(presignResponseSchema.safeParse({ ...valid, presigned_url: url }).success).toBe(true);
+    }
+  });
 });
 
 describe("handoffRequestSchema (open-redirect refinement)", () => {

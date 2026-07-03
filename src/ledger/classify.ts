@@ -79,13 +79,16 @@ export async function classifySession(
   // Cheap change check: derive the deterministic content hash directly from the
   // parsed records — the exact value anonymize() would compute — WITHOUT running
   // the expensive redaction walk. Unchanged sessions stop here; only genuinely
-  // new or updated ones pay for anonymization.
-  if (existing && contentHash(parsed.records) === existing.contentHash) {
+  // new or updated ones pay for anonymization (which reuses this hash rather
+  // than re-stringifying the raw records).
+  const contentHashHex = contentHash(parsed.records);
+  if (existing && contentHashHex === existing.contentHash) {
     return { kind: "unchanged", ref, identity, ledgerEntry: existing };
   }
   const result = anonymize(parsed.records, {
     uploadId: ctx.anonymize.uploadId,
     ownerEmail: ctx.anonymize.ownerEmail,
+    contentHashHex,
     ...(ctx.anonymize.homeDir !== undefined ? { homeDir: ctx.anonymize.homeDir } : {}),
   });
   if (!existing) {

@@ -5,7 +5,12 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { Ledger } from "../ledger/ledger.js";
 import { ResumeStore, type ManifestEntryState, type ManifestState } from "./resume.js";
-import { SessionUpload, type SessionUploadJob } from "./session-upload.js";
+import {
+  SessionUpload,
+  createRawFileHasher,
+  rawFileHash,
+  type SessionUploadJob,
+} from "./session-upload.js";
 import { InMemoryCloud } from "./in-memory-cloud.js";
 import { CloudPortError } from "./cloud-port.js";
 import { StaleResumeError, AnonymizationError, AuthError } from "../lib/errors.js";
@@ -361,5 +366,34 @@ describe("SessionUpload", () => {
     expect(reason).toBeNull();
     expect(loadEntry("sess-ok2")?.status).toBe("pending");
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("createRawFileHasher", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "frugl-hasher-"));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("hashes a shared physical store once: composer refs into one state.vscdb reuse the pass", async () => {
+    const store = path.join(tempDir, "state.vscdb");
+    writeFileSync(store, "original-bytes", "utf8");
+    const hasher = createRawFileHasher();
+
+    const first = await hasher(`${store}::composer::aaa`);
+    // Mutate the store: a memoized hasher must still serve the first pass for
+    // any other ref into the same physical file — proof the file is read once.
+    writeFileSync(store, "mutated-bytes", "utf8");
+    const second = await hasher(`${store}::composer::bbb`);
+    expect(second).toBe(first);
+
+    // A fresh hasher (a new run) sees the new bytes.
+    expect(await createRawFileHasher()(store)).not.toBe(first);
+    expect(await rawFileHash(store)).not.toBe(first);
   });
 });

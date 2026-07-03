@@ -73,33 +73,48 @@ function projectName(key: ResumeStoreKey): string {
 
 export class ResumeStore {
   private readonly store: Conf<{ state: ResumeState | null }>;
+  // In-memory write-through cache (undefined = not yet loaded). Conf re-reads
+  // and re-parses the file on every `get`, and updateEntry runs load + save per
+  // status transition — ~3 per session — so a large batch would otherwise
+  // re-validate the full entry list hundreds of times. Nothing else writes the
+  // file while an upload command holds this instance.
+  private cached: ResumeState | null | undefined;
 
   constructor(key: ResumeStoreKey, options: ResumeStoreOptions = {}) {
     const name = projectName(key);
     this.store = new Conf<{ state: ResumeState | null }>({
       projectName: name,
       defaults: { state: null },
+      // Owner-only: entries carry absolute paths, session ids, and failure text.
+      configFileMode: 0o600,
       ...(options.cwd !== undefined ? { cwd: options.cwd, configName: name } : {}),
     });
   }
 
   load(): ResumeState | null {
+    if (this.cached !== undefined) return this.cached;
     const raw = this.store.get("state");
-    if (raw === null || raw === undefined) return null;
-    const parsed = resumeStateSchema.safeParse(raw);
-    if (!parsed.success) {
-      this.store.set("state", null);
+    if (raw === null || raw === undefined) {
+      this.cached = null;
       return null;
     }
+    const parsed = resumeStateSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.clear();
+      return null;
+    }
+    this.cached = parsed.data;
     return parsed.data;
   }
 
   save(state: ResumeState): void {
     this.store.set("state", state);
+    this.cached = state;
   }
 
   clear(): void {
     this.store.set("state", null);
+    this.cached = null;
   }
 
   updateEntry(sessionId: string, updater: (entry: ManifestEntryState) => ManifestEntryState): void {

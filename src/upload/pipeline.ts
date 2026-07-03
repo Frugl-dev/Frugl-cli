@@ -1,6 +1,7 @@
 import pLimit from "p-limit";
 import { AnonymizationError, NetworkError, FruglError, StaleResumeError } from "../lib/errors.js";
 import { EXIT } from "../lib/exit-codes.js";
+import { withRetry } from "../lib/retry.js";
 import type { Ledger } from "../ledger/ledger.js";
 import type { ProgressReporter } from "./progress.js";
 import type { GitContext } from "./git-context.js";
@@ -8,13 +9,14 @@ import { CloudPortError, type UploadCloudPort } from "./cloud-port.js";
 import {
   SessionUpload,
   rawFileHash,
+  createRawFileHasher,
   sessionBodyBytes,
   type SessionOutcome,
   type SessionUploadJob,
 } from "./session-upload.js";
 import { ResumeStore, type ManifestState, type ResumeState } from "./resume.js";
 
-export { rawFileHash };
+export { rawFileHash, createRawFileHasher };
 export type { SessionUploadJob };
 
 export interface PipelineOptions {
@@ -57,18 +59,28 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
   const resumed = existing ? reconcileExistingManifest(existing, opts) : null;
   if (existing && !resumed) {
     // The saved manifest doesn't cover this batch (new sessions since the
-    // failed run, a different source, or a different binary). Resuming it is
-    // impossible and keeping it would wedge every future upload, so start
-    // fresh. Already-acked sessions are protected by the ledger (they
-    // classify as unchanged and are not in this batch).
+    // failed run, a narrowed selection that dropped pending entries, a
+    // different source, or a different binary). Resuming it is impossible and
+    // keeping it would wedge every future upload, so start fresh.
+    // Already-acked sessions are protected by the ledger (they classify as
+    // unchanged and are not in this batch).
     opts.resumeStore.clear();
   }
   const manifestState = resumed ?? (await createManifest(opts));
 
+  // Batch redaction totals for the /complete summary. On a resumed manifest
+  // keep the totals persisted when the batch was first declared: this run's
+  // jobs are only the still-pending subset (sessions acked last run classify as
+  // unchanged and are absent), so re-aggregating them would undercount.
+  const redactionTotals =
+    resumed && existing?.redactionTotals
+      ? existing.redactionTotals
+      : aggregateRedactions(opts.jobs);
+
   opts.resumeStore.save({
     schemaVersion: 1,
     manifest: manifestState,
-    redactionTotals: aggregateRedactions(opts.jobs),
+    redactionTotals,
     beganAt: resumed && existing ? existing.beganAt : new Date().toISOString(),
   });
 
@@ -81,6 +93,9 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
   });
 
   const limit = pLimit(Math.max(1, opts.concurrency));
+  // One memoizing hasher for the whole batch: resume checks over Cursor entries
+  // that share a physical state.vscdb hash it once, not once per session.
+  const rawHash = createRawFileHasher();
   const acked: string[] = [];
   const skipped: { sessionId: string; reason: "missing" | "modified" }[] = [];
   const failures: { sessionId: string; reason: string }[] = [];
@@ -129,6 +144,7 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
           manifestId: manifestState.manifestId,
           index: progressIndex,
           total: totalCount,
+          rawHash,
         });
 
         // On resume, re-check the source file before attempting; a vanished or
@@ -155,18 +171,24 @@ export async function runUploadPipeline(opts: PipelineOptions): Promise<Pipeline
     const message = `Upload incomplete: ${failures.length} session(s) failed after retries. Re-run 'frugl upload' to resume.`;
     // The exit code should reflect the dominant failure class: a batch where
     // every failure was local redaction (fail-closed, nothing sent) is exit 30,
-    // not a fake "network error".
+    // and a batch that failed entirely on local parsing is not a fake "network
+    // error" either — only a batch with at least one wire failure is exit 40.
     if (failures.every((f) => f.reason === "anonymization")) {
       throw new AnonymizationError(message);
+    }
+    if (failures.every((f) => f.reason === "parse" || f.reason === "anonymization")) {
+      throw new FruglError(message, EXIT.GENERIC_FAILURE);
     }
     throw new NetworkError(message);
   }
 
   let complete;
   try {
-    complete = await opts.cloud.completeManifest(
-      manifestState.manifestId,
-      aggregateRedactions(opts.jobs),
+    // Every session is PUT by this point; a transient blip on /complete must
+    // not report the whole batch as failed, so give it the standard retry.
+    // Non-retryable statuses (404/410) abort immediately and surface below.
+    complete = await withRetry(() =>
+      opts.cloud.completeManifest(manifestState.manifestId, redactionTotals),
     );
   } catch (err) {
     if (err instanceof CloudPortError && (err.status === 404 || err.status === 410)) {
@@ -275,9 +297,10 @@ async function createManifest(opts: PipelineOptions): Promise<ManifestState> {
 }
 
 // Resume the saved manifest only when it actually covers this batch: same
-// source, same endpoint+user, and every job present in its entries. Anything
-// else returns null and the caller starts a fresh manifest — a mismatch must
-// never be fatal, or one failed batch wedges every future upload.
+// source, same endpoint+user, every job present in its entries, AND every
+// still-attemptable entry backed by a job. Anything else returns null and the
+// caller starts a fresh manifest — a mismatch must never be fatal, or one
+// failed batch wedges every future upload.
 function reconcileExistingManifest(
   state: ResumeState,
   opts: PipelineOptions,
@@ -293,6 +316,20 @@ function reconcileExistingManifest(
   const known = new Set(manifest.entries.map((e) => e.sessionId));
   for (const job of opts.jobs) {
     if (!known.has(job.sessionId)) return null;
+  }
+  // The reverse direction: a selection narrowed since the failed run (--limit,
+  // a deselected project, a raised --min-cost) leaves pending entries with no
+  // job. Resuming would count each as a "missing-job" failure and report the
+  // whole batch failed even though every attempted session succeeded — so fall
+  // back to a fresh manifest instead.
+  const jobIds = new Set(opts.jobs.map((j) => j.sessionId));
+  for (const entry of manifest.entries) {
+    if (
+      (entry.status === "pending" || entry.status === "in-flight") &&
+      !jobIds.has(entry.sessionId)
+    ) {
+      return null;
+    }
   }
   return manifest;
 }
