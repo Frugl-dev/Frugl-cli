@@ -5,7 +5,12 @@ import path from "node:path";
 import { claude } from "../descriptor.js";
 import { discover } from "../walker.js";
 import { writeTestSessions } from "../../e2e/helpers/fixtures.js";
-import { decodeProjectPath, deriveClaudeProjects, extractWorktreePath } from "./project.js";
+import {
+  decodeProjectPath,
+  deriveClaudeProjects,
+  encodeProjectPath,
+  extractWorktreePath,
+} from "./project.js";
 import type { SessionRef } from "../types.js";
 
 const discoverClaudeSessions = (opts: { homeDir: string }) => discover(claude, opts);
@@ -24,6 +29,15 @@ describe("deriveClaudeProjects", () => {
   it("decodes an encoded project directory into a readable path", () => {
     expect(decodeProjectPath("-Users-shawn-code-app")).toBe("/Users/shawn/code/app");
     expect(decodeProjectPath("-home-me-scratch")).toBe("/home/me/scratch");
+  });
+
+  it("encodes a real path the same way Claude does on disk", () => {
+    expect(encodeProjectPath("/Users/shawn/code/app")).toBe("-Users-shawn-code-app");
+    // A hyphen in a real path segment round-trips through encode (unlike decode,
+    // which can't tell a real "-" apart from an encoded "/").
+    expect(encodeProjectPath("/Users/shmck/Documents/Projects/frugl-cli")).toBe(
+      "-Users-shmck-Documents-Projects-frugl-cli",
+    );
   });
 
   it("extracts the worktree sub-path from a session absolutePath", () => {
