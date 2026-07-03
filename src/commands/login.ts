@@ -17,7 +17,12 @@ import {
   type OrgSetupPresentation,
 } from "../org/presenter.js";
 import { deriveSlug } from "../org/slug.js";
-import { getLastLoginMethod, setLastLoginMethod, setSavedEndpoint } from "../lib/config.js";
+import {
+  getLastLoginMethod,
+  recordProfileOrg,
+  setLastLoginMethod,
+  setSavedEndpoint,
+} from "../lib/config.js";
 import { color, symbol, SIGIL } from "../lib/theme.js";
 import {
   requestHandoffUrl,
@@ -56,6 +61,19 @@ function rememberLoginMethod(method: "github" | "google" | "otp"): void {
 // command. Best-effort, like rememberLoginMethod — a config write failure must
 // never break an otherwise-successful sign-in. Resolution precedence still puts
 // an explicit flag/env above this saved value (see cloud/endpoints.ts).
+// Best-effort mirror of the resolved org into the profile cache (null clears it
+// on a 409 "no org yet"). A cache write must never break login.
+function rememberOrg(endpoint: string, org: OrgMeResponse | null): void {
+  try {
+    recordProfileOrg(
+      endpoint,
+      org ? { slug: org.org.slug, name: org.org.name, role: org.membership.role } : null,
+    );
+  } catch {
+    /* ignore — the profile cache is a convenience, not a contract */
+  }
+}
+
 function rememberEndpoint(url: string): void {
   try {
     setSavedEndpoint(url);
@@ -216,6 +234,9 @@ Exit codes:
           throw err;
         }
       }
+      // Cache the resolved org (or clear it on 409) so `frugl config` can show it
+      // later without re-hitting the cloud.
+      rememberOrg(endpoint.url, orgContext);
 
       if (mode === "json") {
         const out: Record<string, unknown> = {
@@ -431,6 +452,7 @@ Exit codes:
           throw err;
         }
       }
+      rememberOrg(endpoint.url, orgContext);
 
       if (mode === "json") {
         const out: Record<string, unknown> = {

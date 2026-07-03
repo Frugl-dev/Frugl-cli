@@ -14,6 +14,10 @@ import {
   getSavedEndpoint,
   setSavedEndpoint,
   clearSavedEndpoint,
+  getProfile,
+  recordProfileIdentity,
+  recordProfileOrg,
+  clearProfile,
 } from "./config.js";
 
 let dir: string;
@@ -191,5 +195,70 @@ describe("frugl-config (endpoint)", () => {
 
   it("stays out of the key set until explicitly saved", () => {
     expect(Object.keys(readConfig({ cwd: dir })).toSorted()).toEqual(["linkPrs", "schemaVersion"]);
+  });
+});
+
+describe("frugl-config (profile cache)", () => {
+  const A = "https://a.frugl.dev";
+  const B = "https://b.frugl.dev";
+  const identityA = {
+    endpoint: A,
+    email: "a@x.com",
+    userId: "u-a",
+    loggedInAt: "2026-01-01T00:00:00.000Z",
+  };
+
+  it("returns undefined on a fresh store", () => {
+    expect(getProfile(A, { cwd: dir })).toBeUndefined();
+  });
+
+  it("round-trips identity and is endpoint-scoped", () => {
+    recordProfileIdentity(identityA, { cwd: dir });
+    const p = getProfile(A, { cwd: dir });
+    expect(p?.email).toBe("a@x.com");
+    expect(p?.userId).toBe("u-a");
+    expect(p?.loggedInAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(p?.org).toBeUndefined();
+    expect(p?.updatedAt).toBeTruthy();
+    // Only one profile is stored; a different endpoint sees nothing.
+    expect(getProfile(B, { cwd: dir })).toBeUndefined();
+  });
+
+  it("records and clears the org", () => {
+    recordProfileIdentity(identityA, { cwd: dir });
+    recordProfileOrg(A, { slug: "acme", name: "Acme", role: "owner" }, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })?.org).toEqual({ slug: "acme", name: "Acme", role: "owner" });
+    recordProfileOrg(A, null, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })?.org).toBeUndefined();
+  });
+
+  it("recordProfileOrg is a no-op without a matching profile", () => {
+    // No identity yet.
+    recordProfileOrg(A, { slug: "acme", name: "Acme", role: "owner" }, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })).toBeUndefined();
+    // Identity for A, but org recorded against B — ignored.
+    recordProfileIdentity(identityA, { cwd: dir });
+    recordProfileOrg(B, { slug: "other", name: "Other", role: "member" }, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })?.org).toBeUndefined();
+  });
+
+  it("preserves the org across a re-login by the same user, drops it when the user changes", () => {
+    recordProfileIdentity(identityA, { cwd: dir });
+    recordProfileOrg(A, { slug: "acme", name: "Acme", role: "owner" }, { cwd: dir });
+    // Same user re-logs in (offline org lookup would fail) — org is preserved.
+    recordProfileIdentity(identityA, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })?.org).toEqual({ slug: "acme", name: "Acme", role: "owner" });
+    // A different user on the same endpoint — the stale org is dropped.
+    recordProfileIdentity({ endpoint: A, email: "c@x.com", userId: "u-c" }, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })?.org).toBeUndefined();
+    expect(getProfile(A, { cwd: dir })?.email).toBe("c@x.com");
+  });
+
+  it("clearProfile is endpoint-scoped", () => {
+    recordProfileIdentity(identityA, { cwd: dir });
+    clearProfile(B, { cwd: dir }); // wrong endpoint — no-op
+    expect(getProfile(A, { cwd: dir })?.email).toBe("a@x.com");
+    clearProfile(A, { cwd: dir });
+    expect(getProfile(A, { cwd: dir })).toBeUndefined();
   });
 });

@@ -4,6 +4,7 @@ import { orgMeResponseSchema } from "../cloud/schemas.js";
 import { EXIT } from "../lib/exit-codes.js";
 import { buildCommandContext, COMMON_FLAGS, handleCommandError } from "../lib/command-context.js";
 import { color, symbol } from "../lib/theme.js";
+import { recordProfileIdentity, recordProfileOrg } from "../lib/config.js";
 
 interface OrgInfo {
   id: string;
@@ -49,6 +50,30 @@ export default class Whoami extends Command {
 
       const org = await this.resolveOrg(client);
       const orgInfo = typeof org === "string" ? null : org;
+
+      // Refresh the non-secret profile cache so `frugl config` can show this
+      // identity + org without a keychain read or a cloud call. Best-effort; a
+      // cache write must never fail whoami. "unknown" (couldn't reach the cloud)
+      // leaves any previously-cached org untouched.
+      try {
+        recordProfileIdentity({
+          endpoint: session.endpointUrl,
+          email: session.email,
+          userId: session.userId,
+          loggedInAt: session.loggedInAt,
+        });
+        if (orgInfo) {
+          recordProfileOrg(session.endpointUrl, {
+            slug: orgInfo.slug,
+            name: orgInfo.name,
+            role: orgInfo.role,
+          });
+        } else if (org === "none") {
+          recordProfileOrg(session.endpointUrl, null);
+        }
+      } catch {
+        /* ignore — the profile cache is a convenience, not a contract */
+      }
 
       if (mode === "json") {
         process.stdout.write(
