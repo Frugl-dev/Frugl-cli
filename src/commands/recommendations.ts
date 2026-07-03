@@ -122,14 +122,19 @@ export default class Recommendations extends Command {
     }
 
     if (recs.length === 0) {
-      this.printEmpty();
+      this.printEmpty(mode);
       return;
     }
 
     // Applied recs carry a measured `impact` object — render the loop-closing
     // before/after view instead of the plain ranked list.
     if (status === "applied") {
-      this.printImpact(recs);
+      this.printImpact(recs, mode);
+      return;
+    }
+
+    if (mode === "minimal") {
+      this.printListMinimal(recs, status);
       return;
     }
 
@@ -190,9 +195,29 @@ export default class Recommendations extends Command {
     }
   }
 
+  // Agents/CI: one line per recommendation (`#n id=... savings=... category=...
+  // title="..."`), no CTA prose, no decoration — plus a one-line footer total.
+  private printListMinimal(recs: RecommendationItem[], status: string): void {
+    const word = statusWord(status);
+    process.stdout.write(`recommendations n=${recs.length}${word ? ` status=${word}` : ""}\n`);
+    let total = 0;
+    recs.forEach((r, i) => {
+      total += r.estimated_savings_usd;
+      process.stdout.write(
+        `#${i + 1} id=${r.id} savings=${formatSavings(r.estimated_savings_usd)}/mo ` +
+          `category=${humanizeCategory(r.category)} status=${r.status} title="${r.title}"\n`,
+      );
+    });
+    process.stdout.write(`total=${formatSavings(total)}/mo\n`);
+  }
+
   // Warm empty state — no recommendations isn't an error. Why it's empty + the
   // two ways forward, and a reminder that nothing to fix is a good place to be.
-  private printEmpty(): void {
+  private printEmpty(mode: OutputMode): void {
+    if (mode === "minimal") {
+      process.stdout.write("recommendations n=0\n");
+      return;
+    }
     const dot = color.mute("·");
     process.stdout.write(
       `  ${color.frog(SIGIL)}   ${color.bold("No recommendations yet — Frugl's still chewing.")}\n\n`,
@@ -215,7 +240,11 @@ export default class Recommendations extends Command {
 
   // The impact view (`--status applied`): baseline vs. now, realized savings,
   // and a measuring/available indicator — closing the recommend→fix→measure loop.
-  private printImpact(recs: RecommendationItem[]): void {
+  private printImpact(recs: RecommendationItem[], mode: OutputMode): void {
+    if (mode === "minimal") {
+      this.printImpactMinimal(recs);
+      return;
+    }
     process.stdout.write(
       `${color.bold("Applied recommendations")} ` +
         `${color.dim("— impact (measured against your baseline)")}\n\n`,
@@ -272,6 +301,40 @@ export default class Recommendations extends Command {
     process.stdout.write(
       `  ${color.mute("Total realized so far  ")}` +
         `${color.frogBold(`~${formatSavings(realizedTotal)}/mo`)}${suffix}\n`,
+    );
+  }
+
+  // Agents/CI: one line per applied recommendation with its measurement
+  // status, plus a one-line footer total — no bar chart, no prose.
+  private printImpactMinimal(recs: RecommendationItem[]): void {
+    let realizedTotal = 0;
+    let measuring = 0;
+    let available = 0;
+
+    recs.forEach((r) => {
+      const im = r.impact;
+      if (!im) {
+        process.stdout.write(`id=${r.id} title="${r.title}" status=not-started\n`);
+        return;
+      }
+      if (im.measurement_status === "available") {
+        available += 1;
+        const realized = im.realized_savings_usd ?? 0;
+        realizedTotal += realized;
+        process.stdout.write(
+          `id=${r.id} title="${r.title}" baseline=${formatSavings(im.baseline_cost_usd)}/mo ` +
+            `realized=${formatSavings(realized)}/mo status=available\n`,
+        );
+      } else {
+        measuring += 1;
+        process.stdout.write(
+          `id=${r.id} title="${r.title}" baseline=${formatSavings(im.baseline_cost_usd)}/mo status=measuring\n`,
+        );
+      }
+    });
+
+    process.stdout.write(
+      `total_realized=${formatSavings(realizedTotal)}/mo measuring=${measuring} available=${available}\n`,
     );
   }
 

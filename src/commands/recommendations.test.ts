@@ -191,6 +191,77 @@ describe("frugl recommendations", () => {
     expect(stdout).toContain("frugl recommendations --status dismissed");
   });
 
+  it("--format minimal prints one compact line per recommendation, no prose/CTA", async () => {
+    callMock.mockResolvedValue({
+      recommendations: [
+        rec({
+          id: "r1",
+          title: "Top",
+          category: "root_context_bloat",
+          estimated_savings_usd: 12.4,
+        }),
+        rec({ id: "r2", title: "Second", estimated_savings_usd: 5 }),
+      ],
+    });
+    await Recommendations.run(["--format", "minimal"]);
+    expect(stdout).toContain("recommendations n=2 status=open");
+    expect(stdout).toContain(
+      '#1 id=r1 savings=$12.40/mo category=root context bloat status=open title="Top"',
+    );
+    expect(stdout).toContain("#2 id=r2 savings=$5.00/mo");
+    expect(stdout).toContain("total=$17.40/mo");
+    // no decorative CTA / warm-header prose in minimal mode
+    expect(stdout).not.toContain("worth fixing this week");
+    expect(stdout).not.toContain("hand it straight to an agent");
+  });
+
+  it("--format minimal empty state is a single line", async () => {
+    callMock.mockResolvedValue({ recommendations: [] });
+    await Recommendations.run(["--format", "minimal"]);
+    expect(stdout.trim()).toBe("recommendations n=0");
+  });
+
+  it("--format minimal impact view prints one compact line per rec plus a total", async () => {
+    callMock.mockResolvedValue({
+      recommendations: [
+        rec({
+          id: "r1",
+          title: "Trim CLAUDE.md",
+          status: "applied",
+          impact: {
+            baseline_cost_usd: 312.4,
+            baseline_window_days: 30,
+            actual_cost_usd: 108.2,
+            projected_baseline_cost_usd: 312.4,
+            realized_savings_usd: 204.2,
+            measurement_status: "available",
+          },
+        }),
+        rec({
+          id: "r2",
+          title: "Break the retry loop",
+          status: "applied",
+          impact: {
+            baseline_cost_usd: 154.75,
+            baseline_window_days: 30,
+            actual_cost_usd: null,
+            projected_baseline_cost_usd: null,
+            realized_savings_usd: null,
+            measurement_status: "measuring",
+          },
+        }),
+      ],
+    });
+    await Recommendations.run(["--status", "applied", "--format", "minimal"]);
+    expect(stdout).toContain(
+      'id=r1 title="Trim CLAUDE.md" baseline=$312.40/mo realized=$204.20/mo status=available',
+    );
+    expect(stdout).toContain(
+      'id=r2 title="Break the retry loop" baseline=$154.75/mo status=measuring',
+    );
+    expect(stdout).toContain("total_realized=$204.20/mo measuring=1 available=1");
+  });
+
   it("fails closed when not logged in (no API calls)", async () => {
     (loadAuthSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     await expect(Recommendations.run(["--format", "json"])).rejects.toThrow("exit:10");

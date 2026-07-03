@@ -266,7 +266,7 @@ Exit codes:
           `${endpoint.url}/dashboard`,
           resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
         );
-        this.printNextSteps(handoff);
+        this.printNextSteps(handoff, mode);
         return;
       }
 
@@ -394,7 +394,7 @@ Exit codes:
         `${endpoint.url}/dashboard`,
         resolveHandoffPreference(undefined, Boolean(process.stdout.isTTY), mode),
       );
-      this.printNextSteps(handoff);
+      this.printNextSteps(handoff, mode);
       return;
     } catch (err) {
       handleCommandError(err, mode);
@@ -485,7 +485,7 @@ Exit codes:
         process.stdout.write(`\n${color.dim("  Your browser is opening your dashboard…")}\n`);
       }
 
-      this.printNextStepsBody();
+      this.printNextStepsBody(mode);
     } catch (err) {
       handleCommandError(err, mode);
     }
@@ -525,20 +525,30 @@ Exit codes:
     }
   }
 
-  private printNextSteps(handoff: HandoffResult): void {
+  // Agents/CI (`--format minimal`) get one grep-able line instead of the
+  // decorated dashboard block + "Next:" tips — the confirmation line printed
+  // just above already covers "did it work."
+  private printNextSteps(handoff: HandoffResult, mode: OutputMode): void {
+    if (mode !== "default") {
+      process.stdout.write(
+        `dashboard=${handoff.dashboardUrl}${handoff.active ? " active=true" : ""}\n`,
+      );
+      return;
+    }
     process.stdout.write(
       `\n${color.dim("  Dashboard: ")}${color.frog(color.underline(handoff.dashboardUrl))}\n`,
     );
     if (handoff.active) {
       process.stdout.write(color.dim("             auto sign-in link — valid for ~60s\n"));
     }
-    this.printNextStepsBody();
+    this.printNextStepsBody(mode);
   }
 
   // The "Next" command list and brand closer, shared by every successful sign-in.
   // The browser path prints this without a handoff URL — the already-authenticated
   // browser tab has carried the user straight to the dashboard.
-  private printNextStepsBody(): void {
+  private printNextStepsBody(mode: OutputMode): void {
+    if (mode !== "default") return;
     process.stdout.write(`\n${color.dim("  Next:")}\n`);
     process.stdout.write(
       `${color.dim("    ")}${color.frog("frugl hook install --global")}${color.dim("   auto-upload on session end")}\n`,
