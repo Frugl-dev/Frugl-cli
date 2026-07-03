@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { EXIT } from "../lib/exit-codes.js";
 import { MockServer } from "../e2e/helpers/mock-server.js";
@@ -8,6 +16,20 @@ import { runCli } from "../e2e/helpers/spawn.js";
 import { clearAuth, injectAuth, makeTestSession } from "../e2e/helpers/auth.js";
 import { makeTempDir, writeTestSessions, type TempDir } from "../e2e/helpers/fixtures.js";
 import { Temporal } from "temporal-polyfill";
+
+// Claude's project-folder encoding replaces every "/" (and ".") with "-", and
+// decoding (display-only) blindly reverses that — so a cwd containing a literal
+// dash wouldn't round-trip back to itself. `upload.projects.include` scoping
+// compares the decoded session path against the recorded include glob, so
+// tests exercising the scoped-upload path need a dash-free cwd. `mkdtempSync`
+// appends random alnum-only characters (no dashes), unlike the shared
+// `frugl-e2e-<uuid>` temp dirs used elsewhere in this suite. realpathSync
+// resolves macOS's `/var` -> `/private/var` symlink up front, since that's the
+// cwd the spawned CLI process itself observes.
+function makeScopedProjectDir(): TempDir {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "fruglinit")));
+  return { dir, cleanup: () => Promise.resolve(rmSync(dir, { recursive: true, force: true })) };
+}
 
 // `frugl init` is the one-command front door: auth → org → write .frugl.json →
 // upload → snapshot. These spawn the real CLI (so upload/snapshot run for real
@@ -42,9 +64,11 @@ describe("frugl init", { timeout: 30_000 }, () => {
   let home: TempDir;
   let project: TempDir;
   let manifestCalls: number;
+  let presignCalls: number;
 
   beforeEach(async () => {
     manifestCalls = 0;
+    presignCalls = 0;
     server = await new MockServer().start();
     server.on("POST", "/api/uploads/manifest", (_req: IncomingMessage, res: ServerResponse) => {
       manifestCalls += 1;
@@ -52,6 +76,7 @@ describe("frugl init", { timeout: 30_000 }, () => {
     });
     server
       .on("POST", "/api/uploads/:id/presign", (_req, res, params) => {
+        presignCalls += 1;
         server.json(res, 200, {
           presigned_url: `${server.url}/fake-put/${encodeURIComponent(params["id"] ?? "")}`,
           method: "PUT",
@@ -95,31 +120,67 @@ describe("frugl init", { timeout: 30_000 }, () => {
     server.on("POST", "/api/orgs/create", (_req, res) => {
       server.json(res, 200, { org: { id: "o1", name: "Acme", slug: "acme" } });
     });
-    await writeTestSessions(home.dir, 2, "-Users-me-app");
+    const scoped = makeScopedProjectDir();
+    try {
+      await writeTestSessions(home.dir, 2, scoped.dir.replace(/\//g, "-"));
 
-    const { exitCode } = await runCli(
-      [
-        "init",
-        "--yes",
-        "--org-name",
-        "Acme",
-        "--no-snapshot",
-        "--format",
-        "json",
-        "--endpoint",
-        server.url,
-      ],
-      { env: { FRUGL_HOME_DIR: home.dir }, cwd: project.dir },
-    );
+      const { exitCode } = await runCli(
+        [
+          "init",
+          "--yes",
+          "--org-name",
+          "Acme",
+          "--no-snapshot",
+          "--format",
+          "json",
+          "--endpoint",
+          server.url,
+        ],
+        { env: { FRUGL_HOME_DIR: home.dir }, cwd: scoped.dir },
+      );
 
-    expect(exitCode).toBe(EXIT.OK);
-    const cfg = readConfig();
-    expect(cfg["version"]).toBe(1);
-    expect(cfg["org"]).toBe("acme");
-    // A non-default (flag) endpoint is pinned (FR-007).
-    expect(cfg["endpoint"]).toBe(server.url);
-    // The upload step actually ran.
-    expect(manifestCalls).toBeGreaterThanOrEqual(1);
+      expect(exitCode).toBe(EXIT.OK);
+      const cfg = JSON.parse(readFileSync(path.join(scoped.dir, CONFIG), "utf8"));
+      expect(cfg["version"]).toBe(1);
+      expect(cfg["org"]).toBe("acme");
+      // A non-default (flag) endpoint is pinned (FR-007).
+      expect(cfg["endpoint"]).toBe(server.url);
+      // Directory-scoped by default (FR-012): future `frugl upload` runs here
+      // only ever consider this directory (and anything nested under it).
+      expect(cfg["upload"]).toEqual({
+        projects: { include: [scoped.dir, `${scoped.dir}/**`] },
+      });
+      // The upload step actually ran.
+      expect(manifestCalls).toBeGreaterThanOrEqual(1);
+    } finally {
+      await scoped.cleanup();
+    }
+  });
+
+  it("scopes the triggered upload to this directory, not every project on the machine", async () => {
+    wireOrgMe(server, "none");
+    server.on("POST", "/api/orgs/create", (_req, res) => {
+      server.json(res, 200, { org: { id: "o1", name: "Acme", slug: "acme" } });
+    });
+    const scoped = makeScopedProjectDir();
+    try {
+      // Two sessions belong to the directory `init` is run in...
+      await writeTestSessions(home.dir, 2, scoped.dir.replace(/\//g, "-"));
+      // ...three belong to an unrelated project elsewhere on the machine.
+      await writeTestSessions(home.dir, 3, "-Users-someone-else-other-project");
+
+      const { exitCode } = await runCli(
+        ["init", "--yes", "--org-name", "Acme", "--no-snapshot", "--endpoint", server.url],
+        { env: { FRUGL_HOME_DIR: home.dir }, cwd: scoped.dir },
+      );
+
+      expect(exitCode).toBe(EXIT.OK);
+      // Only the 2 sessions from this directory were uploaded — the other
+      // project's 3 sessions were never even offered to the presign step.
+      expect(presignCalls).toBe(2);
+    } finally {
+      await scoped.cleanup();
+    }
   });
 
   it("--no-upload --no-snapshot still writes config but skips the upload", async () => {

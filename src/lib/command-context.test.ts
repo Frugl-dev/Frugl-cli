@@ -49,6 +49,17 @@ vi.mock("./config.js", () => ({
   getPendingAuthFailure: () => undefined,
 }));
 
+// `buildCommandContext` reads `loadProjectPin()` with no cwd override, so it
+// ambiently reads whatever `.frugl.json` happens to sit above the real process
+// cwd (e.g. this repo's own root) unless stubbed here. Controllable per-test —
+// pin-precedence coverage below exercises the real wiring deliberately instead
+// of relying on that ambient read. `loadProjectPin` itself (cwd-walk, malformed
+// pins, etc.) is unit-tested in isolation in cloud/project-pin.test.ts.
+let projectPin: { endpoint: string; path: string } | undefined;
+vi.mock("../cloud/project-pin.js", () => ({
+  loadProjectPin: () => projectPin,
+}));
+
 // Import after mocks are registered.
 const { buildCommandContext } = await import("./command-context.js");
 const { AuthError, UsageError } = await import("./errors.js");
@@ -66,6 +77,7 @@ beforeEach(() => {
   loadAuthSession.mockReset();
   requireAuthSession.mockReset();
   savedEndpoint = undefined;
+  projectPin = undefined;
   delete process.env["FRUGL_ENDPOINT"];
 });
 
@@ -137,6 +149,26 @@ describe("buildCommandContext — endpoint precedence", () => {
     await expect(
       buildCommandContext({ endpoint: "not a url" }, { auth: "none" }),
     ).rejects.toBeInstanceOf(UsageError);
+  });
+
+  it("a checked-in .frugl.json pin wins over env, saved, and default; endpointExplicit true", async () => {
+    projectPin = { endpoint: "https://frugl.internal", path: "/repo/.frugl.json" };
+    savedEndpoint = "http://localhost:4321";
+    process.env["FRUGL_ENDPOINT"] = "https://env.example.com";
+    const ctx = await buildCommandContext({}, { auth: "none" });
+    expect(ctx.endpoint.url).toBe("https://frugl.internal");
+    expect(ctx.endpoint.resolvedFrom).toBe("pin");
+    expect(clientConstructions[0]?.endpointExplicit).toBe(true);
+  });
+
+  it("an explicit --endpoint flag still wins over a checked-in pin", async () => {
+    projectPin = { endpoint: "https://frugl.internal", path: "/repo/.frugl.json" };
+    const ctx = await buildCommandContext(
+      { endpoint: "https://flag.example.com" },
+      { auth: "none" },
+    );
+    expect(ctx.endpoint.url).toBe("https://flag.example.com");
+    expect(ctx.endpoint.resolvedFrom).toBe("flag");
   });
 });
 
