@@ -698,10 +698,9 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
                 }
               : undefined;
 
-            // Declared MCP inventory (names-only, fail-open): `claude mcp list` is
-            // Claude Code's vocabulary, so only that source's manifest carries it.
-            const mcpServers =
-              source.kind === "claude-code" ? captureDeclaredMcpServers() : undefined;
+            // Declared MCP inventory (names-only, fail-open): each source's own
+            // `mcp list` command, when one is registered (claude/codex/gemini).
+            const mcpServers = captureDeclaredMcpServers(undefined, source.kind);
 
             const pipelineOptions = {
               cloud,

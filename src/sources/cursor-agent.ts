@@ -2,7 +2,7 @@ import { access, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { glob } from "tinyglobby";
-import type { CursorComposerExport } from "./cursor-vscdb.js";
+import type { CursorComposerExport, CursorExportBubble } from "./cursor-vscdb.js";
 import { parseNdjson } from "./ndjson.js";
 import type { SessionRef } from "./types.js";
 
@@ -104,26 +104,29 @@ export function decodeAgentTranscriptCwd(absolutePath: string): string | undefin
   return `/${encoded.replace(/-/g, "/")}`;
 }
 
-// Concatenate the text parts of a turn's message. `tool_use` parts carry no
-// canonical home in the `{composer, bubbles}` shape (its bubbles are text-only),
-// so they are dropped here — the same fidelity ceiling the cloud Cursor adapter
-// already documents (tool detail unavailable for Cursor).
-function textOfMessage(message: unknown): string {
-  if (typeof message === "string") return message;
-  if (!message || typeof message !== "object") return "";
+// Extract the text parts + tool_use NAMES of a turn's message. Tool calls ride
+// the bubble as names-only telemetry (`toolCalls: [{name}]`): the transcript
+// carries no tool results, and raw args never enter the export (fail-closed,
+// Principle VI) — so name-level invocation counts are the fidelity ceiling here.
+function partsOfMessage(message: unknown): { text: string; toolCalls: { name: string }[] } {
+  if (typeof message === "string") return { text: message, toolCalls: [] };
+  if (!message || typeof message !== "object") return { text: "", toolCalls: [] };
   const content = (message as Record<string, unknown>).content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
+  if (typeof content === "string") return { text: content, toolCalls: [] };
+  if (!Array.isArray(content)) return { text: "", toolCalls: [] };
   const parts: string[] = [];
+  const toolCalls: { name: string }[] = [];
   for (const part of content) {
     if (part && typeof part === "object") {
       const p = part as Record<string, unknown>;
       if (p.type === "text" && typeof p.text === "string" && p.text.length > 0) {
         parts.push(p.text);
+      } else if (p.type === "tool_use" && typeof p.name === "string" && p.name.length > 0) {
+        toolCalls.push({ name: p.name });
       }
     }
   }
-  return parts.join("\n");
+  return { text: parts.join("\n"), toolCalls };
 }
 
 // Convert a flat cursor-agent transcript into the cloud adapter's export shape.
@@ -134,7 +137,7 @@ export function agentTranscriptToExport(
   composerId: string,
 ): CursorComposerExport | null {
   const headers: { bubbleId: string; type: number }[] = [];
-  const bubbles: Record<string, { type?: number; text?: string }> = {};
+  const bubbles: Record<string, CursorExportBubble> = {};
   let i = 0;
   for (const record of records) {
     if (!record || typeof record !== "object") continue;
@@ -145,7 +148,8 @@ export function agentTranscriptToExport(
     if (type === 0) continue;
     const bubbleId = `b${i++}`;
     headers.push({ bubbleId, type });
-    bubbles[bubbleId] = { type, text: textOfMessage((record as Record<string, unknown>).message) };
+    const { text, toolCalls } = partsOfMessage((record as Record<string, unknown>).message);
+    bubbles[bubbleId] = { type, text, ...(toolCalls.length > 0 ? { toolCalls } : {}) };
   }
   if (headers.length === 0) return null;
   return { composer: { composerId, fullConversationHeadersOnly: headers }, bubbles };

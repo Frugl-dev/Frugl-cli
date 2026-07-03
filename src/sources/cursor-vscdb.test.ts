@@ -26,6 +26,9 @@ interface SeedBubble {
   bubbleId: string;
   type: number;
   text: string;
+  // Extra raw fields merged into the stored bubble JSON (tokenCount, modelInfo,
+  // toolFormerData, …) to exercise the telemetry passthrough.
+  extras?: Record<string, unknown>;
 }
 interface SeedComposer {
   composerId: string;
@@ -61,7 +64,7 @@ function seedVscdb(file: string, composers: SeedComposer[]): void {
       for (const b of c.bubbles) {
         put.run(
           `bubbleId:${c.composerId}:${b.bubbleId}`,
-          JSON.stringify({ type: b.type, text: b.text }),
+          JSON.stringify({ type: b.type, text: b.text, ...b.extras }),
         );
       }
     }
@@ -291,5 +294,59 @@ describe("cursor vscdb export is anonymized like every other provider", () => {
     expect(serialized).not.toContain(planted);
     // A redaction was actually applied (fail-closed would otherwise throw).
     expect(result.redactionsByCategory["third-party-email"]).toBeGreaterThan(0);
+  });
+});
+
+describe("per-bubble telemetry passthrough (tokenCount / modelInfo / toolFormerData)", () => {
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(path.join(tmpdir(), "frugl-cursor-telemetry-"));
+  });
+  afterEach(() => rmSync(home, { recursive: true, force: true }));
+
+  it("exports tokenCount, modelInfo, and size-only toolCalls — never the result body", async () => {
+    seedGlobalStore(home, [
+      {
+        composerId: C1,
+        name: "telemetry",
+        bubbles: [
+          { bubbleId: "b1", type: 1, text: "run the tests" },
+          {
+            bubbleId: "b2",
+            type: 2,
+            text: "Running.",
+            extras: {
+              tokenCount: { inputTokens: 5200, outputTokens: 310 },
+              modelInfo: { modelName: "composer-2.5" },
+              toolFormerData: {
+                name: "run_terminal_command_v2",
+                status: "completed",
+                result: "SECRET-LADEN 13kb output that must never leave the machine",
+              },
+            },
+          },
+        ],
+      },
+    ]);
+    const refs = await discoverCursorComposers({ homeDir: home });
+    expect(refs).toHaveLength(1);
+    const records = await decodeCursorComposer(refs[0]!);
+    const exp = records[0] as CursorComposerExport;
+    const b2 = exp.bubbles.b2!;
+    expect(b2.tokenCount).toEqual({ inputTokens: 5200, outputTokens: 310 });
+    expect(b2.modelInfo).toEqual({ modelName: "composer-2.5" });
+    expect(b2.toolCalls).toEqual([
+      { name: "run_terminal_command_v2", status: "completed", resultChars: 58 },
+    ]);
+    // The raw result body never appears anywhere in the export.
+    expect(JSON.stringify(exp)).not.toContain("SECRET-LADEN");
+  });
+
+  it("omits telemetry fields entirely when the store never recorded them", async () => {
+    seedGlobalStore(home, [{ composerId: C2, bubbles: [{ bubbleId: "b1", type: 1, text: "hi" }] }]);
+    const refs = await discoverCursorComposers({ homeDir: home });
+    const records = await decodeCursorComposer(refs[0]!);
+    const exp = records[0] as CursorComposerExport;
+    expect(exp.bubbles.b1).toEqual({ type: 1, text: "hi" });
   });
 });

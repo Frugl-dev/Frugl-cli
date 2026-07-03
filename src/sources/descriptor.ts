@@ -17,6 +17,7 @@ import {
   discoverCursorAgentTranscripts,
   isAgentTranscriptRef,
 } from "./cursor-agent.js";
+import { resolveGeminiCwd } from "./gemini-project.js";
 
 // On-disk record layout. The generic walker's decode dispatch keys off this so a
 // single code path serves every provider — structurally preventing the
@@ -299,6 +300,16 @@ const gemini: ProviderDescriptor = {
   format: { kind: "ndjson" },
   // The header (records[0] / firstRecord) carries `sessionId`.
   extractNativeId: ({ firstRecord }) => readStr(firstRecord, "sessionId"),
+  // The transcript path's tmp/<name> label reverses through ~/.gemini/
+  // projects.json to the recording cwd, verified against the header's
+  // projectHash (= sha256(cwd)) — so the opt-in git resolver can attribute a
+  // repo + branch. Fail-closed: ambiguity or mismatch yields no cwd (never a
+  // wrong branch). The registry read is the one filesystem touch among the
+  // extractors — tiny, cached, and derived from the ref's own path so temp-home
+  // tests work unchanged (see gemini-project.ts).
+  extractMetadata: ({ ref, firstRecord }) => ({
+    cwd: resolveGeminiCwd(ref.absolutePath, readStr(firstRecord, "projectHash")),
+  }),
   deriveProjects: deriveFlatProjects("gemini", "Gemini sessions"),
 };
 

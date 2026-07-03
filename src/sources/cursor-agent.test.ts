@@ -254,3 +254,31 @@ describe("cursor-agent transcript export is anonymized like every other provider
     expect(result.redactionsByCategory["third-party-email"]).toBeGreaterThan(0);
   });
 });
+
+describe("agentTranscriptToExport — tool_use names (size-only telemetry)", () => {
+  it("collects tool_use part NAMES onto the bubble; args never enter the export", () => {
+    const exp = agentTranscriptToExport(
+      [
+        { role: "user", message: { content: [{ type: "text", text: "fix the height" }] } },
+        {
+          role: "assistant",
+          message: {
+            content: [
+              { type: "text", text: "Looking." },
+              { type: "tool_use", name: "Glob", input: { pattern: "SECRET/path/**" } },
+              { type: "tool_use", name: "Read", input: { path: "/SECRET/file.ts" } },
+            ],
+          },
+        },
+        { type: "turn_ended", status: "completed" },
+      ],
+      "cccccccc-0000-0000-0000-000000000000",
+    );
+    expect(exp).not.toBeNull();
+    const assistant = exp!.bubbles.b1!;
+    expect(assistant.toolCalls).toEqual([{ name: "Glob" }, { name: "Read" }]);
+    expect(JSON.stringify(exp)).not.toContain("SECRET");
+    // Bubbles without tool parts omit the field entirely (honest absence).
+    expect(exp!.bubbles.b0!.toolCalls).toBeUndefined();
+  });
+});

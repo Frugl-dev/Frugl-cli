@@ -22,23 +22,76 @@ export interface DeclaredMcpServer {
 // instead of a 400 on the whole manifest.
 const MAX_SERVERS = 100;
 
+// Per-source inventory commands. Codex has a --json flag (verified on-machine
+// 2026-07-02: emits a JSON array); Gemini's `mcp list` is text — its populated
+// line shape is UNVERIFIED, so it routes through the retain-and-flag text
+// parser and degrades to "omitted" if the format differs (fail-open, never
+// wrong data). Sources not listed here carry no inventory.
+const INVENTORY_COMMANDS: Record<
+  string,
+  {
+    binary: string;
+    args: string[];
+    parse: (stdout: string) => { name: string; status: McpStatus }[];
+  }
+> = {
+  "claude-code": {
+    binary: "claude",
+    args: ["mcp", "list"],
+    parse: (stdout) => parseMcpList(stdout).items,
+  },
+  codex: {
+    binary: "codex",
+    args: ["mcp", "list", "--json"],
+    parse: parseJsonMcpList,
+  },
+  gemini: {
+    binary: "gemini",
+    args: ["mcp", "list"],
+    parse: (stdout) => parseMcpList(stdout).items,
+  },
+};
+
+// Tolerant parse of a JSON `mcp list --json` payload: an array of objects with
+// a `name` (health is not part of codex's JSON shape today → "unknown").
+// Anything unexpected yields [] — capture then omits the field.
+function parseJsonMcpList(stdout: string): { name: string; status: McpStatus }[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const items: { name: string; status: McpStatus }[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object") continue;
+    const name = (entry as Record<string, unknown>).name;
+    if (typeof name === "string" && name.length > 0) items.push({ name, status: "unknown" });
+  }
+  return items;
+}
+
 export function captureDeclaredMcpServers(
   io: CaptureIO = defaultIO,
+  sourceKind = "claude-code",
 ): DeclaredMcpServer[] | undefined {
+  const command = INVENTORY_COMMANDS[sourceKind];
+  if (!command) return undefined;
   let run;
   try {
-    run = io.run("claude", ["mcp", "list"]);
+    run = io.run(command.binary, command.args);
   } catch {
     return undefined;
   }
   if (run.status !== 0) return undefined;
 
-  const parsed = parseMcpList(run.stdout);
-  if (parsed.items.length === 0) return undefined;
+  const items = command.parse(run.stdout);
+  if (items.length === 0) return undefined;
 
   const seen = new Set<string>();
   const servers: DeclaredMcpServer[] = [];
-  for (const s of parsed.items) {
+  for (const s of items) {
     if (seen.has(s.name)) continue;
     seen.add(s.name);
     servers.push({ name: s.name, status: s.status });
