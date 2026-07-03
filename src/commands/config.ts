@@ -173,24 +173,34 @@ export default class Config extends Command {
         ? detectedProviderIds.filter((id) => uploadConfig.providers!.includes(id))
         : detectedProviderIds;
 
-      // Keep only repos with a governing `.frugl.json` (the repo dir or an
+      // Keep only groups with a governing `.frugl.json` (the working dir or an
       // ancestor up to $HOME) — the opt-in signal `upload.auto` keys off. A
       // synthetic group whose displayName isn't a real path is dropped here.
-      const repos: RepoRow[] = groups
-        .flatMap((g) => {
-          const configPath = findGoverningConfig(g.displayName);
-          return configPath
-            ? [
-                {
-                  displayName: g.displayName,
-                  providerId: g.providerId,
-                  sessionCount: g.sessionCount,
-                  configPath,
-                },
-              ]
-            : [];
-        })
-        .toSorted((a, b) => a.displayName.localeCompare(b.displayName));
+      // Several groups (subdirectories, worktrees) can share the same governing
+      // config — e.g. a monorepo's apps/* and packages/* all resolve to one root
+      // `.frugl.json` — so merge those into a single row per (config, provider)
+      // rather than listing every working directory separately.
+      const byRepo = new Map<string, RepoRow>();
+      for (const g of groups) {
+        const configPath = findGoverningConfig(g.displayName);
+        if (!configPath) continue;
+        const key = `${configPath} ${g.providerId}`;
+        const existing = byRepo.get(key);
+        if (existing) {
+          existing.sessionCount += g.sessionCount;
+        } else {
+          byRepo.set(key, {
+            displayName: path.dirname(configPath),
+            providerId: g.providerId,
+            sessionCount: g.sessionCount,
+            configPath,
+          });
+        }
+      }
+      const repos: RepoRow[] = [...byRepo.values()].toSorted(
+        (a, b) =>
+          a.displayName.localeCompare(b.displayName) || a.providerId.localeCompare(b.providerId),
+      );
 
       return { detectedProviderIds, targetedProviderIds, repos };
     } catch {
