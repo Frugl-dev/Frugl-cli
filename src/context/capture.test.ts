@@ -57,8 +57,8 @@ describe("captureContext", () => {
       spawned = true;
       return { status: 0, stdout: SAMPLE, stderr: "" };
     };
-    const err = caught(() => captureContext("codex", { spawner: spy }));
-    expect(err.message).toContain("codex");
+    const err = caught(() => captureContext("windsurf", { spawner: spy }));
+    expect(err.message).toContain("windsurf");
     expect(err.exitCode).not.toBe(EXIT.OK);
     expect(spawned).toBe(false);
   });
