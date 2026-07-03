@@ -138,6 +138,25 @@ describe("runAuthAndOrgSetup", () => {
     expect(result.orgResult.slug).toBe("acme");
   });
 
+  it("interactive (no --yes) with no org flag returns the existing org without prompting", async () => {
+    const client = makeFakeClient({
+      "GET /api/orgs/me": {
+        org: { id: "o1", name: "Acme", slug: "acme" },
+        membership: { role: "owner" },
+      },
+    });
+    const result = await runAuthAndOrgSetup({
+      endpoint: ENDPOINT,
+      client: client as never,
+      mode: "default",
+      existingSession: session(),
+      flags: {},
+      command: "init",
+    });
+    expect(result.orgResult.status).toBe("already-setup");
+    expect(result.orgResult.slug).toBe("acme");
+  });
+
   it("FR-005: --yes with a session, no org flag, and no org yet fails fast (UsageError)", async () => {
     const client = makeFakeClient({ "GET /api/orgs/me": orgRequired() });
     await expect(
