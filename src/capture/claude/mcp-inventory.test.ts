@@ -50,3 +50,47 @@ describe("captureDeclaredMcpServers", () => {
     expect(captureDeclaredMcpServers(io)).toEqual([{ name: "playwright", status: "connected" }]);
   });
 });
+
+describe("captureDeclaredMcpServers — per-source commands (codex/gemini)", () => {
+  it("codex: runs `codex mcp list --json` and parses the JSON array (status unknown)", () => {
+    const io = ioWith((cmd, args) => {
+      expect(cmd).toBe("codex");
+      expect(args).toEqual(["mcp", "list", "--json"]);
+      return { status: 0, stdout: '[{"name":"railway"},{"name":"supabase"}]' };
+    });
+    expect(captureDeclaredMcpServers(io, "codex")).toEqual([
+      { name: "railway", status: "unknown" },
+      { name: "supabase", status: "unknown" },
+    ]);
+  });
+
+  it("codex: an empty or non-array JSON payload yields undefined (fail-open)", () => {
+    const empty = ioWith(() => ({ status: 0, stdout: "[]" }));
+    expect(captureDeclaredMcpServers(empty, "codex")).toBeUndefined();
+    const junk = ioWith(() => ({ status: 0, stdout: "not json" }));
+    expect(captureDeclaredMcpServers(junk, "codex")).toBeUndefined();
+  });
+
+  it("gemini: routes `gemini mcp list` through the text parser", () => {
+    const io = ioWith((cmd, args) => {
+      expect(cmd).toBe("gemini");
+      expect(args).toEqual(["mcp", "list"]);
+      return { status: 0, stdout: "railway: npx railway-mcp - ✓ Connected\n" };
+    });
+    expect(captureDeclaredMcpServers(io, "gemini")).toEqual([
+      { name: "railway", status: "connected" },
+    ]);
+  });
+
+  it("gemini: an unrecognized text format degrades to undefined (never wrong data)", () => {
+    const io = ioWith(() => ({ status: 0, stdout: "No MCP servers configured.\n" }));
+    expect(captureDeclaredMcpServers(io, "gemini")).toBeUndefined();
+  });
+
+  it("sources with no registered inventory command yield undefined", () => {
+    const io = ioWith(() => {
+      throw new Error("must not be called");
+    });
+    expect(captureDeclaredMcpServers(io, "cursor")).toBeUndefined();
+  });
+});

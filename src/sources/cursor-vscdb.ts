@@ -32,6 +32,19 @@ import type { SessionRef } from "./types.js";
 // path and to be stable across runs (so the derived session UUID is stable).
 const COMPOSER_MARKER = "::composer::";
 
+// One message bubble in the export. Besides the text, Cursor sometimes persists
+// per-bubble token counts, the resolved model, and tool-call telemetry
+// (`toolFormerData`). Tool telemetry is SIZE-ONLY by construction: the name,
+// completion status, and a client-side character count of the result — raw
+// args/results never enter the export (fail-closed, Principle VI).
+export interface CursorExportBubble {
+  type?: number;
+  text?: string;
+  tokenCount?: { inputTokens?: number; outputTokens?: number };
+  modelInfo?: { modelName?: string };
+  toolCalls?: { name: string; status?: string; resultChars?: number }[];
+}
+
 // The export object one composer becomes — matches the cloud adapter's
 // CursorExport. Token/model fields ride along when Cursor persisted them.
 export interface CursorComposerExport {
@@ -45,7 +58,7 @@ export interface CursorComposerExport {
     modelConfig?: { modelName?: string };
     usageData?: Record<string, unknown>;
   };
-  bubbles: Record<string, { type?: number; text?: string }>;
+  bubbles: Record<string, CursorExportBubble>;
 }
 
 // True when a ref points at a composer inside a vscdb (vs a plain file).
@@ -174,7 +187,7 @@ function readBubble(
   db: DatabaseSync,
   composerId: string,
   bubbleId: string,
-): { type?: number; text?: string } | null {
+): CursorExportBubble | null {
   let row: { value: unknown } | undefined;
   try {
     row = db
@@ -186,9 +199,48 @@ function readBubble(
   if (!row) return null;
   const obj = asObject(parseJson(row.value));
   if (!obj) return null;
-  const out: { type?: number; text?: string } = {};
+  const out: CursorExportBubble = {};
   if (typeof obj.type === "number") out.type = obj.type;
   if (typeof obj.text === "string") out.text = obj.text;
+  // Per-bubble telemetry, when Cursor persisted it. tokenCount is zero-filled
+  // on unmeasured bubbles — the cloud adapter treats all-zero pairs as absent,
+  // so passing them through verbatim stays honest.
+  const tokenCount = asObject(obj.tokenCount);
+  if (tokenCount) {
+    const inputTokens = readNumber(tokenCount, "inputTokens");
+    const outputTokens = readNumber(tokenCount, "outputTokens");
+    if (inputTokens !== undefined || outputTokens !== undefined) {
+      out.tokenCount = {
+        ...(inputTokens !== undefined ? { inputTokens } : {}),
+        ...(outputTokens !== undefined ? { outputTokens } : {}),
+      };
+    }
+  }
+  const modelInfo = asObject(obj.modelInfo);
+  const modelName = modelInfo ? readString(modelInfo, "modelName") : undefined;
+  if (modelName !== undefined) out.modelInfo = { modelName };
+  // toolFormerData carries the tool name, status, and the raw result body.
+  // Export name/status + a MEASURED character count only — the result content
+  // itself never leaves the store (size-only by construction).
+  const tool = asObject(obj.toolFormerData);
+  const toolName = tool ? readString(tool, "name") : undefined;
+  if (tool && toolName !== undefined) {
+    const status = readString(tool, "status");
+    const result = tool.result;
+    const resultChars =
+      typeof result === "string"
+        ? result.length
+        : result !== undefined && result !== null
+          ? JSON.stringify(result)?.length
+          : undefined;
+    out.toolCalls = [
+      {
+        name: toolName,
+        ...(status !== undefined ? { status } : {}),
+        ...(typeof resultChars === "number" ? { resultChars } : {}),
+      },
+    ];
+  }
   return out;
 }
 
@@ -225,7 +277,7 @@ function buildComposerExport(
     : [];
   if (headers.length === 0) return null; // empty composer → honest skip
 
-  const bubbles: Record<string, { type?: number; text?: string }> = {};
+  const bubbles: Record<string, CursorExportBubble> = {};
   for (const header of headers) {
     const bubble = readBubble(db, composerId, header.bubbleId);
     if (bubble) bubbles[header.bubbleId] = bubble;
