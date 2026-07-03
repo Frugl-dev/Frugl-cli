@@ -19,9 +19,9 @@ import { Temporal } from "temporal-polyfill";
 
 // Claude's project-folder encoding replaces every "/" (and ".") with "-", and
 // decoding (display-only) blindly reverses that — so a cwd containing a literal
-// dash wouldn't round-trip back to itself. `upload.projects.include` scoping
-// compares the decoded session path against the recorded include glob, so
-// tests exercising the scoped-upload path need a dash-free cwd. `mkdtempSync`
+// dash wouldn't round-trip back to itself. `.frugl.json`-directory scoping
+// compares the decoded session path against the config's directory, so tests
+// exercising the scoped-upload path need a dash-free cwd. `mkdtempSync`
 // appends random alnum-only characters (no dashes), unlike the shared
 // `frugl-e2e-<uuid>` temp dirs used elsewhere in this suite. realpathSync
 // resolves macOS's `/var` -> `/private/var` symlink up front, since that's the
@@ -145,11 +145,9 @@ describe("frugl init", { timeout: 30_000 }, () => {
       expect(cfg["org"]).toBe("acme");
       // A non-default (flag) endpoint is pinned (FR-007).
       expect(cfg["endpoint"]).toBe(server.url);
-      // Directory-scoped by default (FR-012): future `frugl upload` runs here
-      // only ever consider this directory (and anything nested under it).
-      expect(cfg["upload"]).toEqual({
-        projects: { include: [scoped.dir, `${scoped.dir}/**`] },
-      });
+      // Directory-scoped by default (FR-012): the .frugl.json's mere presence
+      // here is the scope declaration, so no `upload` block is needed at all.
+      expect(cfg["upload"]).toBeUndefined();
       // The upload step actually ran.
       expect(manifestCalls).toBeGreaterThanOrEqual(1);
     } finally {

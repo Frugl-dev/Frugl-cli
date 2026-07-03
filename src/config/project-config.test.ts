@@ -78,6 +78,14 @@ describe("readProjectConfig", () => {
     expect(() => readProjectConfig(root, root)).toThrow(UsageError);
   });
 
+  it("FAIL-CLOSED: rejects upload.projects — scoping is implicit by directory, not a config field", () => {
+    write(
+      root,
+      JSON.stringify({ version: 1, org: "acme", upload: { projects: { include: ["**"] } } }),
+    );
+    expect(() => readProjectConfig(root, root)).toThrow(UsageError);
+  });
+
   it("walks UP from a nested cwd to the project-root config", () => {
     write(root, JSON.stringify({ version: 1, org: "acme" }));
     const deep = path.join(root, "packages", "app", "src");
