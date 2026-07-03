@@ -33,6 +33,16 @@ vi.mock("./config.js", () => ({
   getPendingAuthFailure: () => pendingImpl(),
 }));
 
+// `buildCommandContext` reads `loadProjectPin()` with no cwd override, so
+// without this it would ambiently pick up whatever `.frugl.json` sits above the
+// real process cwd (e.g. this repo's own root) and win endpoint precedence over
+// the env-set ENDPOINT these tests assert against. Pin-precedence itself is
+// covered deliberately in command-context.test.ts; this suite just needs it
+// out of the way.
+vi.mock("../cloud/project-pin.js", () => ({
+  loadProjectPin: () => undefined,
+}));
+
 const { buildCommandContext } = await import("./command-context.js");
 
 const ENDPOINT = "https://env.example.com";

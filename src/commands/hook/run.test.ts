@@ -6,7 +6,10 @@ import { runCli } from "../../e2e/helpers/spawn.js";
 // it. A throwaway HOME isolates both the keychain fallback (no stored session
 // for the fake endpoint) and the conf store (cooldown/blocked state), and the
 // endpoint points at a closed localhost port so a spawned child upload dies
-// instantly without reaching anything real.
+// instantly without reaching anything real. `cwd: home.dir` also keeps the
+// spawned process away from whatever `.frugl.json` (self-host pin) might sit
+// above the real repo root — a pin would outrank FRUGL_ENDPOINT and silently
+// redirect these assertions at the wrong endpoint.
 
 const ENDPOINT = "http://127.0.0.1:9";
 
@@ -32,6 +35,7 @@ describe("frugl hook run", { timeout: 30_000 }, () => {
   it("exits 0 with no output when not logged in (fleet-safe no-op)", async () => {
     const { exitCode, stdout, stderr } = await runCli(["hook", "run"], {
       env: { HOME: home.dir, FRUGL_TOKEN: undefined, FRUGL_ENDPOINT: ENDPOINT },
+      cwd: home.dir,
     });
     expect(exitCode).toBe(0);
     expect(stdout).toBe("");
@@ -41,6 +45,7 @@ describe("frugl hook run", { timeout: 30_000 }, () => {
   it("reports the not-logged-in skip in json mode", async () => {
     const { exitCode, stdout } = await runCli(["hook", "run", "--format", "json"], {
       env: { HOME: home.dir, FRUGL_TOKEN: undefined, FRUGL_ENDPOINT: ENDPOINT },
+      cwd: home.dir,
     });
     expect(exitCode).toBe(0);
     const json = JSON.parse(stdout.trim()) as RunJson;
@@ -56,14 +61,14 @@ describe("frugl hook run", { timeout: 30_000 }, () => {
   it("spawns when a token is available, then cools down on the next trigger", async () => {
     const env = { HOME: home.dir, FRUGL_TOKEN: "tok_test", FRUGL_ENDPOINT: ENDPOINT };
 
-    const first = await runCli(["hook", "run", "--format", "json"], { env });
+    const first = await runCli(["hook", "run", "--format", "json"], { env, cwd: home.dir });
     expect(first.exitCode).toBe(0);
     expect(JSON.parse(first.stdout.trim()) as RunJson).toMatchObject({
       action: "spawned",
       endpoint: ENDPOINT,
     });
 
-    const second = await runCli(["hook", "run", "--format", "json"], { env });
+    const second = await runCli(["hook", "run", "--format", "json"], { env, cwd: home.dir });
     expect(second.exitCode).toBe(0);
     expect(JSON.parse(second.stdout.trim()) as RunJson).toMatchObject({
       action: "skipped",
@@ -74,7 +79,7 @@ describe("frugl hook run", { timeout: 30_000 }, () => {
   it("tolerates a Codex notify JSON payload as a positional argument", async () => {
     const { exitCode } = await runCli(
       ["hook", "run", '{"type":"agent-turn-complete","turn-id":"t1"}'],
-      { env: { HOME: home.dir, FRUGL_TOKEN: undefined, FRUGL_ENDPOINT: ENDPOINT } },
+      { env: { HOME: home.dir, FRUGL_TOKEN: undefined, FRUGL_ENDPOINT: ENDPOINT }, cwd: home.dir },
     );
     expect(exitCode).toBe(0);
   });

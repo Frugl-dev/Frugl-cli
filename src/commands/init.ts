@@ -12,6 +12,13 @@ import {
 } from "../config/project-config.js";
 import { MIN_COST_FLOOR_USD, parseCostFlag } from "./upload.js";
 
+// Picomatch/micromatch glob metacharacters, backslash-escaped so a directory
+// name that happens to contain one (e.g. "app(v2)") is matched literally
+// rather than parsed as glob syntax.
+function escapeGlob(raw: string): string {
+  return raw.replace(/[*?[\]{}()!+@|\\]/g, (m) => `\\${m}`);
+}
+
 // Managed values `init` writes whose change we warn about before overwriting an
 // existing, conflicting value (FR-009). Compares the about-to-write patch
 // against the file already on disk; only a DIFFERENT existing value counts —
@@ -37,16 +44,31 @@ function findConflicts(
     conflicts.push("endpoint");
   }
   const existingUpload = existing["upload"];
-  const existingMin =
+  const existingUploadObj =
     typeof existingUpload === "object" && existingUpload !== null
-      ? (existingUpload as Record<string, unknown>)["minCost"]
+      ? (existingUpload as Record<string, unknown>)
       : undefined;
+  const existingMin = existingUploadObj?.["minCost"];
   if (
     patch.upload?.minCost !== undefined &&
     typeof existingMin === "number" &&
     existingMin !== patch.upload.minCost
   ) {
     conflicts.push("upload.minCost");
+  }
+  // A hand-edited `upload.projects.include` is a deliberate, possibly
+  // hand-tuned scope — never silently replace it with the directory default.
+  const existingProjects = existingUploadObj?.["projects"];
+  const existingInclude =
+    typeof existingProjects === "object" && existingProjects !== null
+      ? (existingProjects as Record<string, unknown>)["include"]
+      : undefined;
+  if (
+    patch.upload?.projects?.include !== undefined &&
+    Array.isArray(existingInclude) &&
+    JSON.stringify(existingInclude) !== JSON.stringify(patch.upload.projects.include)
+  ) {
+    conflicts.push("upload.projects");
   }
   return conflicts;
 }
@@ -131,14 +153,24 @@ Exit codes:
       // Step 3: write .frugl.json (FR-007). `org` is the resolved slug; the
       // endpoint is pinned ONLY when it's non-default (a real self-host target)
       // so a cloud user is never locked to a stale endpoint; minCost is recorded
-      // only when explicitly customized away from the default.
+      // only when explicitly customized away from the default. `upload.projects.include`
+      // scopes discovery to this directory (and anything nested under it, e.g.
+      // worktrees) instead of every AI-tool project on the machine — the whole
+      // point of running `init` here. Deliberately not `upload.auto: true`: that
+      // also skips the confirmation prompt on every future `frugl upload` and
+      // makes upload re-trigger its own snapshot pass, neither of which this
+      // one-time scope decision implies.
+      const dir = process.cwd();
+      const escapedDir = escapeGlob(dir);
       const patch: Partial<ProjectConfig> = {
         org: orgResult.slug,
         ...(endpoint.resolvedFrom !== "default" ? { endpoint: endpoint.url } : {}),
-        ...(minCost !== undefined && minCost !== MIN_COST_FLOOR_USD ? { upload: { minCost } } : {}),
+        upload: {
+          ...(minCost !== undefined && minCost !== MIN_COST_FLOOR_USD ? { minCost } : {}),
+          projects: { include: [escapedDir, `${escapedDir}/**`] },
+        },
       };
 
-      const dir = process.cwd();
       let wrote: { path: string; changed: boolean } | null = null;
       const existing = readMergeableConfig(join(dir, PROJECT_CONFIG_FILENAME));
       const conflicts = findConflicts(existing, patch);
