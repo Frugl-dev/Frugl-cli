@@ -1,31 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ENDPOINT, resolveEndpoint, safeEndpoint } from "./endpoints.js";
+import {
+  DEFAULT_ENDPOINT,
+  describeEndpointSource,
+  resolveEndpoint,
+  safeEndpoint,
+} from "./endpoints.js";
 import { UsageError } from "../lib/errors.js";
 
-describe("resolveEndpoint — precedence flag ?? env ?? saved ?? default", () => {
-  it("flag wins over env, saved, and default", () => {
+describe("resolveEndpoint — precedence flag ?? pin ?? env ?? default", () => {
+  it("flag wins over env and default", () => {
     const r = resolveEndpoint({
       flag: "https://flag.example.com",
       env: "https://env.example.com",
-      saved: "http://localhost:4321",
     });
     expect(r.url).toBe("https://flag.example.com");
     expect(r.resolvedFrom).toBe("flag");
   });
 
-  it("env wins over saved and default", () => {
+  it("env wins over the default", () => {
     const r = resolveEndpoint({
       env: "https://env.example.com",
-      saved: "http://localhost:4321",
     });
     expect(r.url).toBe("https://env.example.com");
     expect(r.resolvedFrom).toBe("env");
-  });
-
-  it("saved wins over the default when no flag/env is present", () => {
-    const r = resolveEndpoint({ saved: "http://localhost:4321" });
-    expect(r.url).toBe("http://localhost:4321");
-    expect(r.resolvedFrom).toBe("saved");
   });
 
   it("falls back to the prod default when nothing is supplied", () => {
@@ -34,12 +31,19 @@ describe("resolveEndpoint — precedence flag ?? env ?? saved ?? default", () =>
     expect(r.resolvedFrom).toBe("default");
   });
 
-  it("trailing slash is normalized away on the saved layer", () => {
-    expect(resolveEndpoint({ saved: "http://localhost:4321/" }).url).toBe("http://localhost:4321");
+  it("trailing slash is normalized away", () => {
+    expect(resolveEndpoint({ env: "http://localhost:4321/" }).url).toBe("http://localhost:4321");
   });
 
   it("an explicit invalid flag still throws (loud failure on user input)", () => {
     expect(() => resolveEndpoint({ flag: "not a url" })).toThrow(UsageError);
+  });
+
+  it("there is no machine-global saved layer — nothing but the inputs decides", () => {
+    // Regression guard for the removed "endpoint remembered from last login":
+    // with no flag/pin/env, resolution MUST land on the public default, never on
+    // ambient per-user state (which once sent fresh installs to localhost).
+    expect(resolveEndpoint({}).url).toBe(DEFAULT_ENDPOINT);
   });
 });
 
@@ -64,14 +68,13 @@ describe("safeEndpoint — tolerant normalize for the persisted/untrusted layer"
   });
 });
 
-describe("resolveEndpoint — a `.frugl.json` pin (self-host safety precaution)", () => {
+describe("resolveEndpoint — a `.frugl.json` pin (the project's source of truth)", () => {
   const PIN = "https://frugl.internal";
 
-  it("the pin overrides a stale env/saved, and never the public default", () => {
+  it("the pin overrides a stale env, and never falls back to the public default", () => {
     const r = resolveEndpoint({
       pinned: PIN,
       env: DEFAULT_ENDPOINT, // a forgotten FRUGL_ENDPOINT in a shell profile
-      saved: DEFAULT_ENDPOINT, // a stale 'logged into the public cloud' session
     });
     expect(r.url).toBe(PIN);
     expect(r.resolvedFrom).toBe("pin");
@@ -87,5 +90,14 @@ describe("resolveEndpoint — a `.frugl.json` pin (self-host safety precaution)"
     const r = resolveEndpoint({ flag: "https://elsewhere.example.com", pinned: PIN });
     expect(r.url).toBe("https://elsewhere.example.com");
     expect(r.resolvedFrom).toBe("flag");
+  });
+});
+
+describe("describeEndpointSource — names the layer so errors aren't dead-ends", () => {
+  it("covers every source", () => {
+    expect(describeEndpointSource("flag")).toBe("set by --endpoint");
+    expect(describeEndpointSource("pin")).toBe("pinned by .frugl.json");
+    expect(describeEndpointSource("env")).toBe("set by FRUGL_ENDPOINT");
+    expect(describeEndpointSource("default")).toBe("the default endpoint");
   });
 });

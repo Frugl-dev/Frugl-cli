@@ -3,9 +3,9 @@ import { Temporal } from "temporal-polyfill";
 import { nowIso } from "./time.js";
 
 // This suite drives the interactive (TTY, default-mode) pending-auth-failure
-// warning, the describeAgo formatting, and the defensive readSavedEndpoint /
-// getPendingAuthFailure catch paths — all of which the precedence suite (which
-// stubs config to "nothing pending" on a non-TTY) never reaches.
+// warning, the describeAgo formatting, and the defensive getPendingAuthFailure
+// catch path — all of which the precedence suite (which stubs config to
+// "nothing pending" on a non-TTY) never reaches.
 
 vi.mock("../cloud/client.js", () => ({
   CloudClient: class {
@@ -24,12 +24,10 @@ vi.mock("../auth/session.js", () => ({
 
 vi.mock("./cli-version.js", () => ({ getCliVersion: () => "9.9.9" }));
 
-// Per-test control over the two config reads. Both can be made to throw to drive
-// the defensive catch branches.
-let savedEndpointImpl: () => string | undefined;
+// Per-test control over the config read; can be made to throw to drive the
+// defensive catch branch.
 let pendingImpl: () => { endpoint: string; at: string } | undefined;
 vi.mock("./config.js", () => ({
-  getSavedEndpoint: () => savedEndpointImpl(),
   getPendingAuthFailure: () => pendingImpl(),
 }));
 
@@ -57,7 +55,6 @@ let originalTTY: boolean | undefined;
 
 beforeEach(() => {
   stderr = "";
-  savedEndpointImpl = () => undefined;
   pendingImpl = () => undefined;
   process.env["FRUGL_ENDPOINT"] = ENDPOINT;
   originalTTY = process.stdout.isTTY;
@@ -138,16 +135,5 @@ describe("describeAgo — coarse relative phrasing via the warning line", () => 
 
   it('"recently" for an unparseable timestamp', async () => {
     expect(await warnWith("not-a-date")).toContain("recently");
-  });
-});
-
-describe("readSavedEndpoint — defensive catch", () => {
-  it("falls back to the default endpoint when the saved read throws", async () => {
-    delete process.env["FRUGL_ENDPOINT"];
-    savedEndpointImpl = () => {
-      throw new Error("store glitch");
-    };
-    const ctx = await buildCommandContext({}, { auth: "none" });
-    expect(ctx.endpoint.resolvedFrom).toBe("default");
   });
 });

@@ -1,4 +1,5 @@
 import { CloudClient } from "../cloud/client.js";
+import type { EndpointSource } from "../cloud/endpoints.js";
 import {
   identityResponseSchema,
   otpRequestResponseSchema,
@@ -24,6 +25,7 @@ export interface IdentityClient {
 export interface CloudIdentityClientOptions {
   endpointUrl: string;
   endpointExplicit: boolean;
+  endpointSource?: EndpointSource | undefined;
   cliVersion: string;
 }
 
@@ -36,6 +38,7 @@ export function cloudIdentityClient(opts: CloudIdentityClientOptions): IdentityC
       endpointUrl: opts.endpointUrl,
       cliVersion: opts.cliVersion,
       endpointExplicit: opts.endpointExplicit,
+      endpointSource: opts.endpointSource,
       ...(token !== undefined ? { token } : {}),
     });
 

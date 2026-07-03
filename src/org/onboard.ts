@@ -104,6 +104,7 @@ async function authenticate(params: OnboardParams): Promise<AuthSession> {
     identity: cloudIdentityClient({
       endpointUrl: params.endpoint.url,
       endpointExplicit: params.endpoint.resolvedFrom !== "default",
+      endpointSource: params.endpoint.resolvedFrom,
       cliVersion: getCliVersion(),
     }),
   });

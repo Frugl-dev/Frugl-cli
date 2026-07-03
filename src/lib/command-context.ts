@@ -1,10 +1,10 @@
 import { Flags } from "@oclif/core";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint, safeEndpoint, type Endpoint } from "../cloud/endpoints.js";
+import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
 import { loadProjectPin } from "../cloud/project-pin.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
-import { getPendingAuthFailure, getSavedEndpoint } from "./config.js";
+import { getPendingAuthFailure } from "./config.js";
 import { isFruglError, printFruglError } from "./errors.js";
 import { resolveDebug, resolveOutputMode, FORMAT_FLAG, type OutputMode } from "./output-mode.js";
 import { color, symbol } from "./theme.js";
@@ -47,7 +47,7 @@ export interface CommandContext<A extends AuthMode> {
 
 /**
  * The shared command preamble: output mode, endpoint resolution (incl. the
- * `FRUGL_ENDPOINT` env read and the precedence flag > env > saved > default),
+ * `FRUGL_ENDPOINT` env read and the precedence flag > pin > env > default),
  * CLI version lookup, the session load/require policy, and CloudClient
  * construction with the `endpointExplicit === (resolvedFrom !== "default")` rule.
  *
@@ -66,10 +66,6 @@ export async function buildCommandContext<A extends AuthMode>(
     flag: flags.endpoint,
     pinned: pin?.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
-    // Endpoint remembered from the last login (lib/config.ts). Read defensively
-    // and normalized through safeEndpoint so a missing/corrupted config never
-    // throws here — it just falls through to the prod default.
-    saved: safeEndpoint(readSavedEndpoint()),
   });
 
   // Surface a prior background auth failure (hook/CI) the moment the user runs an
@@ -89,21 +85,12 @@ export async function buildCommandContext<A extends AuthMode>(
     endpointUrl: endpoint.url,
     cliVersion: getCliVersion(),
     endpointExplicit: endpoint.resolvedFrom !== "default",
+    endpointSource: endpoint.resolvedFrom,
     debug: resolveDebug(),
     ...(session ? { token: session.token } : {}),
   });
 
   return { mode, endpoint, client, session: session as SessionFor<A> };
-}
-
-// Read the remembered endpoint without ever throwing — the config is a
-// convenience, not a contract, so a store glitch must not block the command.
-function readSavedEndpoint(): string | undefined {
-  try {
-    return getSavedEndpoint();
-  } catch {
-    return undefined;
-  }
 }
 
 // Human-friendly "how long ago" for the pending-failure warning. Coarse on
