@@ -7,6 +7,7 @@ import {
   type HandoffResult,
 } from "../cloud/handoff.js";
 import type { OutputMode } from "../lib/output-mode.js";
+import { stepLog } from "../lib/step-log.js";
 import { color, symbol } from "../lib/theme.js";
 import { formatLocalDateTime } from "../lib/time.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
@@ -47,6 +48,7 @@ export async function runContextSnapshot(
 ): Promise<ContextReport> {
   // 1) Capture (fail-closed): missing binary / non-zero exit / empty stdout each
   // throw before any upload. capturedAt is stamped at capture time.
+  stepLog(ctx.mode, "Capturing context…");
   const capture = captureContext(tool);
 
   // 2) Anonymize the captured TEXT client-side (fail-closed). The home prefix is
@@ -68,6 +70,7 @@ export async function runContextSnapshot(
   const cloud = new HttpCloudAdapter(ctx.client);
   // Per-source declared MCP inventory (fail-open; artifact payloads already
   // carry declared names, but the manifest inventory keeps session_mcp fed).
+  stepLog(ctx.mode, "Checking MCP servers…");
   const mcpServers = captureDeclaredMcpServers(undefined, tool);
   // Skill scopes ride the manifest too (fail-open): parse from the anonymized
   // payload — the exact bytes the server parses for skill items — so the names
@@ -77,6 +80,7 @@ export async function runContextSnapshot(
     tool === "claude-code"
       ? parseSkillScopesFromContext(String(result.payload), capture.capturedAt)
       : null;
+  stepLog(ctx.mode, "Uploading snapshot…");
   const upload = await uploadContextSnapshot({
     cloud,
     cliVersion: ctx.client.cliVersion,
@@ -98,6 +102,7 @@ export async function runContextSnapshot(
     };
   }
 
+  stepLog(ctx.mode, "Requesting sign-in link…");
   const handoff = await requestHandoffUrl(
     ctx.client,
     upload.dashboardUrl,
