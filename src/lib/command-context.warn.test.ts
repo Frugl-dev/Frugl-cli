@@ -39,6 +39,7 @@ vi.mock("./config.js", () => ({
 // out of the way.
 vi.mock("../cloud/project-pin.js", () => ({
   loadProjectPin: () => undefined,
+  loadConfigPathPin: () => undefined,
 }));
 
 const { buildCommandContext } = await import("./command-context.js");

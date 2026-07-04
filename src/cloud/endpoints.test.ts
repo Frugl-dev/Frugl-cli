@@ -93,9 +93,27 @@ describe("resolveEndpoint — a `.frugl.json` pin (the project's source of truth
   });
 });
 
+describe("resolveEndpoint — a FRUGL_CONFIG_PATH config file (local-debug pointer)", () => {
+  const CONFIG = "http://localhost:4321";
+  const PIN = "https://frugl.internal";
+
+  it("the config path outranks the cwd pin and a stale env", () => {
+    const r = resolveEndpoint({ configPath: CONFIG, pinned: PIN, env: DEFAULT_ENDPOINT });
+    expect(r.url).toBe(CONFIG);
+    expect(r.resolvedFrom).toBe("config-path");
+  });
+
+  it("a hand-typed --endpoint flag still wins over the config path", () => {
+    const r = resolveEndpoint({ flag: "https://elsewhere.example.com", configPath: CONFIG });
+    expect(r.url).toBe("https://elsewhere.example.com");
+    expect(r.resolvedFrom).toBe("flag");
+  });
+});
+
 describe("describeEndpointSource — names the layer so errors aren't dead-ends", () => {
   it("covers every source", () => {
     expect(describeEndpointSource("flag")).toBe("set by --endpoint");
+    expect(describeEndpointSource("config-path")).toBe("set by FRUGL_CONFIG_PATH");
     expect(describeEndpointSource("pin")).toBe("pinned by .frugl.json");
     expect(describeEndpointSource("env")).toBe("set by FRUGL_ENDPOINT");
     expect(describeEndpointSource("default")).toBe("the default endpoint");

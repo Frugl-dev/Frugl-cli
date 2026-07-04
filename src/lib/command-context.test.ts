@@ -53,8 +53,10 @@ vi.mock("./config.js", () => ({
 // of relying on that ambient read. `loadProjectPin` itself (cwd-walk, malformed
 // pins, etc.) is unit-tested in isolation in cloud/project-pin.test.ts.
 let projectPin: { endpoint: string; path: string } | undefined;
+let configPathPin: { endpoint: string; path: string } | undefined;
 vi.mock("../cloud/project-pin.js", () => ({
   loadProjectPin: () => projectPin,
+  loadConfigPathPin: () => configPathPin,
 }));
 
 // Import after mocks are registered.
@@ -74,6 +76,7 @@ beforeEach(() => {
   loadAuthSession.mockReset();
   requireAuthSession.mockReset();
   projectPin = undefined;
+  configPathPin = undefined;
   delete process.env["FRUGL_ENDPOINT"];
 });
 
@@ -125,6 +128,26 @@ describe("buildCommandContext — endpoint precedence", () => {
 
   it("an explicit --endpoint flag still wins over a checked-in pin", async () => {
     projectPin = { endpoint: "https://frugl.internal", path: "/repo/.frugl.json" };
+    const ctx = await buildCommandContext(
+      { endpoint: "https://flag.example.com" },
+      { auth: "none" },
+    );
+    expect(ctx.endpoint.url).toBe("https://flag.example.com");
+    expect(ctx.endpoint.resolvedFrom).toBe("flag");
+  });
+
+  it("FRUGL_CONFIG_PATH wins over the cwd pin and env; endpointExplicit true", async () => {
+    configPathPin = { endpoint: "https://local.example.com", path: "/home/me/local.json" };
+    projectPin = { endpoint: "https://frugl.internal", path: "/repo/.frugl.json" };
+    process.env["FRUGL_ENDPOINT"] = "https://env.example.com";
+    const ctx = await buildCommandContext({}, { auth: "none" });
+    expect(ctx.endpoint.url).toBe("https://local.example.com");
+    expect(ctx.endpoint.resolvedFrom).toBe("config-path");
+    expect(clientConstructions[0]?.endpointExplicit).toBe(true);
+  });
+
+  it("an explicit --endpoint flag still wins over FRUGL_CONFIG_PATH", async () => {
+    configPathPin = { endpoint: "https://local.example.com", path: "/home/me/local.json" };
     const ctx = await buildCommandContext(
       { endpoint: "https://flag.example.com" },
       { auth: "none" },

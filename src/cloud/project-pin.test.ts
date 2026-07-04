@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadProjectPin, PROJECT_PIN_FILENAME } from "./project-pin.js";
+import { loadConfigPathPin, loadProjectPin, PROJECT_PIN_FILENAME } from "./project-pin.js";
 import { EndpointError } from "../lib/errors.js";
 
 function writePin(dir: string, contents: string): void {
@@ -73,5 +73,46 @@ describe("loadProjectPin — checked-in `.frugl.json` (self-host)", () => {
   it("normalizes a valid endpoint (trailing slash stripped)", () => {
     writePin(root, JSON.stringify({ endpoint: "https://frugl.internal/" }));
     expect(loadProjectPin(root)?.endpoint).toBe("https://frugl.internal");
+  });
+});
+
+describe("loadConfigPathPin — explicit FRUGL_CONFIG_PATH (local-debug pointer)", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "frugl-cfg-"));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("returns undefined when the env is unset or empty", () => {
+    expect(loadConfigPathPin(undefined)).toBeUndefined();
+    expect(loadConfigPathPin("")).toBeUndefined();
+    expect(loadConfigPathPin("   ")).toBeUndefined();
+  });
+
+  it("reads the endpoint from the file the env points at (any name, not just .frugl.json)", () => {
+    const file = path.join(root, "local.json");
+    writeFileSync(file, JSON.stringify({ endpoint: "http://localhost:4321" }), "utf8");
+    const pin = loadConfigPathPin(file);
+    expect(pin?.endpoint).toBe("http://localhost:4321");
+    expect(pin?.path).toBe(file);
+  });
+
+  it("FAIL-CLOSED: throws when the env points at a missing file", () => {
+    expect(() => loadConfigPathPin(path.join(root, "nope.json"))).toThrow(EndpointError);
+  });
+
+  it("FAIL-CLOSED: throws on a malformed config file (does not fall through)", () => {
+    const file = path.join(root, "bad.json");
+    writeFileSync(file, "{ not json", "utf8");
+    expect(() => loadConfigPathPin(file)).toThrow(EndpointError);
+  });
+
+  it("applies the same https/localhost rule as a checked-in pin", () => {
+    const file = path.join(root, "prod.json");
+    writeFileSync(file, JSON.stringify({ endpoint: "http://evil.example.com" }), "utf8");
+    expect(() => loadConfigPathPin(file)).toThrow(EndpointError);
   });
 });
