@@ -5,6 +5,7 @@ import {
   type HandoffResult,
 } from "../cloud/handoff.js";
 import type { OutputMode } from "../lib/output-mode.js";
+import { stepLog } from "../lib/step-log.js";
 import { color, symbol } from "../lib/theme.js";
 import { formatLocalDateTime } from "../lib/time.js";
 import { HttpCloudAdapter } from "../upload/cloud-http-adapter.js";
@@ -33,6 +34,7 @@ export type McpReport =
 // missing/failed `claude` or any upload failure — the caller decides how to
 // surface it. The gate outcomes (no_change / cap_reached) are normal results.
 export async function runMcpSnapshot(ctx: SnapshotRunContext): Promise<McpReport> {
+  stepLog(ctx.mode, "Checking MCP servers…");
   const inventory = captureMcpInventory();
 
   const homeDir = process.env["FRUGL_HOME_DIR"];
@@ -42,6 +44,7 @@ export async function runMcpSnapshot(ctx: SnapshotRunContext): Promise<McpReport
     ...(homeDir !== undefined ? { homeDir } : {}),
   });
 
+  stepLog(ctx.mode, "Uploading snapshot…");
   const cloud = new HttpCloudAdapter(ctx.client);
   const upload = await uploadMcpSnapshot({
     cloud,
@@ -61,6 +64,7 @@ export async function runMcpSnapshot(ctx: SnapshotRunContext): Promise<McpReport
     };
   }
 
+  stepLog(ctx.mode, "Requesting sign-in link…");
   const handoff = await requestHandoffUrl(
     ctx.client,
     upload.dashboardUrl,
