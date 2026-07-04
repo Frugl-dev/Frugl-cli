@@ -69,6 +69,7 @@ Exit codes:
 
   static override examples = [
     "<%= config.bin %> <%= command.id %>                                  # interactive: sign in, create/join an org, upload + snapshot",
+    "<%= config.bin %> <%= command.id %> --github                        # sign in with GitHub in the browser",
     '<%= config.bin %> <%= command.id %> --yes --org-name "Acme"          # non-interactive (auth via a prior login or FRUGL_TOKEN)',
     "<%= config.bin %> <%= command.id %> --no-upload --no-snapshot        # just write .frugl.json",
   ];
@@ -80,6 +81,14 @@ Exit codes:
         "Run non-interactively: no prompts, defaults accepted, missing input fails fast.",
     }),
     email: Flags.string({ description: "Email address to sign in with" }),
+    google: Flags.boolean({
+      description: "Sign in with Google (opens browser).",
+      exclusive: ["github"],
+    }),
+    github: Flags.boolean({
+      description: "Sign in with GitHub (opens browser).",
+      exclusive: ["google"],
+    }),
     "org-name": Flags.string({ description: "Organization name to create (skips the prompt)" }),
     "invite-code": Flags.string({ description: "Invite code to join an existing org" }),
     "min-cost": Flags.string({
@@ -122,6 +131,8 @@ Exit codes:
         existingSession: session,
         flags: {
           email: flags.email,
+          google: flags.google,
+          github: flags.github,
           orgName: flags["org-name"],
           inviteCode: flags["invite-code"],
           yes: flags.yes,
