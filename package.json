@@ -33,7 +33,8 @@
     "oclif.manifest.json",
     "scripts/postinstall-man.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "pnpm-workspace.yaml"
   ],
   "type": "module",
   "publishConfig": {

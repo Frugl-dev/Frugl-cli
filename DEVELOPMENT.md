@@ -126,18 +126,26 @@ pnpm pack:tarballs                 # -> dist/frugl-v<version>-<sha>-<target>.tar
 
 ### Two non-obvious gotchas (already handled in CI)
 
-1. **pnpm workspace root breaks the bundled `node_modules`.** oclif stages its
-   build workspace at `./tmp/frugl` _inside_ this repo, then runs
-   `pnpm install --production` there. Because the repo has a root
-   `pnpm-workspace.yaml`, pnpm walks up, adopts the parent workspace, and leaves
-   the nested dir empty — the tarball then ships with **no `@oclif/core` and no
-   keyring `.node`**, and the binary fails at startup. Worse, that nested
-   install can _prune your own repo's `node_modules` to production_. The
-   workflow removes `pnpm-workspace.yaml` before packing (the runner is
-   throwaway). To pack locally, do the same and restore it after:
+1. **pnpm's ancestor-root detection breaks the bundled `node_modules`.** oclif
+   stages its build workspace at `./tmp/frugl` _inside_ this repo, then runs
+   `pnpm install --production` there. With no `pnpm-workspace.yaml` of its own,
+   `tmp/frugl` isn't a self-contained project as far as pnpm is concerned:
+   pnpm walks up to the nearest ancestor `.git` (this repo's root) and installs
+   **there** instead — reporting "Already up to date" against the repo's own
+   already-installed `node_modules` — while `tmp/frugl` itself ends up with
+   **no `node_modules` at all**. The packed tarball then ships totally broken
+   (`Cannot find package '@oclif/core'` at startup). Worse, that misdirected
+   install can _prune your own repo's `node_modules` to production_.
+   `pnpm-workspace.yaml` is in `package.json`'s `files` list, and the pack
+   workflow blanks it to `packages: []` before packing — `npm pack` bundles
+   that empty marker into the CLI tarball oclif extracts into `tmp/frugl`,
+   so `tmp/frugl` is its own workspace root before the nested install ever
+   runs, and pnpm never walks past it. To pack locally, do the same and
+   restore it after:
 
    ```bash
    mv pnpm-workspace.yaml pnpm-workspace.yaml.bak
+   echo 'packages: []' > pnpm-workspace.yaml
    pnpm pack:tarballs
    mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
    pnpm install --frozen-lockfile   # restore dev deps if the nested install pruned them

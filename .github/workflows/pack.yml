@@ -58,14 +58,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # oclif stages its build workspace at ./tmp/frugl INSIDE the repo, then
-      # runs `pnpm install --production` there. Because this repo is a pnpm
-      # workspace, pnpm walks up, finds the root pnpm-workspace.yaml, and
-      # refuses to populate the nested dir — the tarball ships with an EMPTY
-      # node_modules (no @oclif/core, no keyring). Removing the workspace marker
-      # makes the nested install behave as a standalone project. The runner is
+      # runs `pnpm install --production` there. With no pnpm-workspace.yaml at
+      # tmp/frugl itself, pnpm walks up to the nearest ancestor .git (this
+      # repo's root) and installs THERE instead — tmp/frugl ends up with NO
+      # node_modules at all (not even empty), and the tarball ships totally
+      # broken (`Cannot find package '@oclif/core'`). Blanking the root
+      # pnpm-workspace.yaml (rather than deleting it) means npm pack's `files`
+      # list — which includes pnpm-workspace.yaml — bundles this empty marker
+      # into the CLI tarball oclif extracts into tmp/frugl, so tmp/frugl is
+      # self-contained before the nested install ever runs. The runner is
       # ephemeral, so there's nothing to restore.
-      - name: Detach pnpm workspace root (see comment)
-        run: rm -f pnpm-workspace.yaml
+      - name: Blank pnpm workspace root (see comment)
+        run: "echo 'packages: []' > pnpm-workspace.yaml"
 
       # `--xz` also emits a .tar.xz (~35% smaller than the .tar.gz). oclif runs
       # `npm pack` -> prepack (build + manifest) first, then bundles Node 26
