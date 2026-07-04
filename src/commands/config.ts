@@ -20,6 +20,7 @@ import {
   PROVIDERS,
   type ProjectGroup,
 } from "../sources/providers.js";
+import { resolveProjectPath } from "../sources/claude-code/project.js";
 
 // A single resolved setting: the effective value, whether it came from the
 // `.frugl.json` (source "config") or the built-in default (source "default").
@@ -182,7 +183,15 @@ export default class Config extends Command {
       // rather than listing every working directory separately.
       const byRepo = new Map<string, RepoRow>();
       for (const g of groups) {
-        const configPath = findGoverningConfig(g.displayName);
+        // g.displayName came through decodeProjectPath, which can't tell a real
+        // "-" in a path segment (e.g. "Frugl-Cli") apart from an encoded "/" —
+        // resolve against the real filesystem first and only fall back to that
+        // lossy guess when resolution fails (deleted/renamed repo).
+        const seedPath =
+          g.providerId === "claude"
+            ? (resolveProjectPath(g.projectId) ?? g.displayName)
+            : g.displayName;
+        const configPath = findGoverningConfig(seedPath);
         if (!configPath) continue;
         const key = `${configPath} ${g.providerId}`;
         const existing = byRepo.get(key);

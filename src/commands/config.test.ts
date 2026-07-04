@@ -239,6 +239,38 @@ describe("frugl config", { timeout: 30_000 }, () => {
     }
   });
 
+  it("keeps sibling repos separate when one's name is a hyphenated prefix of the other", async () => {
+    // Regression: decodeProjectPath can't tell a real "-" in a path segment
+    // apart from an encoded "/", so a naive decode of "myrepo-cli" splits it
+    // into "myrepo/cli" — which would wrongly resolve to the sibling
+    // "myrepo" repo's .frugl.json and merge the two repos into one row.
+    const base = `/tmp/frugl_cfg_prefix_${process.pid}`;
+    const repoDir = `${base}/myrepo`;
+    const cliDir = `${base}/myrepo-cli`;
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(cliDir, { recursive: true });
+    writeFileSync(path.join(repoDir, ".frugl.json"), `${JSON.stringify({ version: 1 })}\n`, "utf8");
+    writeFileSync(path.join(cliDir, ".frugl.json"), `${JSON.stringify({ version: 1 })}\n`, "utf8");
+    try {
+      await writeTestSessions(home.dir, 2, repoDir.replace(/\//g, "-"));
+      await writeTestSessions(home.dir, 3, cliDir.replace(/\//g, "-"));
+
+      const { exitCode, stdout } = await runCli(
+        ["config", "--format", "json", "--endpoint", ENDPOINT],
+        { env: env(), cwd: project.dir },
+      );
+
+      expect(exitCode).toBe(EXIT.OK);
+      const cfg = parse(stdout);
+      expect(cfg.repos).not.toBeNull();
+      const byPath = new Map(cfg.repos!.map((r) => [r.path, r.sessions]));
+      expect(byPath.get(repoDir)).toBe(2);
+      expect(byPath.get(cliDir)).toBe(3);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it("returns an empty repo list when no repo has a .frugl.json", async () => {
     await writeTestSessions(home.dir, 1, "-tmp-frugl_cfg-unconfigured");
 

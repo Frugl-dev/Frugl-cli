@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import type { SessionRef } from "../types.js";
 import type { ProjectGroup } from "../providers.js";
@@ -18,6 +19,58 @@ export function decodeProjectPath(dirName: string): string {
 // real path segment contains a literal "-" (e.g. "frugl-cli").
 export function encodeProjectPath(absolutePath: string): string {
   return absolutePath.replace(/[/.]/g, "-");
+}
+
+// Reverses encodeProjectPath without the ambiguity decodeProjectPath has, by
+// walking the real filesystem instead of blindly splitting on "-": at each
+// level, the remaining encoded suffix is matched against real directory
+// entries (each re-encoded the same way Claude encodes on disk), descending
+// into the longest match. This correctly resolves a hyphenated segment like
+// "Frugl-Cli" that decodeProjectPath would otherwise split into "Frugl/Cli",
+// because it only ever descends into directories that actually exist.
+// Returns null when the chain can't be fully resolved (the directory was
+// renamed/deleted since the session was recorded, a permission error, or
+// rawId isn't an absolute-path encoding) — callers should fall back to
+// decodeProjectPath in that case.
+export function resolveProjectPath(rawId: string): string | null {
+  if (!rawId.startsWith("-")) return null;
+  let dir = path.parse(process.cwd()).root;
+  let remaining = rawId.slice(1);
+
+  while (remaining.length > 0) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+
+    let bestName: string | null = null;
+    let bestEncodedLength = -1;
+    let bestRemainder = "";
+    for (const entry of entries) {
+      // Follow symlinks too (e.g. macOS "/tmp" -> "/private/tmp"): a symlink
+      // entry's dirent type reflects the link itself, not its target, but if
+      // it doesn't actually lead to a directory the next readdirSync will
+      // throw and this resolution safely falls back to null.
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const encoded = encodeProjectPath(entry.name);
+      let remainder: string | null = null;
+      if (remaining === encoded) remainder = "";
+      else if (remaining.startsWith(`${encoded}-`)) remainder = remaining.slice(encoded.length + 1);
+      if (remainder !== null && encoded.length > bestEncodedLength) {
+        bestName = entry.name;
+        bestEncodedLength = encoded.length;
+        bestRemainder = remainder;
+      }
+    }
+
+    if (bestName === null) return null;
+    dir = path.join(dir, bestName);
+    remaining = bestRemainder;
+  }
+
+  return dir;
 }
 
 // Claude encodes both "/" and "." as "-", so ".claude/worktrees/" becomes

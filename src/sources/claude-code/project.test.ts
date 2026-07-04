@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { claude } from "../descriptor.js";
@@ -10,6 +10,7 @@ import {
   deriveClaudeProjects,
   encodeProjectPath,
   extractWorktreePath,
+  resolveProjectPath,
 } from "./project.js";
 import type { SessionRef } from "../types.js";
 
@@ -106,6 +107,31 @@ describe("deriveClaudeProjects", () => {
       .flatMap((g) => g.sessions.map((s: SessionRef) => s.absolutePath))
       .toSorted();
     expect(grouped).toEqual(refs.map((r) => r.absolutePath).toSorted());
+  });
+
+  it("resolves an ambiguous hyphenated path by checking what actually exists on disk", () => {
+    // Sibling dirs "myrepo" and "myrepo-cli" — decodeProjectPath can't tell
+    // these apart from a real "/" separator, but resolveProjectPath can,
+    // because it only descends into directories that actually exist.
+    mkdirSync(path.join(home, "myrepo"), { recursive: true });
+    mkdirSync(path.join(home, "myrepo-cli"), { recursive: true });
+
+    const encodedRepo = encodeProjectPath(path.join(home, "myrepo"));
+    const encodedCli = encodeProjectPath(path.join(home, "myrepo-cli"));
+
+    expect(resolveProjectPath(encodedRepo)).toBe(path.join(home, "myrepo"));
+    expect(resolveProjectPath(encodedCli)).toBe(path.join(home, "myrepo-cli"));
+    // The naive decode would have collapsed both to the same wrong path.
+    expect(decodeProjectPath(encodedCli)).not.toBe(path.join(home, "myrepo-cli"));
+  });
+
+  it("returns null when the encoded directory no longer exists on disk", () => {
+    const encoded = encodeProjectPath(path.join(home, "never-existed", "sub"));
+    expect(resolveProjectPath(encoded)).toBeNull();
+  });
+
+  it("returns null for a non-absolute-path encoding", () => {
+    expect(resolveProjectPath("not-a-leading-dash")).toBeNull();
   });
 
   it("keeps worktrees from different repos in separate groups", async () => {
