@@ -27,6 +27,19 @@ describe("renderOrgTable", () => {
     expect(row).toContain("—");
     expect(row).not.toContain("●");
   });
+
+  it("keeps a gutter between a long slug and ROLE (no column collision)", () => {
+    const longSlug = "cli-e2e-56a952395b24"; // 20 chars, wider than the old fixed 14
+    const out = plain(
+      renderOrgTable([{ slug: longSlug, role: "member", memberCount: 1, active: true }]),
+    );
+    const [header, row] = out.split("\n") as [string, string];
+    // slug and role never touch — there is whitespace between them.
+    expect(row).toContain(`${longSlug}  member`);
+    expect(row).not.toContain(`${longSlug}member`);
+    // header stays aligned with the widened column: ROLE sits at the same offset.
+    expect(header.indexOf("ROLE")).toBe(row.indexOf("member"));
+  });
 });
 
 describe("renderNoOrg", () => {
