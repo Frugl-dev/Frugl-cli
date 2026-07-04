@@ -24,7 +24,7 @@ export const DEFAULT_ENDPOINT = "https://app.frugl.dev";
 // rather than degrading to the default. Hijack stays defanged regardless: auth
 // is endpoint-scoped, so a malicious repo pin you've never logged into yields
 // AuthError on upload, not a silent leak.
-export type EndpointSource = "flag" | "pin" | "env" | "default";
+export type EndpointSource = "flag" | "config-path" | "pin" | "env" | "default";
 
 export interface Endpoint {
   url: string;
@@ -33,21 +33,30 @@ export interface Endpoint {
 
 export interface ResolveEndpointInput {
   flag?: string | undefined;
+  /**
+   * Endpoint from a config file the user pointed at explicitly via
+   * `FRUGL_CONFIG_PATH` (a local-debugging convenience for flipping between,
+   * say, a local stack and prod). Outranks the ambient cwd pin below because
+   * naming the file is a deliberate act; loses to a hand-typed --endpoint.
+   */
+  configPath?: string | undefined;
   /** Endpoint declared by a checked-in `.frugl.json` (self-host pin). */
   pinned?: string | undefined;
   env?: string | undefined;
 }
 
 export function resolveEndpoint(input: ResolveEndpointInput): Endpoint {
-  const raw = input.flag ?? input.pinned ?? input.env ?? DEFAULT_ENDPOINT;
+  const raw = input.flag ?? input.configPath ?? input.pinned ?? input.env ?? DEFAULT_ENDPOINT;
   const resolvedFrom: EndpointSource =
     input.flag !== undefined
       ? "flag"
-      : input.pinned !== undefined
-        ? "pin"
-        : input.env !== undefined
-          ? "env"
-          : "default";
+      : input.configPath !== undefined
+        ? "config-path"
+        : input.pinned !== undefined
+          ? "pin"
+          : input.env !== undefined
+            ? "env"
+            : "default";
   const url = validateEndpoint(raw);
   return { url, resolvedFrom };
 }
@@ -61,6 +70,8 @@ export function describeEndpointSource(source: EndpointSource): string {
   switch (source) {
     case "flag":
       return "set by --endpoint";
+    case "config-path":
+      return "set by FRUGL_CONFIG_PATH";
     case "pin":
       return "pinned by .frugl.json";
     case "env":

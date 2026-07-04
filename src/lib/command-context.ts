@@ -1,7 +1,7 @@
 import { Flags } from "@oclif/core";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
 import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
-import { loadProjectPin } from "../cloud/project-pin.js";
+import { loadConfigPathPin, loadProjectPin } from "../cloud/project-pin.js";
 import { loadAuthSession, requireAuthSession, type AuthSession } from "../auth/session.js";
 import { getCliVersion } from "./cli-version.js";
 import { getPendingAuthFailure } from "./config.js";
@@ -62,8 +62,12 @@ export async function buildCommandContext<A extends AuthMode>(
   // A checked-in `.frugl.json` (self-host pin). Loaded eagerly and allowed to
   // THROW — a malformed pin must fail closed, never degrade to the public cloud.
   const pin = loadProjectPin();
+  // A config file the user pointed at with `FRUGL_CONFIG_PATH` (local-debugging
+  // convenience). Outranks the cwd pin, loses to --endpoint; also fail-closed.
+  const configPin = loadConfigPathPin();
   const endpoint = resolveEndpoint({
     flag: flags.endpoint,
+    configPath: configPin?.endpoint,
     pinned: pin?.endpoint,
     env: process.env["FRUGL_ENDPOINT"],
   });
