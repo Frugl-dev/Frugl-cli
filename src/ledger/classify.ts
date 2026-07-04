@@ -112,6 +112,16 @@ export async function classifySession(
 // bounded and lets progress tick steadily from the first completion.
 export const CLASSIFY_CONCURRENCY = 8;
 
+// A session file discovered by the walk can vanish before we get to parse it —
+// the store is live, and a rotating/compacting editor (Claude Code writing its
+// own logs while `frugl upload` runs) deletes or replaces files underneath us.
+// discover() already skips vanished files; a read that loses the same race must
+// not abort the whole batch. Skip that one session and keep going. Any OTHER
+// error (EACCES, a real parse bug) still propagates — honest failure, FR-019.
+function isVanished(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+}
+
 export async function classifyAll(
   refs: SessionRef[],
   ctx: ClassifyContext,
@@ -119,7 +129,7 @@ export async function classifyAll(
   concurrency: number = CLASSIFY_CONCURRENCY,
 ): Promise<SessionClassification[]> {
   const total = refs.length;
-  const all: SessionClassification[] = Array.from({ length: total });
+  const all: (SessionClassification | undefined)[] = Array.from({ length: total });
   // Build the path-keyed ledger view once for the whole batch so each session's
   // stat fast path is an O(1) map lookup rather than a full ledger re-scan.
   const cctx: ClassifyContext = { ...ctx, statIndex: ctx.statIndex ?? ctx.ledger.buildStatIndex() };
@@ -128,7 +138,13 @@ export async function classifyAll(
   const workers = Math.max(1, Math.min(concurrency, total));
   const worker = async (): Promise<void> => {
     for (let i = next++; i < total; i = next++) {
-      all[i] = await classifySession(refs[i]!, cctx);
+      const ref = refs[i]!;
+      try {
+        all[i] = await classifySession(ref, cctx);
+      } catch (err) {
+        if (!isVanished(err)) throw err;
+        console.warn(`[frugl] skipping ${ref.absolutePath}: file no longer exists`);
+      }
       done += 1;
       onProgress?.(done, total);
     }
@@ -137,6 +153,7 @@ export async function classifyAll(
   const seen = new Set<string>();
   const results: SessionClassification[] = [];
   for (const result of all) {
+    if (result === undefined) continue;
     if (!seen.has(result.identity.sessionId)) {
       seen.add(result.identity.sessionId);
       results.push(result);

@@ -436,6 +436,75 @@ describe("classify", () => {
     const sorted = sortByMtimeDesc(items);
     expect(sorted.map((x) => x.ref.absolutePath)).toEqual(["/a.jsonl", "/b.jsonl", "/c.jsonl"]);
   });
+
+  it("skips a session whose file vanished mid-run and classifies the rest", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://vanish.test", userId: "uv" },
+      { cwd: tempHome },
+    );
+    const refs = [makeRef("/abs/gone.jsonl", 1), makeRef("/abs/here.jsonl", 1)];
+    const source: Source = {
+      kind: SOURCE_KIND,
+      formatVersion: "test-format-v1",
+      discover: async () => [],
+      parse: async (ref) => {
+        if (ref.absolutePath === "/abs/gone.jsonl") {
+          const err = new Error(
+            "ENOENT: no such file or directory, open '/abs/gone.jsonl'",
+          ) as NodeJS.ErrnoException;
+          err.code = "ENOENT";
+          throw err;
+        }
+        return {
+          sourceKind: SOURCE_KIND,
+          ref,
+          identity: { sessionId: path.basename(ref.absolutePath, ".jsonl"), derivation: "native" },
+          records: [{ ok: true }],
+        };
+      },
+      deriveIdentity: (ref) => ({
+        sessionId: path.basename(ref.absolutePath, ".jsonl"),
+        derivation: "native",
+      }),
+    };
+    const results = await classifyAll(refs, {
+      ledger,
+      source,
+      anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.ref.absolutePath).toBe("/abs/here.jsonl");
+    expect(results[0]?.kind).toBe("new");
+  });
+
+  it("rethrows a non-ENOENT parse error (honest failure)", async () => {
+    const ledger = new Ledger(
+      { endpointUrl: "https://eacces.test", userId: "ue" },
+      { cwd: tempHome },
+    );
+    const refs = [makeRef("/abs/locked.jsonl", 1)];
+    const source: Source = {
+      kind: SOURCE_KIND,
+      formatVersion: "test-format-v1",
+      discover: async () => [],
+      parse: async () => {
+        const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+        err.code = "EACCES";
+        throw err;
+      },
+      deriveIdentity: (ref) => ({
+        sessionId: path.basename(ref.absolutePath, ".jsonl"),
+        derivation: "native",
+      }),
+    };
+    await expect(
+      classifyAll(refs, {
+        ledger,
+        source,
+        anonymize: { uploadId: "u", ownerEmail: "o@x.com" },
+      }),
+    ).rejects.toThrow(/EACCES/);
+  });
 });
 
 function stubResult() {
