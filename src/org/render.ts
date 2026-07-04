@@ -10,19 +10,24 @@ export interface OrgRow {
 // The `org ls` table — SLUG / ROLE / MEMBERS / ACTIVE, with a frugl-green dot
 // marking the active org. Columns are padded on the plain text before coloring
 // so the (zero-width) color codes never disturb alignment.
-const COL = { slug: 14, role: 9, members: 10 };
+const COL = { role: 9, members: 10 };
+// The slug column sizes to the widest slug (+ gutter) so a long slug can't run
+// into ROLE; MIN keeps the established layout when every slug is short.
+const SLUG_MIN = 14;
+const SLUG_GUTTER = 2;
 
 export function renderOrgTable(rows: OrgRow[]): string {
+  const slugCol = Math.max(SLUG_MIN, ...rows.map((r) => r.slug.length + SLUG_GUTTER));
   const lines: string[] = [];
   lines.push(
     `  ${color.mute(
-      "SLUG".padEnd(COL.slug) + "ROLE".padEnd(COL.role) + "MEMBERS".padEnd(COL.members) + "ACTIVE",
+      "SLUG".padEnd(slugCol) + "ROLE".padEnd(COL.role) + "MEMBERS".padEnd(COL.members) + "ACTIVE",
     )}`,
   );
   for (const row of rows) {
     const members = row.memberCount !== undefined ? String(row.memberCount) : "—";
     lines.push(
-      `  ${color.bold(row.slug.padEnd(COL.slug))}${color.dim(row.role.padEnd(COL.role))}` +
+      `  ${color.bold(row.slug.padEnd(slugCol))}${color.dim(row.role.padEnd(COL.role))}` +
         `${members.padEnd(COL.members)}${row.active ? symbol.activeDot : ""}`,
     );
   }
