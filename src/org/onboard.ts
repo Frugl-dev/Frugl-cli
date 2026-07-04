@@ -2,10 +2,12 @@ import { input, password, select } from "@inquirer/prompts";
 import { AuthService } from "../auth/auth-service.js";
 import type { AuthSession } from "../auth/session.js";
 import { cloudIdentityClient } from "../auth/identity-client.js";
+import { startBrowserLogin, type OAuthProvider } from "../auth/browser-login.js";
 import { CloudHttpError, type CloudClient } from "../cloud/client.js";
 import type { Endpoint } from "../cloud/endpoints.js";
 import { orgMeResponseSchema } from "../cloud/schemas.js";
 import { getCliVersion } from "../lib/cli-version.js";
+import { getLastLoginMethod, setLastLoginMethod } from "../lib/config.js";
 import { UsageError } from "../lib/errors.js";
 import type { OutputMode } from "../lib/output-mode.js";
 import { runOrgSetupFlow, type OrgSetupSuccess } from "./flow.js";
@@ -19,6 +21,8 @@ import { deriveSlug } from "./slug.js";
 // `yes: false` and keeps its current interactive behavior unchanged.
 export interface OnboardFlags {
   email?: string | undefined;
+  google?: boolean | undefined;
+  github?: boolean | undefined;
   orgName?: string | undefined;
   inviteCode?: string | undefined;
   yes?: boolean | undefined;
@@ -91,11 +95,28 @@ function buildPresentation(command: string): OrgSetupPresentation {
   };
 }
 
+// Opens the browser OAuth flow and exchanges the minted PAT for a session.
+// Best-effort remembers the method, mirroring `login`'s returning-user hint.
+async function loginWithBrowser(
+  auth: AuthService,
+  provider: OAuthProvider,
+  endpointUrl: string,
+): Promise<AuthSession> {
+  const { token } = await startBrowserLogin({ provider, endpointUrl });
+  const session = await auth.loginWithToken(token);
+  try {
+    setLastLoginMethod(provider);
+  } catch {
+    /* ignore — the remembered-default fast path is optional */
+  }
+  return session;
+}
+
 // Step 1 — authenticate. Reuse a saved session when present (FR-004); otherwise
-// run the OTP flow interactively. Under `--yes` (or any non-interactive run) we
-// must NOT prompt: fall back to a headless credential (FRUGL_TOKEN / prior
-// `frugl login`) and, if none exists, fail fast with a usage error rather than
-// hanging on a prompt (FR-005).
+// sign in via OAuth (Google/GitHub, browser) or an OTP email code. Under
+// `--yes` (or any non-interactive run) we must NOT prompt: fall back to a
+// headless credential (FRUGL_TOKEN / prior `frugl login`) and, if none exists,
+// fail fast with a usage error rather than hanging on a prompt (FR-005).
 async function authenticate(params: OnboardParams): Promise<AuthSession> {
   if (params.existingSession) return params.existingSession;
 
@@ -109,6 +130,13 @@ async function authenticate(params: OnboardParams): Promise<AuthSession> {
     }),
   });
 
+  // An explicit --google/--github always wins, even under --yes: it opens a
+  // browser rather than reading stdin, so it doesn't need the FRUGL_TOKEN path.
+  const oauthProvider = params.flags.google ? "google" : params.flags.github ? "github" : null;
+  if (oauthProvider) {
+    return loginWithBrowser(auth, oauthProvider, params.endpoint.url);
+  }
+
   if (params.flags.yes) {
     // Non-interactive: a headless token (FRUGL_TOKEN) is the only way in — the
     // OTP code can't be typed. resolveRequestAuth throws AuthError when nothing
@@ -120,6 +148,29 @@ async function authenticate(params: OnboardParams): Promise<AuthSession> {
       );
     }
     return auth.resolveRequestAuth({});
+  }
+
+  // Interactive: let the user pick a sign-in method, same picker as `login`.
+  // Non-interactive (no TTY, --format json/minimal, --email pre-supplied)
+  // skips straight to OTP.
+  if (params.mode === "default" && process.stdout.isTTY && !params.flags.email) {
+    const lastMethod = getLastLoginMethod();
+    const method = await select({
+      message: "Sign in with:",
+      default: lastMethod,
+      choices: [
+        {
+          name: "GitHub",
+          value: "github",
+          description: "Opens your browser · recommended for devs",
+        },
+        { name: "Google", value: "google", description: "Opens your browser" },
+        { name: "Email one-time code", value: "otp", description: "6-digit code, no password" },
+      ],
+    });
+    if (method === "google" || method === "github") {
+      return loginWithBrowser(auth, method, params.endpoint.url);
+    }
   }
 
   let email = params.flags.email;
