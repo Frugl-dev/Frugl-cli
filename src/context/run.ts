@@ -70,7 +70,7 @@ export async function runContextSnapshot(
   const cloud = new HttpCloudAdapter(ctx.client);
   // Per-source declared MCP inventory (fail-open; artifact payloads already
   // carry declared names, but the manifest inventory keeps session_mcp fed).
-  stepLog(ctx.mode, "Checking MCP servers…");
+  stepLog(ctx.mode, "Collecting declared MCP servers…");
   const mcpServers = captureDeclaredMcpServers(undefined, tool);
   // Skill scopes ride the manifest too (fail-open): parse from the anonymized
   // payload — the exact bytes the server parses for skill items — so the names

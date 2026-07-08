@@ -1,5 +1,6 @@
 import { CloudHttpError } from "../cloud/client.js";
 import { isFruglError, printFruglError } from "../lib/errors.js";
+import { color } from "../lib/theme.js";
 import { reportContext, runContextSnapshot } from "../context/run.js";
 import { reportMcp, runMcpSnapshot } from "../mcp-snapshot/run.js";
 import type { SnapshotRunContext } from "./shared.js";
@@ -11,7 +12,14 @@ export type SnapshotStep = (ctx: SnapshotRunContext) => Promise<void>;
 export const contextStep: SnapshotStep = async (ctx) =>
   reportContext(await runContextSnapshot(ctx), ctx.mode);
 
-export const mcpStep: SnapshotStep = async (ctx) => reportMcp(await runMcpSnapshot(ctx), ctx.mode);
+export const mcpStep: SnapshotStep = async (ctx) => {
+  // `frugl snapshot` runs two independent snapshots back-to-back; the MCP pass
+  // reuses the same "Checking MCP servers…"/"Uploading snapshot…" step lines as
+  // the context pass, so without a header the second block reads as a stray
+  // repeat. Announce it as its own section (default mode only, matching stepLog).
+  if (ctx.mode === "default") process.stderr.write(color.dim("\n  MCP snapshot\n"));
+  reportMcp(await runMcpSnapshot(ctx), ctx.mode);
+};
 
 // Run every snapshot step (context then mcp) against one run context. Each step
 // is independent: a failure in one is reported and never blocks the rest (the
