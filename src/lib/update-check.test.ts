@@ -33,6 +33,9 @@ function jsonResponse(body: unknown, ok = true): Response {
 
 describe("checkForUpdate", () => {
   beforeEach(() => {
+    // test-setup.ts sets NO_UPDATE_NOTIFIER to silence the notice suite-wide;
+    // this suite exercises the check itself, so opt back in.
+    delete process.env["NO_UPDATE_NOTIFIER"];
     store = {};
   });
 

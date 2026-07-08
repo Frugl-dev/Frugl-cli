@@ -21,6 +21,13 @@ function cache(): Conf<{ data: UpdateCache | null }> {
 // Returns the latest npm version if it is newer than currentVersion, otherwise null.
 // Caches the registry result for 24 hours. Any network/parse error returns null silently.
 export async function checkForUpdate(currentVersion: string): Promise<string | null> {
+  // Honor the de-facto suppression env (also set by the test suite): the notice
+  // is driven by a 24h npm cache in the user's config dir, so on a machine that
+  // has run `frugl` before it fires unpredictably — hermetic in fresh CI, noisy
+  // on a real laptop. Skipping keeps stderr assertions (e.g. the hook no-op)
+  // deterministic and lets users opt out.
+  if (process.env["NO_UPDATE_NOTIFIER"]) return null;
+
   const store = cache();
   const cached = store.get("data");
 
