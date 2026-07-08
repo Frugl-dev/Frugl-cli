@@ -109,6 +109,14 @@ Exit codes:
       description: "Overwrite a conflicting .frugl.json value without prompting.",
     }),
     ...COMMON_FLAGS,
+    // Self-host: override the hidden dev-only `endpoint` from COMMON_FLAGS with a
+    // visible one. The self-host dashboard's onboarding instructs exactly
+    // `frugl init --endpoint <instance>` (it's how the .frugl.json pin — the
+    // endpoint source of truth — gets written), so init's --help must show it.
+    endpoint: Flags.string({
+      description:
+        "URL of your Frugl instance to onboard against (e.g. https://frugl.yourco.com). Pinned in .frugl.json so later commands in this project target it.",
+    }),
   };
 
   async run(): Promise<void> {

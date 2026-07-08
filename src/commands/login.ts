@@ -107,12 +107,12 @@ Exit codes:
     }),
     ...COMMON_FLAGS,
     // Self-host: override the hidden dev-only `endpoint` from COMMON_FLAGS with a
-    // visible, self-host-framed one — but ONLY on `login`. Customers sign in to
-    // their own deployment, and login persists the endpoint, so later commands
-    // inherit it without re-passing the flag (keeping their --help uncluttered).
+    // visible, self-host-framed one. Customers sign in to their own deployment.
+    // The endpoint is NOT persisted between commands — a project's .frugl.json
+    // pin (written by `frugl init`) is the source of truth.
     endpoint: Flags.string({
       description:
-        "URL of your Frugl instance to sign in to (e.g. https://frugl.yourco.com). Remembered for later commands.",
+        "URL of your Frugl instance to sign in to (e.g. https://frugl.yourco.com). One-off for this sign-in; a project's .frugl.json pin is what later commands use.",
     }),
   };
 

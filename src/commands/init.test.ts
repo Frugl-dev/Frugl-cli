@@ -253,3 +253,16 @@ describe("frugl init", { timeout: 30_000 }, () => {
     expect(exitCode).toBe(EXIT.NO_SESSIONS_FOUND);
   });
 });
+
+// The self-host dashboard's onboarding instructs `frugl init --endpoint <instance>`
+// verbatim — it's the flag that writes the .frugl.json endpoint pin. COMMON_FLAGS
+// ships `endpoint` hidden (dev-only), so init must override it visible or a
+// customer following the dashboard can't find the flag in --help.
+describe("init --help", () => {
+  it("documents --endpoint (the dashboard-instructed self-host flag)", async () => {
+    const { exitCode, stdout } = await runCli(["init", "--help"]);
+    expect(exitCode).toBe(EXIT.OK);
+    expect(stdout).toContain("--endpoint");
+    expect(stdout).toContain(".frugl.json");
+  });
+});
