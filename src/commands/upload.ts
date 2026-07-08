@@ -5,7 +5,8 @@ import path from "node:path";
 import { bar, color, formatBytes, symbol, SIGIL } from "../lib/theme.js";
 import { randomUUID } from "node:crypto";
 import { CloudClient, CloudHttpError } from "../cloud/client.js";
-import { resolveEndpoint } from "../cloud/endpoints.js";
+import { resolveEndpoint, type Endpoint } from "../cloud/endpoints.js";
+import { loadConfigPathPin, loadProjectPin } from "../cloud/project-pin.js";
 import { AuthService } from "../auth/auth-service.js";
 import { cloudIdentityClient } from "../auth/identity-client.js";
 import {
@@ -211,10 +212,23 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
       this.bail(err, mode);
     }
 
-    const endpoint = resolveEndpoint({
-      flag: flags.endpoint,
-      env: process.env["FRUGL_ENDPOINT"],
-    });
+    // Endpoint resolution must match every other cloud command (whoami, init —
+    // see lib/command-context.ts): flag > FRUGL_CONFIG_PATH > checked-in
+    // `.frugl.json` pin > FRUGL_ENDPOINT > default. Skipping the pin layers here
+    // once sent a pinned self-host repo's bare `frugl upload` to the public
+    // cloud. Both pin loads are fail-closed — a malformed pin throws (exit 2)
+    // rather than silently degrading to the default endpoint.
+    let endpoint: Endpoint;
+    try {
+      endpoint = resolveEndpoint({
+        flag: flags.endpoint,
+        configPath: loadConfigPathPin()?.endpoint,
+        pinned: loadProjectPin()?.endpoint,
+        env: process.env["FRUGL_ENDPOINT"],
+      });
+    } catch (err) {
+      this.bail(err, mode);
+    }
     try {
       // Fail-closed: a malformed/unreadable config throws here -> bail -> exit 2.
       const uploadConfig = loadUploadConfig({ explicitPath: flags.config });
@@ -427,7 +441,23 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
           // 2) Choose providers — interactive picker, or auto-select-all when not.
           const selectedProviderIds = await selectProviders(detected, { interactive });
           if (selectedProviderIds.length === 0) {
-            if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
+            // Only reachable when the interactive picker ends with every provider
+            // unchecked: zero *supported* providers already threw NoSessionsError
+            // above, and the non-interactive path auto-selects all of them.
+            const explanation = explainNoProvidersSelected(supportedDetected);
+            if (mode === "json") {
+              process.stdout.write(
+                `${JSON.stringify({
+                  command: "upload",
+                  ok: true,
+                  selected: 0,
+                  endpoint: endpoint.url,
+                  reason: explanation.reason,
+                })}\n`,
+              );
+            } else {
+              process.stderr.write(color.dim(`${explanation.human}\n`));
+            }
             process.exit(EXIT.OK);
           }
           // 3) Discover sessions for the selected providers, grouped by project.
@@ -500,7 +530,30 @@ Set FRUGL_DEBUG=1 to print HTTP request/response lines to stderr.`;
 
         const selectedRefs = applySelection(groups, selection);
         if (selectedRefs.length === 0) {
-          if (mode !== "json") process.stderr.write(color.dim("Nothing selected.\n"));
+          // Sessions/providers were discovered, but the selection came out empty
+          // — say why (scope, filters, or the picker), never a bare "Nothing
+          // selected." (which read as a bug when the cause was a `.frugl.json`
+          // scoping the run to a different project).
+          const explanation = explainEmptySelection({
+            groups,
+            classifications: allClassifications,
+            scopeDir,
+            minCostUsd: minCost ?? MIN_COST_FLOOR_USD,
+          });
+          if (mode === "json") {
+            process.stdout.write(
+              `${JSON.stringify({
+                command: "upload",
+                ok: true,
+                selected: 0,
+                endpoint: endpoint.url,
+                reason: explanation.reason,
+                selection: selectionReport,
+              })}\n`,
+            );
+          } else {
+            process.stderr.write(color.dim(`${explanation.human}\n`));
+          }
           process.exit(EXIT.OK);
         }
 
@@ -1258,6 +1311,109 @@ function buildSelectionReport(
       sessionCount: g.sessionCount,
       selected: projectSel.has(g.projectId),
     })),
+  };
+}
+
+// Structured "why did nothing upload?" payloads for the two empty-selection
+// exits. Both used to print an identical, opaque "Nothing selected." — which
+// read as a bug when the real cause was a `.frugl.json` scoping the run to a
+// different project, or every session already being uploaded. Exported for
+// unit tests; the command wraps `reason` in the standard JSON envelope.
+export interface EmptySelectionReason {
+  kind:
+    | "no_providers_selected"
+    | "no_sessions_discovered"
+    | "outside_project_scope"
+    | "nothing_left_after_filters";
+  providersDetected?: string[];
+  sessionsDiscovered?: number;
+  projectsDiscovered?: number;
+  alreadyUploaded?: number;
+  trivialOrEmpty?: number;
+  unselected?: number;
+  scopeDir?: string;
+  minCostUsd?: number;
+}
+
+export interface EmptySelectionExplanation {
+  human: string;
+  reason: EmptySelectionReason;
+}
+
+// The interactive provider picker ended with every provider unchecked. (The
+// truly-nothing-detected machine never reaches this — it throws
+// NoSessionsError during detection instead.)
+export function explainNoProvidersSelected(
+  supportedDetected: DetectedProvider[],
+): EmptySelectionExplanation {
+  const names = supportedDetected.map((d) => d.descriptor.displayName);
+  return {
+    human: `No providers selected — detected ${names.join(", ")}, but none were chosen in the picker. Nothing uploaded.`,
+    reason: { kind: "no_providers_selected", providersDetected: names },
+  };
+}
+
+// Providers (and possibly sessions) were discovered, but the final selection
+// came out empty. Name the actual cause: no session files at all, everything
+// outside the `.frugl.json` project scope, or everything filtered/deselected —
+// with the counts the already-parsed classifications carry.
+export function explainEmptySelection(input: {
+  groups: ProjectGroup[];
+  classifications: SessionClassification[];
+  scopeDir: string | null;
+  minCostUsd: number;
+}): EmptySelectionExplanation {
+  const sessionsDiscovered = input.groups.reduce((n, g) => n + g.sessionCount, 0);
+  const projectsDiscovered = input.groups.length;
+  const counts = {
+    sessionsDiscovered,
+    projectsDiscovered,
+    minCostUsd: input.minCostUsd,
+  };
+  const found = `Found ${sessionsDiscovered} session${sessionsDiscovered === 1 ? "" : "s"} across ${projectsDiscovered} project${projectsDiscovered === 1 ? "" : "s"}`;
+
+  if (sessionsDiscovered === 0) {
+    return {
+      human:
+        "Found AI session sources, but no session files yet — nothing to upload. Use an AI coding tool for a bit, then run frugl upload again.",
+      reason: { kind: "no_sessions_discovered", ...counts },
+    };
+  }
+
+  // A `.frugl.json` scopes uploads to its own directory; every discovered
+  // session belongs to some other project. The common real-world hit: running
+  // a bare `frugl upload` from a freshly-`init`ed directory whose sessions
+  // live under a different project path.
+  if (input.scopeDir !== null) {
+    return {
+      human: `${found}, but none belong to this project — the .frugl.json at ${input.scopeDir} scopes uploads to it. Run frugl upload from the project the sessions belong to.`,
+      reason: { kind: "outside_project_scope", ...counts, scopeDir: input.scopeDir },
+    };
+  }
+
+  // Break the discovered set down by what removed each session from the
+  // selection. `classifications` covers every discovered session on this path
+  // (the interactive flow parses everything up front); whatever the buckets
+  // don't explain was left unchecked in the picker.
+  const buckets = bucketize(input.classifications);
+  const alreadyUploaded = buckets.unchanged.length;
+  const candidates = [...buckets.new, ...buckets.updated];
+  const trivialOrEmpty =
+    candidates.length - filterByCost(filterTrivial(candidates), EXCLUDE_FLOOR_USD).length;
+  const unselected = Math.max(0, sessionsDiscovered - alreadyUploaded - trivialOrEmpty);
+  const parts: string[] = [];
+  if (alreadyUploaded > 0) parts.push(`${alreadyUploaded} already uploaded`);
+  if (trivialOrEmpty > 0) parts.push(`${trivialOrEmpty} trivial or empty (under $0.01)`);
+  if (unselected > 0) parts.push(`${unselected} left unselected in the picker`);
+  return {
+    human: `${found}, but none were selected${parts.length > 0 ? `: ${parts.join(", ")}` : ""}. Nothing new to upload.`,
+    reason: {
+      kind: "nothing_left_after_filters",
+      ...counts,
+      alreadyUploaded,
+      trivialOrEmpty,
+      unselected,
+    },
   };
 }
 
